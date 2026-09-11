@@ -1,0 +1,131 @@
+import { GOURCE_VIEW } from './constants.js';
+import { cine } from './tour.js';
+
+// Gource View in a lightbox: the repo's whole commit history replayed as a
+// growing tree, without leaving the city. The iframe only exists while the
+// player is open, so nothing plays or downloads in the background.
+// video=1 opens Gource View's clean "▶ Video" composition as soon as the
+// history has loaded, instead of the full app UI; embed=1 hides its scrubber
+// and has it tell this page when the video opens / closes (postMessage).
+export function gourceUrl(repo, { video = true } = {}) {
+  // music=none: the embedded player plays without music.
+  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=none' : ''}`;
+}
+// The player loads hidden: a small chip shows progress at the clicked
+// building, and once Gource View's video is ready the player morphs out of that
+// point. Embedded Gource View posts 'video-open' / 'video-close' messages;
+// until a deployment has them, a timer reveals it and (same origin only) Esc
+// inside the frame is intercepted.
+const GOURCE_ORIGIN = new URL(GOURCE_VIEW).origin;
+let gourceTimer = 0;
+let gourceRepoName = '';
+let gourceNotBefore = 0; // opened from a building click: let the fly-in land first
+// While the TV covers the screen the city stops rendering, so the GPU (and a
+// phone's battery) goes to the video. It resumes as the set powers off.
+export let gourceCovering = false;
+export function openGource(repo, from = null) {
+  let box = document.getElementById('gource-modal');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'gource-modal';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.innerHTML = `<div class="gm-loading" role="status"><span class="gm-spin"></span><span class="gm-ltext"></span>
+        <button class="gm-cancel" type="button" aria-label="Cancel">×</button></div>
+      <div class="gm-card">
+        <div class="gm-screen"><div class="gm-frame"></div><div class="gm-crt"></div></div>
+        <div class="gm-head"><span class="gm-led"></span><span class="gm-title"></span>
+          <a class="gm-ext" target="_blank" rel="noopener">Open in new tab ↗</a>
+          <button class="gm-close" type="button" aria-label="Close">×</button></div>
+      </div>`;
+    box.addEventListener('click', (e) => { if (e.target === box) closeGource(true); });
+    box.querySelector('.gm-close').addEventListener('click', () => closeGource(true));
+    box.querySelector('.gm-cancel').addEventListener('click', () => closeGource());
+    document.body.appendChild(box);
+  }
+  closeGource();
+  const url = gourceUrl(repo);
+  const at = from || { x: innerWidth / 2, y: innerHeight / 2 };
+  box.style.setProperty('--gx', `${at.x}px`);
+  box.style.setProperty('--gy', `${at.y}px`);
+  box.querySelector('.gm-title').textContent = `${repo.full_name} · commit history`;
+  gourceRepoName = repo.name;
+  gourceNotBefore = from ? performance.now() + 2600 : 0;
+  box.querySelector('.gm-ltext').textContent = `Replaying ${repo.name}…`;
+  box.querySelector('.gm-ext').href = url;
+  const frame = document.createElement('iframe');
+  frame.src = url;
+  frame.title = `Gource View: ${repo.full_name}`;
+  frame.allow = 'autoplay; fullscreen';
+  frame.allowFullscreen = true;
+  frame.addEventListener('load', () => {
+    try { // same origin (the live site): Esc in the frame closes the whole player
+      frame.contentWindow.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeGource(true); }
+      }, true);
+    } catch { /* cross-origin (local preview): rely on postMessage */ }
+  });
+  box.querySelector('.gm-frame').replaceChildren(frame);
+  box.classList.add('open', 'pending');
+  // Last-resort fallback only: gource-view posts 'video-ready' when its first frame is up
+  // (big histories like torvalds/linux can take well over 10 s to load).
+  gourceTimer = setTimeout(revealGource, 30000);
+  document.addEventListener('keydown', gourceKeys, true);
+}
+function revealGource() {
+  const box = document.getElementById('gource-modal');
+  if (!box?.classList.contains('pending')) return;
+  clearTimeout(gourceTimer);
+  // Opened from a building click: power on only once the fly-in has landed
+  // (flight time is frame time, so slow devices take longer than the nominal 2.6 s).
+  const flying = gourceNotBefore && cine && cine.leg === 0 && cine.legs.length > 1;
+  if (flying || gourceNotBefore - performance.now() > 0) { gourceTimer = setTimeout(revealGource, 150); return; }
+  const card = box.querySelector('.gm-card').getBoundingClientRect();
+  const gx = parseFloat(box.style.getPropertyValue('--gx')), gy = parseFloat(box.style.getPropertyValue('--gy'));
+  box.style.setProperty('--ox', `${gx - card.left}px`);
+  box.style.setProperty('--oy', `${gy - card.top}px`);
+  box.classList.remove('pending');
+  box.classList.add('reveal');
+  setTimeout(() => { if (box.classList.contains('reveal') && !box.classList.contains('off')) gourceCovering = true; }, 700);
+  // Start the video once the morph has (nearly) finished, so it's seen from its first frame.
+  const frame = box.querySelector('iframe');
+  setTimeout(() => frame?.contentWindow?.postMessage({ source: 'git-city', type: 'play' }, GOURCE_ORIGIN), 650);
+}
+let gourceOffTimer = 0;
+export function closeGource(animated = false) {
+  gourceCovering = false;
+  clearTimeout(gourceTimer);
+  clearTimeout(gourceOffTimer);
+  const box = document.getElementById('gource-modal');
+  if (!box) return;
+  if (animated && box.classList.contains('reveal') && !box.classList.contains('off')) {
+    box.classList.add('off'); // the tube powers off, then the set goes away
+    gourceOffTimer = setTimeout(() => closeGource(false), 360);
+    return;
+  }
+  box.classList.remove('open', 'pending', 'reveal', 'off');
+  box.querySelector('.gm-frame').replaceChildren(); // stops playback and downloads
+  document.removeEventListener('keydown', gourceKeys, true);
+}
+window.addEventListener('message', (e) => {
+  if (e.origin !== GOURCE_ORIGIN || e.data?.source !== 'gource-view') return;
+  // 'video-ready' arrives once the first frame is on screen; 'video-open' (the
+  // view has mounted) only arms a short fallback in case 'ready' never comes.
+  if (e.data.type === 'video-ready') revealGource();
+  else if (e.data.type === 'video-open') { clearTimeout(gourceTimer); gourceTimer = setTimeout(revealGource, 2500); }
+  else if (e.data.type === 'video-close' || e.data.type === 'error') closeGource(true);
+  else if (e.data.type === 'progress') {
+    // Big histories take a while (torvalds/linux is ~3000 commits): show how far along it is.
+    const el = document.querySelector('#gource-modal.pending .gm-ltext');
+    const pct = Math.max(0, Math.min(100, Math.round(+e.data.pct || 0)));
+    if (el) el.textContent = `Replaying ${gourceRepoName}… ${pct}%`;
+    // Still loading, and saying so: keep waiting for 'video-ready' rather than revealing a loading screen.
+    if (el) { clearTimeout(gourceTimer); gourceTimer = setTimeout(revealGource, 30000); }
+  }
+});
+function gourceKeys(e) {
+  // While the player is open it owns the keyboard: Esc closes it and nothing
+  // leaks through to the city's shortcuts (Space, T, explore keys).
+  if (e.key === 'Escape') closeGource(true);
+  e.stopPropagation();
+}
