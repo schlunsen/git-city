@@ -1566,32 +1566,27 @@ export function createWorld(THREE, scene, deps) {
         let b = gateOffset + (k / n) * TAU;
         if (angDist(b, LIGHT.a) < 0.3) b += 0.35; // keep clear of the lighthouse pier
         const R = shoreR(b) * 1.32, x = Math.cos(b) * R, z = Math.sin(b) * R;
-        const obj = noRay(makeGate(nb));
-        obj.position.set(x, SEA_Y, z);
-        obj.rotation.y = Math.atan2(-Math.cos(b), -Math.sin(b)); // avatar and label face the island
+        // No visible portal: a neighbour is simply the direction you fly off the map in.
+        const obj = new THREE.Group();
         gateGroup.add(obj);
         gates.push({ ...nb, bearing: b, x, y: SEA_Y + 6.2, z, obj });
       });
     }
-    // Which gate (if any) a traveller at (x, y, z) is using. `mode` is the
-    // explore mode: 'fly' goes through the ring (or past it, close enough);
-    // 'walk' / 'drive' reach the beach below it.
+    // Which neighbour (if any) a traveller at (x, y, z) is heading to. Only the
+    // plane travels: fly past the edge of the map (radius EDGE) in any
+    // direction and you reach whichever neighbour lies closest to that bearing.
+    const EDGE = 320;
     function gateFor(x, y, z, mode) {
+      if (mode !== 'fly' || !gates.length || Math.hypot(x, z) < EDGE) return null;
       const b = Math.atan2(z, x);
-      for (const g of gates) {
-        if (mode === 'fly') {
-          if (Math.hypot(x - g.x, y - g.y, z - g.z) < 6.5) return g;
-          if (Math.hypot(x, z) > Math.hypot(g.x, g.z) + 4 && angDist(b, g.bearing) < 0.14) return g;
-        } else if (coastAt(x, z) < 0.035 && angDist(b, g.bearing) < 0.3) return g;
-      }
-      return null;
+      return gates.reduce((best, g) => (angDist(b, g.bearing) < angDist(b, best.bearing) ? g : best));
     }
     // Where someone arriving from bearing `b` (on this island) should appear,
     // heading inland: out at sea for a plane, on the first dry, gentle ground
     // for a car or walker. `heading` is the XZ angle, atan2(dz, dx).
     function arrival(b, mode) {
       if (mode === 'fly') {
-        const R = shoreR(b) * 1.45;
+        const R = Math.min(shoreR(b) * 1.45, 280); // inside the travel edge (320)
         return { x: Math.cos(b) * R, y: 26, z: Math.sin(b) * R, heading: b + Math.PI };
       }
       for (let k = 0.09; k < 0.6; k += 0.01) {
