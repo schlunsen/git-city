@@ -32,7 +32,7 @@ export const BUILDING_MAX_BYTES = 16 * 1024;
 export const BUILDING_TIMEOUT_MS = 8000; // generous: slow devices read the reply late while the city draws its first frames
 
 // ---- vocabulary: the one place the allowed names live ----------------------
-// Mirrors world.js BIOMES, app.js CITY_SHAPE_NAMES, attractions.js ATTRACTIONS
+// Mirrors world.js BIOMES, city/layout.js CITY_SHAPE_NAMES, attractions.js ATTRACTIONS
 // and Gource View's music index (tests/city-config.test.mjs checks the first
 // three against the source so they cannot drift).
 export const OPTIONS = Object.freeze({

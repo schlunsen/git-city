@@ -36,7 +36,7 @@ import { ATTRACTIONS } from './attractions.js';
 const Q = new URLSearchParams(location.search);
 if (Q.get('clean')) document.body.classList.add('clean');
 
-// Same 4-band ramp as app.js getToonRamp().
+// Same 4-band ramp as city/toon.js getToonRamp().
 const ramp = new THREE.DataTexture(new Uint8Array([98, 98, 98, 255, 152, 152, 152, 255, 218, 218, 218, 255, 255, 255, 255, 255]), 4, 1, THREE.RGBAFormat);
 ramp.minFilter = ramp.magFilter = THREE.NearestFilter;
 ramp.generateMipmaps = false;
