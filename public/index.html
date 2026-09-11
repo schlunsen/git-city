@@ -2,6 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<!-- Defence in depth (the page renders other developers' city.json): scripts only from here, jsdelivr (three) and
+     the import map below (by hash: update it if the map changes); data only from GitHub; the Gource View player
+     is the only frame. 'unsafe-inline' is for styles only (inline <style> and style attributes). See docs/city-config.md. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-kUzUdVBrUyLBrCt7g8JotJaIo+b+nhfx4QNK2LZsCCw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://avatars.githubusercontent.com https://github.com https://raw.githubusercontent.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://camo.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; frame-src https://schlunsen.github.io; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Git City — code in motion</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
@@ -354,7 +358,47 @@
   #showcase-card .sc-chin { display: flex; align-items: center; gap: 8px; padding: 6px 4px 0; font-family: var(--mono); font-size: 10px; color: var(--ink-500); }
   #showcase-card .sc-led { width: 6px; height: 6px; border-radius: 50%; background: #ff5a4f; box-shadow: 0 0 6px #ff5a4f; }
   #showcase-card .sc-hint { margin-left: auto; }
-  @media (max-width: 720px) { #showcase-card .sc-hint { display: none; } #showcase-card .sc-name { font-size: 19px; } }
+  #showcase-card .sc-ch { pointer-events: auto; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; line-height: 1;
+    font-size: 14px; color: var(--ink-300); border: 1px solid rgba(255, 255, 255, 0.12); background: radial-gradient(circle at 35% 30%, #3b4458, #141923); }
+  #showcase-card .sc-ch:hover { color: var(--accent); }
+  #showcase-card .sc-readme { margin-top: 9px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.1); font-size: 12px; line-height: 1.5;
+    color: var(--ink-300); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  #showcase-card .sc-readme:empty { display: none; }
+  /* The README's first picture plays on the set's screen (scanlines sit on top). */
+  #showcase-card .sc-pic { display: none; margin: 8px 0 2px; height: 130px; border-radius: 8px; overflow: hidden; background: #04070c; }
+  #showcase-card .sc-pic { position: relative; }
+  #showcase-card .sc-pic img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0; }
+  /* Tuning in: animated static while the picture loads... */
+  #showcase-card.pic-loading .sc-pic { background:
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px),
+      repeating-radial-gradient(circle at 30% 40%, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 4px), #070b12;
+    animation: sc-static 0.18s steps(3) infinite; }
+  #showcase-card.pic-loading .sc-pic::after { content: "tuning in…"; position: absolute; inset: 0; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(194, 202, 216, 0.55); }
+  @keyframes sc-static { 0% { background-position: 0 0, 0 0; } 33% { background-position: 0 1px, 3px 2px; } 66% { background-position: 0 2px, -2px 1px; } }
+  /* ...then the picture comes in like a CRT finding the channel. */
+  #showcase-card.pic-in .sc-pic img { animation: sc-tune 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  @keyframes sc-tune {
+    0% { opacity: 0; filter: brightness(2.4) blur(6px) saturate(0); transform: scaleY(1.08); }
+    40% { opacity: 1; filter: brightness(1.5) blur(2px) saturate(0.6); }
+    100% { opacity: 1; filter: none; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #showcase-card.pic-loading .sc-pic { animation: none; }
+    #showcase-card.pic-in .sc-pic img { animation: none; opacity: 1; }
+  }
+  #showcase-card.has-pic .sc-pic { display: block; }
+  #showcase-card .sc-readme::before { content: "README · "; font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--accent); }
+  /* Desktop: a bigger set in the bottom-left corner, clear of the building being circled. */
+  @media (min-width: 1100px) {
+    #showcase-card { width: min(560px, 40vw); left: 20px; transform: translate(0, 14px) scale(0.96); transform-origin: left bottom; }
+    #showcase-card.show { transform: none; }
+    #showcase-card .sc-name { font-size: 26px; }
+    #showcase-card .sc-desc { font-size: 13px; }
+    #showcase-card .sc-readme { -webkit-line-clamp: 5; font-size: 12.5px; }
+    #showcase-card .sc-pic { height: 190px; }
+  }
+  @media (max-width: 720px) { #showcase-card .sc-hint { display: none; } #showcase-card .sc-name { font-size: 19px; } #showcase-card .sc-readme { -webkit-line-clamp: 2; } #showcase-card .sc-pic { height: 90px; } }
   @media (prefers-reduced-motion: reduce) { #showcase-card.flip .sc-screen { animation: none; } }
 
   /* ---------- Error ---------- */
@@ -562,6 +606,7 @@
     <button id="weather-btn" class="tb" title="Weather: clear / rain / snow">Clear</button>
     <button id="fx-btn" class="tb" title="Bloom / grade / grain">FX</button>
     <button id="tv-btn" class="tb" title="Old television look (V)">TV</button>
+    <button id="customize-btn" class="tb" type="button" title="Customize this city: preview it, then publish .git-city/city.json">Customize</button>
   </div>
   </div>
   <button id="menu-btn" class="menu-btn" type="button" aria-label="Developers and view options" aria-expanded="false" aria-controls="menu">☰</button>
