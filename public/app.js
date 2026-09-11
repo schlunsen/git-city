@@ -2509,6 +2509,10 @@ function gourceUrl(repo, { video = true } = {}) {
 // inside the frame is intercepted.
 const GOURCE_ORIGIN = new URL(GOURCE_VIEW).origin;
 let gourceTimer = 0;
+let gourceRepoName = '';
+// While the TV covers the screen the city stops rendering, so the GPU (and a
+// phone's battery) goes to the video. It resumes as the set powers off.
+let gourceCovering = false;
 function openGource(repo, from = null) {
   let box = document.getElementById('gource-modal');
   if (!box) {
@@ -2535,6 +2539,7 @@ function openGource(repo, from = null) {
   box.style.setProperty('--gx', `${at.x}px`);
   box.style.setProperty('--gy', `${at.y}px`);
   box.querySelector('.gm-title').textContent = `${repo.full_name} · commit history`;
+  gourceRepoName = repo.name;
   box.querySelector('.gm-ltext').textContent = `Replaying ${repo.name}…`;
   box.querySelector('.gm-ext').href = url;
   const frame = document.createElement('iframe');
@@ -2566,12 +2571,14 @@ function revealGource() {
   box.style.setProperty('--oy', `${gy - card.top}px`);
   box.classList.remove('pending');
   box.classList.add('reveal');
+  setTimeout(() => { if (box.classList.contains('reveal') && !box.classList.contains('off')) gourceCovering = true; }, 700);
   // Start the video once the morph has (nearly) finished, so it's seen from its first frame.
   const frame = box.querySelector('iframe');
   setTimeout(() => frame?.contentWindow?.postMessage({ source: 'git-city', type: 'play' }, GOURCE_ORIGIN), 650);
 }
 let gourceOffTimer = 0;
 function closeGource(animated = false) {
+  gourceCovering = false;
   clearTimeout(gourceTimer);
   clearTimeout(gourceOffTimer);
   const box = document.getElementById('gource-modal');
@@ -2592,6 +2599,14 @@ window.addEventListener('message', (e) => {
   if (e.data.type === 'video-ready') revealGource();
   else if (e.data.type === 'video-open') { clearTimeout(gourceTimer); gourceTimer = setTimeout(revealGource, 2500); }
   else if (e.data.type === 'video-close' || e.data.type === 'error') closeGource(true);
+  else if (e.data.type === 'progress') {
+    // Big histories take a while (torvalds/linux is ~3000 commits): show how far along it is.
+    const el = document.querySelector('#gource-modal.pending .gm-ltext');
+    const pct = Math.max(0, Math.min(100, Math.round(+e.data.pct || 0)));
+    if (el) el.textContent = `Replaying ${gourceRepoName}… ${pct}%`;
+    // Still loading, and saying so: keep waiting for 'video-ready' rather than revealing a loading screen.
+    if (el) { clearTimeout(gourceTimer); gourceTimer = setTimeout(revealGource, 30000); }
+  }
 });
 function gourceKeys(e) {
   // While the player is open it owns the keyboard: Esc closes it and nothing
@@ -2904,6 +2919,7 @@ function wireUI() {
 // ---------------------------------------------------------------------------
 function animate(timestamp) {
   requestAnimationFrame(animate);
+  if (gourceCovering) return; // the history TV covers the city: skip rendering it
   clock.update(timestamp);
   const dt = Math.min(clock.getDelta(), 0.05);
 
