@@ -16,6 +16,15 @@ import {
   normalizeCityConfig, serializeCityConfig, serializeBuildingConfig, newFileUrl, editFileUrl, blobUrl,
 } from './city-config.js';
 import { paintGraffiti } from './graffiti.js';
+import { LANDMARK_SITES } from './world.js';
+import { renderLandmarkThumbs } from './landmark-thumbs.js'; // small rendered pictures of each 3D landmark
+
+// Where each landmark can stand (world.js LANDMARK_SITES), in words for the picker.
+const SITE_LABEL = { bigFair: 'Big fairground', fair: 'Fairground', farm: 'Farmland', peak: 'Hilltop', slopes: 'Hillside', coast: 'Coast', wild: 'Wild land' };
+function whereOf(key) {
+  const kinds = (LANDMARK_SITES[key] || []).map((s) => s.replace(/\d+$/, ''));
+  return [...new Set(kinds.map((k) => SITE_LABEL[k] || k))].slice(0, 2).join(' · ');
+}
 
 const GUIDE = './customize.html'; // the how-to page (public/customize.html)
 
@@ -195,27 +204,56 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     } });
     return h('span', { class: 'cz-colour' }, on, pick);
   }
-  function landmarkChips() {
-    const wrap = h('div', { class: 'cz-chips', role: 'group', 'aria-label': 'Landmarks' });
-    const sync = () => {
-      const sel = getIn(draft, ['landmarks']) || [];
-      for (const b of wrap.children) {
-        const on = sel.includes(b.dataset.key);
-        b.setAttribute('aria-pressed', String(on));
-        b.disabled = !on && sel.length >= LIMITS.landmarks;
-      }
-    };
+  // Landmarks: a card per 3D landmark (a rendered picture, its name, where it
+  // can stand). Picks keep their order (it's the order they're placed in), shown
+  // as a number on the card; at the limit the rest are disabled.
+  function landmarkPicker() {
+    const count = h('span', { class: 'cz-lm-count', 'aria-live': 'polite' });
+    const clear = h('button', { type: 'button', class: 'cz-mini', text: 'Clear', onclick: () => { set(['landmarks'], []); sync(); } });
+    const grid = h('div', { class: 'cz-lm-grid', role: 'group', 'aria-label': 'Landmarks' });
+    const cards = new Map();
     for (const key of OPTIONS.landmark) {
-      wrap.append(h('button', { type: 'button', class: 'cz-chip', dataset: { key }, text: LABELS.landmark[key], onclick: () => {
-        const sel = [...(getIn(draft, ['landmarks']) || [])];
-        const i = sel.indexOf(key);
-        if (i >= 0) sel.splice(i, 1); else if (sel.length < LIMITS.landmarks) sel.push(key);
-        set(['landmarks'], sel);
-        sync();
-      } }));
+      const img = h('img', { class: 'cz-lm-img', alt: '', decoding: 'async' });
+      const badge = h('span', { class: 'cz-lm-badge' });
+      const where = whereOf(key);
+      const b = h('button', {
+        type: 'button', class: 'cz-lm', dataset: { key }, title: `${LABELS.landmark[key]}: ${where}`,
+        onclick: () => {
+          const sel = [...(getIn(draft, ['landmarks']) || [])];
+          const i = sel.indexOf(key);
+          if (i >= 0) sel.splice(i, 1); else if (sel.length < LIMITS.landmarks) sel.push(key);
+          set(['landmarks'], sel);
+          sync();
+        },
+      }, h('span', { class: 'cz-lm-pic' }, img, badge), h('span', { class: 'cz-lm-name', text: LABELS.landmark[key] }),
+      h('span', { class: 'cz-lm-where', text: where }));
+      cards.set(key, { b, img, badge, where });
+      grid.append(b);
     }
+    function sync() {
+      const sel = getIn(draft, ['landmarks']) || [];
+      count.textContent = sel.length ? `${sel.length} of ${LIMITS.landmarks} picked · placed in this order` : `None picked yet · up to ${LIMITS.landmarks}`;
+      clear.hidden = !sel.length;
+      for (const [key, c] of cards) {
+        const i = sel.indexOf(key);
+        c.b.setAttribute('aria-pressed', String(i >= 0));
+        c.b.disabled = i < 0 && sel.length >= LIMITS.landmarks;
+        c.badge.textContent = i >= 0 ? String(i + 1) : '';
+        c.b.setAttribute('aria-label', `${LABELS.landmark[key]}, ${c.where}${i >= 0 ? `, picked number ${i + 1}` : ''}`);
+      }
+    }
+    // The pictures are rendered once per visit, the first time the grid is on screen.
+    const seen = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      seen.disconnect();
+      renderLandmarkThumbs((key, url) => {
+        const c = cards.get(key);
+        if (c) { c.img.src = url; c.b.classList.add('has-pic'); }
+      });
+    });
+    seen.observe(grid);
     sync();
-    return wrap;
+    return h('div', { class: 'cz-lm-wrap' }, h('div', { class: 'cz-lm-head' }, count, clear), grid);
   }
   function neighboursField() {
     const el = h('input', {
@@ -475,7 +513,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
           row('Biome', selectField(['island', 'biome'], OPTIONS.biome, LABELS.biome, 'Automatic (top language)')),
           row('City shape', selectField(['island', 'shape'], OPTIONS.shape, LABELS.shape, 'Automatic (from your login)')),
           row('Welcome', textField(['welcome'], LIMITS.text, 'Welcome to my city!', true), `Up to ${LIMITS.text} characters, on the welcome boards.`)),
-        section('Landmarks', false, h('small', { class: 'cz-note', text: `Pick up to ${LIMITS.landmarks}; they're placed first, then the island tops up as usual.` }), landmarkChips()),
+        section('Landmarks', false, h('small', { class: 'cz-note', text: `Pick up to ${LIMITS.landmarks}; they're placed first, then the island tops up as usual.` }), landmarkPicker()),
         section('Look', false,
           row('Accent', colourField(['look', 'accent'], '#64dedb'), 'The plaza monument\'s glow.'),
           row('Time', selectField(['look', 'time'], OPTIONS.time, LABELS.time, 'Visitor\'s choice')),
@@ -556,6 +594,26 @@ function injectStyle() {
 #cz .cz-chip:hover { border-color: var(--accent-dim); color: var(--ink-100); }
 #cz .cz-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 #cz .cz-chip:disabled { opacity: 0.4; cursor: default; }
+#cz .cz-lm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 6px; font-size: 11px; color: var(--ink-300); }
+#cz .cz-lm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-bottom: 6px; }
+#cz .cz-lm { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 8px; text-align: left; min-width: 0;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 10px; color: var(--ink-300); font: inherit; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s; }
+#cz .cz-lm:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--ink-100); transform: translateY(-1px); }
+#cz .cz-lm:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#cz .cz-lm[aria-pressed="true"] { border-color: var(--accent); background: rgba(100, 222, 219, 0.12); color: var(--ink-100); }
+#cz .cz-lm:disabled { opacity: 0.38; cursor: default; }
+#cz .cz-lm-pic { position: relative; display: block; aspect-ratio: 4 / 3; border-radius: 7px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 28%, #cfe4f4, #9fc6e0 70%); }
+#cz .cz-lm:not(.has-pic) .cz-lm-pic { animation: cz-lm-wait 1.1s ease-in-out infinite alternate; }
+#cz .cz-lm-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.35s; }
+#cz .cz-lm.has-pic .cz-lm-img { opacity: 1; }
+#cz .cz-lm-badge { position: absolute; top: 5px; left: 5px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
+#cz .cz-lm-badge:empty { display: none; }
+#cz .cz-lm-name { margin-top: 4px; font-size: 12px; line-height: 1.25; color: inherit; overflow-wrap: anywhere; }
+#cz .cz-lm-where { font-size: 10px; line-height: 1.2; color: var(--ink-500); }
+@keyframes cz-lm-wait { from { opacity: 0.55; } to { opacity: 1; } }
 #cz .cz-featured .cz-lab { width: 100%; }
 #cz .cz-repos { max-height: 280px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; margin: 8px 0 6px; overscroll-behavior: contain; }
 #cz .cz-repo + .cz-repo { border-top: 1px solid var(--line); }
