@@ -602,6 +602,8 @@ function injectStyle() {
 #guide-link { display: inline-block; margin: -8px 0 12px; font-family: var(--mono); font-size: 11px; color: var(--accent);
   text-decoration: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
 #guide-link:hover { text-decoration: underline; }
+/* The toolbar grew (Customize): shed the developer pills a little earlier so it never clips. */
+@media (min-width: 901px) and (max-width: 1480px) { #examples { display: none; } }
 #cz-toast[data-tone="bad"] { border-left-color: #ff7a8a; }
 #cz-toast[data-tone="warn"] { border-left-color: var(--orange); }
 @media (max-width: 900px), (max-height: 500px) {

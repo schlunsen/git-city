@@ -3528,14 +3528,25 @@ function fetchBuildingFor(repo) {
   buildingFiles.set(key, p);
   return p;
 }
+// Which building.json files a city fetches up front: featured (city.json) and pinned repos first,
+// the order the tour visits them, then the most-starred; de-duplicated, at most BUILDING_PREFETCH_MAX.
+const BUILDING_PREFETCH_MAX = 24;
 function loadBuildingConfigs(visible, version) {
-  const top = [...visible].filter(r => r.full_name).sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, BUILDING_PREFETCH);
-  Promise.all(top.map(fetchBuildingFor)).then((set) => {
-    const hits = top.filter((r, i) => set[i]);
+  const byName = new Map(visible.filter(r => r.full_name).map(r => [String(r.name).toLowerCase(), r]));
+  const picks = new Set();
+  for (const n of [...(cfgNow()?.featured || []), ...pinnedRepos]) { const r = byName.get(String(n).toLowerCase()); if (r) picks.add(r); }
+  for (const r of [...byName.values()].sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, BUILDING_PREFETCH)) picks.add(r);
+  const list = [...picks].slice(0, BUILDING_PREFETCH_MAX);
+  Promise.all(list.map(fetchBuildingFor)).then((set) => {
+    const hits = list.filter((r, i) => set[i]);
     if (hits.length && version === cityVersion) refreshBuildings(hits);
   });
 }
-function ensureBuildingConfig(repo) { // a clicked building: fetch its file if nobody has yet
+// A clicked building, or the tour's next stop: fetch its file if nobody has yet.
+// Takes a repo or a building entry ({ repo, mesh }); cached, so calling it per stop is cheap.
+function ensureBuildingConfig(target) {
+  const repo = target?.mesh && target?.repo ? target.repo : target;
+  if (!repo?.full_name) return;
   const version = cityVersion;
   fetchBuildingFor(repo).then((set) => { if (set && version === cityVersion) refreshBuildings([repo]); });
 }
@@ -3835,7 +3846,7 @@ function main() {
   document.getElementById('search-input').value = startUser;
   animate();
   loadCity(startUser);
-  window.__city = { scene, world, camera, controls, explorer, get cityConfig() { return cityConfig; }, cityPlayerSettings, debug: { get orbitReturn() { return orbitReturn; }, get camGoal() { return camGoal; }, get tour() { return tour.active && { paused: tour.paused, stop: tour.stop, leg: tour.leg }; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
+  window.__city = { scene, world, camera, controls, explorer, get cityConfig() { return cityConfig; }, cityPlayerSettings, get buildingFiles() { return buildingFiles; }, debug: { get orbitReturn() { return orbitReturn; }, get camGoal() { return camGoal; }, get tour() { return tour.active && { paused: tour.paused, stop: tour.stop, leg: tour.leg }; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
 }
 
 main();
