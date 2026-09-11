@@ -27,7 +27,7 @@
  * THREE is passed in by the host so this module works with its import map.
  */
 
-// How many sprites each sheet was split into (see tools/ — assets are static).
+// How many sprites each sheet was split into (scripts/assets/, docs/assets.md).
 export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5, BUS_SHELTER: 6, TRASH_BIN: 7, NEWS_STAND: 8, BIKE_RACK: 9 };
 export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROCKET: 4 };
@@ -1158,8 +1158,9 @@ export function createWorld(THREE, scene, deps) {
         const d = 8.5 + rnd() * 6;
         plant(pickOf('houses', [0, 1, 2, 3, 4, 5]), 5 + rnd() * 2.2, v.x + Math.cos(a) * d, v.z + Math.sin(a) * d);
       }
-      [PROP.LAMP, PROP.BENCH, PROP.LAMP, PROP.MAILBOX, PROP.TRASH_BIN, PROP.BIKE_RACK, PROP.CART].forEach((kind, i) => {
-        const a = v.gaps[0] + 0.7 + i * 1.2;
+      const squareProps = [PROP.LAMP, PROP.BENCH, PROP.LAMP, PROP.MAILBOX, PROP.TRASH_BIN, PROP.BIKE_RACK, PROP.CART];
+      squareProps.forEach((kind, i) => {
+        const a = v.gaps[0] + 0.7 + i * (TAU / squareProps.length); // evenly round the square
         const h = kind === PROP.LAMP ? 3.2 : kind === PROP.CART ? 2.6 : 1.3;
         plant(`props-${kind}`, h, v.x + Math.cos(a) * 5.2, v.z + Math.sin(a) * 5.2, undefined, kind !== PROP.LAMP);
       });

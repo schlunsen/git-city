@@ -23,9 +23,16 @@ export function buildStreetlamps(L = makeCityLayout('square')) { // L: the footp
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 3.2, 6);
   const poleMat = toonMat({ color: 0x2a2f3a });
   const headGeo = new THREE.SphereGeometry(0.22, 8, 8);
-  const coneGeo = new THREE.ConeGeometry(1.1, 2.6, 20, 1, true);
+  // The light cone: apex at the lamp head (y 3.3), open end on the ground, fading
+  // from the lamp downward (a cone's uv v runs 1 at the apex to 0 at the rim),
+  // plus a soft pool of light on the ground under it.
+  const coneGeo = new THREE.ConeGeometry(1.5, 3.25, 24, 1, true).translate(0, 3.25 / 2 + 0.05, 0);
   const headMat = toonMat({ color: 0x1a1a1a, emissive: 0xffd9a0, emissiveIntensity: 0.1 });
-  const coneMat = new THREE.MeshBasicMaterial({ color: 0xffe4b0, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false });
+  const coneMat = new THREE.MeshBasicMaterial({ color: 0xffe4b0, alphaMap: lampFade(), transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false });
+  coneMat.userData.peak = 0.3; // night opacity (app.js applyDayFactor)
+  const poolGeo = new THREE.CircleGeometry(1.7, 28).rotateX(-Math.PI / 2);
+  const poolMat = new THREE.MeshBasicMaterial({ map: makeGlowTexture(64), color: 0xffd9a0, transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending });
+  poolMat.userData.peak = 0.55;
   // Two rows along the east-west avenue, out to the sidewalk just past the
   // boulevard on each side (4 units beyond its centreline), whatever the footprint.
   const rowEnd = (z, s) => { let x = 0; while (x < 200 && L.dist(s * x, z) < 4) x += 0.25; return s * x; };
@@ -38,18 +45,33 @@ export function buildStreetlamps(L = makeCityLayout('square')) { // L: the footp
       const g = new THREE.Group();
       const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.y = 1.6;
       const head = new THREE.Mesh(headGeo, headMat.clone()); head.position.y = 3.3;
-      const cone = new THREE.Mesh(coneGeo, coneMat.clone()); cone.position.y = 2.1; cone.rotation.x = Math.PI;
-      g.add(pole, head, cone);
+      const cone = new THREE.Mesh(coneGeo, coneMat);
+      const pool = new THREE.Mesh(poolGeo, poolMat); pool.position.y = 0.04;
+      cone.raycast = pool.raycast = noRaycast;
+      g.add(pole, head, cone, pool);
       g.position.set(x, 0, z);
       g.userData.mat = head.material;
-      g.userData.cone = cone.material;
       lampGroup.add(g);
     }
   }
   scene.add(lampGroup);
-  // Store cone materials so applyDayFactor can fade them with the lamps.
-  lampGroup.userData.cones = [];
-  for (const l of lampGroup.children) lampGroup.userData.cones.push(l.userData.cone);
+  // The light materials (shared by every lamp) fade in with the dusk: applyDayFactor.
+  lampGroup.userData.cones = [coneMat, poolMat];
+}
+
+// Alpha ramp for the streetlamp cones: brightest at the lamp, faint at the ground.
+let lampFadeTex = null;
+function lampFade() {
+  if (!lampFadeTex) {
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = 64;
+    const g = c.getContext('2d'), grad = g.createLinearGradient(0, 0, 0, 64); // canvas top = uv v 1 = the apex
+    grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.35, '#9a9a9a'); grad.addColorStop(1, '#141414');
+    g.fillStyle = grad; g.fillRect(0, 0, 4, 64);
+    lampFadeTex = new THREE.CanvasTexture(c);
+    lampFadeTex.userData.shared = true;
+  }
+  return lampFadeTex;
 }
 
 // Plaza fountain: a stone-rimmed pool around the monument's steps, cel-banded

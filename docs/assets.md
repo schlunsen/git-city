@@ -38,6 +38,7 @@ These come from real mistakes. Read them before generating anything.
 6. **Reuse before you generate.** The `props` sheet already has a lamp post, a bench, a fire hydrant, a mailbox, a food cart and a bus stop (`PROP` in `world.js`). A second hydrant in a different style makes the island look patched together.
 7. **Only `generate.py` → `key.py`.** Don't process images with other scripts or tools; every committed PNG should be reproducible from a `JOBS` entry.
 8. **Say "no faces".** Ask for cute plants and the model gives them eyes and smiles (the first sunflowers, cactus and stump all had them). Add "plain plants with no faces, eyes or smiles".
+9. **Glass must be opaque.** Ask for glass and the model paints it see-through, so the magenta shows through the panes, and nothing can tell that apart from a pink surface. The first bus shelter had pink windows. Ask for "opaque pale-blue frosted glass" (or tinted, or reflective) instead.
 
 ## Adding to the set regularly
 
