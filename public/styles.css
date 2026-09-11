@@ -547,3 +547,14 @@ body { position: fixed; inset: 0; }
   #transport .row { margin-top: 0; }
   #explorer { width: 250px; }
 }
+
+/* Buy Me a Coffee (index.html loads its widget; the sponsor plane opens it too): the
+   widget pins its button and panel to the bottom edge, so lift both above the playback
+   bar (app.js keeps --transport-h in sync). On narrow screens its panel is full-screen. */
+#bmc-wbtn { bottom: calc(var(--transport-h, 120px) + 14px) !important; }
+/* Compact layouts put the profile peek card above the bar on the left: the button goes right. */
+@media (max-width: 900px), (max-height: 500px) { #bmc-wbtn { left: auto !important; right: 18px !important; } }
+@media (min-width: 480px) {
+  #bmc-iframe { bottom: calc(var(--transport-h, 120px) + 86px) !important;
+    min-height: 0 !important; max-height: calc(100vh - var(--transport-h, 120px) - 110px) !important; } /* the panel fits above it */
+}

@@ -60,6 +60,7 @@ import { carKit, buildCars, updateCars } from './city/cars.js';
 import { gourceUrl, gourceCovering, openGource, closeGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
+import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
 
 // ---------------------------------------------------------------------------
 // App state (what the city modules own lives with them)
@@ -239,9 +240,19 @@ function onPointerMove(e) {
 
 function doHover(cx, cy) {
   raycaster.setFromCamera(pointerNDC, camera);
+  const tip = document.getElementById('tooltip');
+  if (bannerPlaneHit(raycaster)) { // the sponsor plane and its banner
+    if (hovered !== 'plane') {
+      hovered = 'plane';
+      tip.textContent = '\u2615 Enjoying Git City? Click to buy me a coffee';
+      tip.classList.add('show');
+      document.body.style.cursor = 'pointer';
+    }
+    positionTooltip(cx, cy);
+    return;
+  }
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
-  const tip = document.getElementById('tooltip');
   if (hits.length > 0) {
     const b = hits[0].object.userData.building;
     if (hovered !== b) {
@@ -300,6 +311,7 @@ function onPointerUp(e) {
   pointerNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointerNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointerNDC, camera);
+  if (bannerPlaneHit(raycaster)) { openSupport(); return; } // the sponsor plane: Buy Me a Coffee
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
   if (hits.length > 0) {
@@ -619,6 +631,7 @@ function animate(timestamp) {
   }
 
   updateCars(dt);
+  updateBannerPlane(dt, clock.getElapsed(), !!explorer?.game?.active); // hidden during the bomb run
   updateFountain(dayFactor);
   updatePlaza(dt);
   updatePedestrians(dt);
@@ -1047,6 +1060,7 @@ function main() {
   buildPedestrians();
   buildWeather();
   buildActor();
+  buildBannerPlane();
   dust = buildDust(THREE, scene);
   wireUI();
   // Customize panel (customize.js): drafts preview through the same path as a fetched city.json.
