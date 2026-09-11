@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
+  "title": "Git City building config (v1)",
+  "description": "Styles this repository's building in Git City. Publish it as .git-city/building.json in the repository's default branch. The repository owner's city.json (repos[name]) wins, field by field. Data only: Git City validates every field, ignores unknown keys and never loads URLs from it; over-long text is shortened. See https://github.com/schlunsen/git-city/blob/main/docs/building-config.md",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Editor hint only; Git City never loads it."
+    },
+    "version": {
+      "const": 1,
+      "description": "Always 1 for this schema."
+    },
+    "style": {
+      "enum": [
+        "auto",
+        "tower",
+        "stepped",
+        "cottage",
+        "block"
+      ],
+      "description": "Silhouette: tower with a spire, stepped tower, cottage with a pitched roof, or a plain block. Height still follows the stars."
+    },
+    "color": {
+      "$ref": "#/$defs/color",
+      "description": "Facade colour (instead of the language colour)."
+    },
+    "sign": {
+      "type": "string",
+      "maxLength": 40,
+      "description": "Text on the building's shop signs and rooftop board."
+    },
+    "billboard": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Text on this repository's country billboard."
+    },
+    "graffiti": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "The words: free-form, up to 60 characters."
+        },
+        "color": {
+          "$ref": "#/$defs/color",
+          "description": "Paint colour (default depends on the style)."
+        },
+        "style": {
+          "enum": [
+            "tag",
+            "bubble",
+            "stencil"
+          ],
+          "description": "A quick marker tag, fat bubble letters, or a stencil. Default: tag."
+        }
+      },
+      "description": "Spray-painted on the ground-floor walls."
+    },
+    "roof": {
+      "enum": [
+        "auto",
+        "garden",
+        "helipad",
+        "solar",
+        "pool",
+        "antenna",
+        "none"
+      ],
+      "description": "What's on the (flat) roof."
+    },
+    "neon": {
+      "$ref": "#/$defs/color",
+      "description": "Night glow colour of the lit windows."
+    },
+    "flag": {
+      "type": "string",
+      "maxLength": 16,
+      "description": "An emoji or up to 3 characters on a small rooftop flag."
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "building": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "style": {
+          "enum": [
+            "auto",
+            "tower",
+            "stepped",
+            "cottage",
+            "block"
+          ],
+          "description": "Silhouette: tower with a spire, stepped tower, cottage with a pitched roof, or a plain block. Height still follows the stars."
+        },
+        "color": {
+          "$ref": "#/$defs/color",
+          "description": "Facade colour (instead of the language colour)."
+        },
+        "sign": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Text on the building's shop signs and rooftop board."
+        },
+        "billboard": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Text on this repository's country billboard."
+        },
+        "graffiti": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "The words: free-form, up to 60 characters."
+            },
+            "color": {
+              "$ref": "#/$defs/color",
+              "description": "Paint colour (default depends on the style)."
+            },
+            "style": {
+              "enum": [
+                "tag",
+                "bubble",
+                "stencil"
+              ],
+              "description": "A quick marker tag, fat bubble letters, or a stencil. Default: tag."
+            }
+          },
+          "description": "Spray-painted on the ground-floor walls."
+        },
+        "roof": {
+          "enum": [
+            "auto",
+            "garden",
+            "helipad",
+            "solar",
+            "pool",
+            "antenna",
+            "none"
+          ],
+          "description": "What's on the (flat) roof."
+        },
+        "neon": {
+          "$ref": "#/$defs/color",
+          "description": "Night glow colour of the lit windows."
+        },
+        "flag": {
+          "type": "string",
+          "maxLength": 16,
+          "description": "An emoji or up to 3 characters on a small rooftop flag."
+        }
+      }
+    }
+  }
+}

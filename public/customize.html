@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Customize your city · Git City</title>
+<meta name="description" content="How GitHub users customize their Git City island (city.json in the profile repo) and how maintainers style a repository's building (building.json)." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #0e1420; --stage: #0b111a; --panel: rgba(17, 24, 36, 0.8); --panel-solid: #131b28; --panel2: #1b2536;
+    --line: rgba(110, 135, 175, 0.22); --ink-100: #f1f4f9; --ink-300: #c2cad8; --ink-500: #7f8ca3;
+    --accent: #64dedb; --accent-dim: #3fb8b5; --accent-ink: #082524; --orange: #ffa03a; --purple: #8c78ff; --pink: #ff5ab4;
+    --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: radial-gradient(ellipse at 50% -10%, #16203a 0%, var(--ink) 55%) fixed, var(--ink); color: var(--ink-300);
+    font-family: var(--display); font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  code, pre, .mono { font-family: var(--mono); }
+  code { font-size: 0.86em; color: var(--ink-100); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 5px; padding: 0.05em 0.35em; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 22px; }
+  header.top { position: sticky; top: 0; z-index: 5; background: rgba(14, 20, 32, 0.94); border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+  header.top .wrap { display: flex; align-items: center; gap: 18px; min-height: 56px; }
+  .brand { color: var(--ink-100); text-decoration: none; font-weight: 700; font-size: 18px; letter-spacing: -0.01em; white-space: nowrap; }
+  .brand b { color: var(--accent); }
+  nav.toc { display: flex; gap: 4px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+  nav.toc a { font-family: var(--mono); font-size: 11px; color: var(--ink-300); text-decoration: none; padding: 6px 9px; border-radius: 6px; white-space: nowrap; }
+  nav.toc a:hover { color: var(--ink-100); background: rgba(255, 255, 255, 0.05); }
+  .eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+  h1 { font-size: clamp(32px, 5vw, 50px); line-height: 1.08; letter-spacing: -0.02em; color: var(--ink-100); margin: 10px 0 14px; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 28px; letter-spacing: -0.01em; color: var(--ink-100); margin: 0 0 6px; }
+  h3 { font-size: 18px; color: var(--ink-100); margin: 26px 0 8px; }
+  .hero { padding: 54px 0 20px; }
+  .hero p.lead { font-size: 19px; max-width: 760px; margin: 0; color: var(--ink-300); }
+  section { padding: 34px 0 10px; scroll-margin-top: 64px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28); }
+  .card.level { border-top: 3px solid var(--accent); }
+  .card.level.repo { border-top-color: var(--pink); }
+  .card .path { font-family: var(--mono); font-size: 13px; color: var(--ink-100); word-break: break-all; margin: 4px 0 10px; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; }
+  .try { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 0; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; text-decoration: none;
+    padding: 9px 13px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink-100); cursor: pointer; }
+  .btn:hover { border-color: var(--accent-dim); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 12px 0 0; display: grid; gap: 10px; }
+  ol.steps li { counter-increment: s; position: relative; padding: 12px 14px 12px 52px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 10px; }
+  ol.steps li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent-ink); background: var(--accent); }
+  .repo-steps ol.steps li::before { background: var(--pink); color: #2a0718; }
+  .tabs { display: flex; gap: 6px; margin: 16px 0 0; flex-wrap: wrap; }
+  .tabs button { font-family: var(--mono); font-size: 12px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--ink-300); cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: rgba(100, 222, 219, 0.14); border-color: rgba(100, 222, 219, 0.5); color: var(--accent); }
+  .code { position: relative; margin: 10px 0 0; }
+  .code pre { margin: 0; padding: 16px 18px; overflow-x: auto; background: var(--stage); border: 1px solid var(--line); border-radius: 10px;
+    font-size: 12.5px; line-height: 1.55; color: var(--ink-300); }
+  .code .copy { position: absolute; top: 8px; right: 8px; padding: 5px 10px; font-size: 11px; }
+  .code .file { font-family: var(--mono); font-size: 11px; color: var(--ink-500); margin: 0 0 6px; }
+  .tablewrap { overflow-x: auto; margin: 12px 0 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-500); font-weight: 600; background: rgba(255, 255, 255, 0.02); }
+  td:first-child { font-family: var(--mono); font-size: 12.5px; color: var(--ink-100); white-space: nowrap; }
+  td:nth-child(2) { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+  tr:last-child td { border-bottom: 0; }
+  .note { font-size: 14px; color: var(--ink-500); }
+  .callout { border-left: 3px solid var(--orange); background: rgba(255, 160, 58, 0.06); padding: 12px 16px; border-radius: 0 10px 10px 0; margin: 14px 0 0; }
+  .callout.safe { border-left-color: var(--accent); background: rgba(100, 222, 219, 0.06); }
+  dl.faq dt { color: var(--ink-100); font-weight: 600; margin: 16px 0 4px; }
+  dl.faq dd { margin: 0; }
+  footer { border-top: 1px solid var(--line); margin-top: 50px; padding: 26px 0 40px; font-size: 14px; color: var(--ink-500); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 760px) {
+    .grid2 { grid-template-columns: minmax(0, 1fr); }
+    nav.toc { display: none; }
+    .hero { padding-top: 34px; }
+    .hero p.lead { font-size: 17px; }
+    h2 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./">Git<b>City</b></a>
+    <nav class="toc" aria-label="On this page">
+      <a href="#profile">Profile · city.json</a>
+      <a href="#repo">Repo · building.json</a>
+      <a href="#publish">Customize &amp; Publish</a>
+      <a href="#reference">Field reference</a>
+      <a href="#caching">Caching</a>
+      <a href="#troubleshooting">Troubleshooting</a>
+      <a href="#security">Security</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <div class="eyebrow">Guide</div>
+    <h1>Customize your <span>city</span></h1>
+    <p class="lead">Git City builds an island from every GitHub profile automatically. With one small JSON file you take over the parts you care about. Developers set up the island in their <b>profile repository</b>. Maintainers style a repository's <b>building</b> in the repository itself.</p>
+    <div class="grid2" style="margin-top: 26px">
+      <div class="card level">
+        <div class="eyebrow">Profile level</div>
+        <div class="path">&lt;login&gt;/&lt;login&gt;/.git-city/city.json</div>
+        Your whole island: its name and welcome message, biome, city shape, landmarks, the look (light, weather, TV / FX, your time zone), neighbours, which repositories lead or hide, every building, the player's music and your plane.
+      </div>
+      <div class="card level repo">
+        <div class="eyebrow" style="color: var(--pink)">Repo level</div>
+        <div class="path">&lt;owner&gt;/&lt;repo&gt;/.git-city/building.json</div>
+        One repository's building: graffiti on its walls, the roof, neon windows, a flag, the facade colour, its silhouette, the shop sign and billboard text. The owner's <code>city.json</code> wins, field by field.
+      </div>
+    </div>
+    <div class="try">
+      <a class="btn primary" href="./?user=schlunsen">Try it: a customised city ↗</a>
+      <a class="btn" href="./?user=schlunsen&amp;biome=tropical&amp;city=round">Preview biome + shape via the URL</a>
+      <a class="btn" href="./?user=torvalds">An automatic city</a>
+    </div>
+  </div>
+
+  <section id="profile">
+    <div class="eyebrow">Profile level</div>
+    <h2>Your island: <code>city.json</code></h2>
+    <p>The file lives in your <b>profile repository</b>: the public repository named exactly like your login (the one that shows your profile README).</p>
+    <ol class="steps">
+      <li><b>Have a profile repository.</b> Create a public repository named exactly <code>&lt;your login&gt;</code> if you don't have one yet. <a href="https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme" rel="noopener">GitHub's guide</a>.</li>
+      <li><b>Add <code>.git-city/city.json</code></b> on its default branch. Start with the minimal example below, or press <b>Customize</b> in your city and let Git City write it for you.</li>
+      <li><b>Reload your city after about 5 minutes</b> (<code>?user=&lt;login&gt;</code>). GitHub's CDN caches the file for up to 5 minutes.</li>
+    </ol>
+    <div class="tabs" role="tablist" aria-label="city.json examples">
+      <button role="tab" id="tab-city-min" aria-controls="city-min" aria-selected="true">Minimal</button>
+      <button role="tab" id="tab-city-full" aria-controls="city-full" aria-selected="false">Everything</button>
+    </div>
+    <div class="code" id="city-min" role="tabpanel" aria-labelledby="tab-city-min">
+      <p class="file">.git-city/city.json</p>
+      <button class="btn copy" type="button" data-copy="city-min-code">Copy</button>
+<pre id="city-min-code">{
+  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "version": 1,
+  "island": { "name": "Octo Isle", "biome": "tropical" },
+  "welcome": "Welcome to my city!",
+  "featured": ["my-best-repo"]
+}</pre>
+    </div>
+    <div class="code" id="city-full" role="tabpanel" aria-labelledby="tab-city-full" hidden>
+      <p class="file">.git-city/city.json</p>
+      <button class="btn copy" type="button" data-copy="city-full-code">Copy</button>
+<pre id="city-full-code">{
+  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "version": 1,
+  "island": { "name": "Schlunsen Isle", "biome": "tropical", "shape": "round" },
+  "welcome": "Welcome to the island of broken builds",
+  "look": {
+    "accent": "#8c78ff", "time": "auto", "weather": "snow",
+    "tv": false, "fx": true, "timezone": "Europe/Copenhagen"
+  },
+  "landmarks": ["rollerCoaster", "observatory", "campsite"],
+  "neighbours": ["gaearon", "antfu", "sindresorhus"],
+  "featured": ["git-city", "gource-view"],
+  "hide": ["dotfiles"],
+  "repos": {
+    "git-city": {
+      "style": "tower", "color": "#64dedb", "sign": "you are here",
+      "graffiti": { "text": "ship it!", "color": "#ff5ab4", "style": "bubble" },
+      "roof": "helipad", "neon": "#8c78ff", "flag": "🏙️"
+    },
+    "gource-view": { "billboard": "Watch your repo grow" }
+  },
+  "player": { "music": "cipher", "volume": 20 },
+  "plane": { "color": "#e4574f", "name": "Spirit of Rebase" }
+}</pre>
+    </div>
+    <p class="note">Every field is optional; anything you leave out stays automatic. Unknown keys are ignored (with a warning), so a typo never breaks your city. With the <code>$schema</code> line, editors like VS Code validate and autocomplete the file.</p>
+  </section>
+
+  <section id="repo" class="repo-steps">
+    <div class="eyebrow" style="color: var(--pink)">Repo level</div>
+    <h2>A building: <code>building.json</code></h2>
+    <p>Maintainers can give a repository's building some personality from inside the repository. It appears in the owner's city, and Git City reads it for the 16 most-starred buildings on screen, and for any building someone clicks.</p>
+    <ol class="steps">
+      <li><b>Add <code>.git-city/building.json</code></b> to the repository's default branch (example below). In Git City, <b>Customize</b> › Repositories › <i>edit</i> › <b>Copy as building.json</b> writes one for you.</li>
+      <li><b>Commit it.</b> The repository must be public, not a fork and not archived (those don't get buildings).</li>
+      <li><b>Open the owner's city</b> after about 5 minutes and look for the building (clicking it also fetches the file straight away).</li>
+    </ol>
+    <div class="tabs" role="tablist" aria-label="building.json examples">
+      <button role="tab" id="tab-bld-min" aria-controls="bld-min" aria-selected="true">Minimal</button>
+      <button role="tab" id="tab-bld-full" aria-controls="bld-full" aria-selected="false">Everything</button>
+    </div>
+    <div class="code" id="bld-min" role="tabpanel" aria-labelledby="tab-bld-min">
+      <p class="file">.git-city/building.json</p>
+      <button class="btn copy" type="button" data-copy="bld-min-code">Copy</button>
+<pre id="bld-min-code">{
+  "$schema": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
+  "version": 1,
+  "graffiti": { "text": "ship it!" }
+}</pre>
+    </div>
+    <div class="code" id="bld-full" role="tabpanel" aria-labelledby="tab-bld-full" hidden>
+      <p class="file">.git-city/building.json</p>
+      <button class="btn copy" type="button" data-copy="bld-full-code">Copy</button>
+<pre id="bld-full-code">{
+  "$schema": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
+  "version": 1,
+  "graffiti": { "text": "ship it!", "color": "#ff5ab4", "style": "bubble" },
+  "roof": "garden",
+  "neon": "#8c78ff",
+  "flag": "🏴‍☠️",
+  "style": "stepped",
+  "color": "#e4574f",
+  "sign": "open 24/7",
+  "billboard": "The fastest way to ship"
+}</pre>
+    </div>
+    <div class="callout">
+      <b>Precedence: the owner wins, field by field.</b> If the owner's <code>city.json</code> has <code>repos["&lt;repo&gt;"]</code>, each field set there beats the same field in <code>building.json</code>. For example, if the repository sets <code>roof</code> and <code>graffiti</code> and the owner sets <code>roof</code> and <code>color</code>, the building gets the owner's roof and colour and the repository's graffiti. The owner can also <code>hide</code> the repository entirely.
+    </div>
+  </section>
+
+  <section id="publish">
+    <div class="eyebrow">No typing needed</div>
+    <h2>The Customize button and one-click Publish</h2>
+    <ol class="steps">
+      <li><b>Open your city</b> and press <b>Customize</b> in the toolbar (in the ☰ menu on phones). The panel says whether your <code>city.json</code> was found, loaded or partly ignored.</li>
+      <li><b>Edit and watch.</b> With <i>Live preview</i> on, every change is applied to the island around you. The draft goes through exactly the same validation as a published file, and the JSON updates below the form, with any warnings. <i>Revert</i> drops the draft.</li>
+      <li><b>Publish.</b> Git City opens <b>GitHub's own editor</b> in a new tab. It never uses tokens or OAuth. With no file yet, you get GitHub's "new file" page with <code>.git-city/city.json</code> already filled in. If the file exists, GitHub can't pre-fill it: press <b>Copy JSON</b>, then <b>Edit city.json on GitHub</b>, paste over the contents, and commit.</li>
+    </ol>
+    <p class="note">Anyone can open the panel on any city and try ideas; only the owner of the profile repository can commit the result.</p>
+  </section>
+
+  <section id="reference">
+    <div class="eyebrow">Reference</div>
+    <h2>Every field</h2>
+    <p>These tables are generated from the JSON Schemas Git City ships (<a href="./schema/city-config.v1.json">city-config.v1.json</a>, <a href="./schema/building-config.v1.json">building-config.v1.json</a>), so they always match what Git City accepts. Git City is a little more forgiving than the schema: over-long text is shortened and out-of-range numbers are clamped rather than rejected.</p>
+    <h3>city.json (profile level)</h3>
+    <div class="tablewrap"><table id="ref-city"><thead><tr><th>Field</th><th>Allowed</th><th>What it does</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>
+    <h3>building.json (repo level), also <code>city.json</code> → <code>repos["&lt;name&gt;"]</code></h3>
+    <div class="tablewrap"><table id="ref-building"><thead><tr><th>Field</th><th>Allowed</th><th>What it does</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>
+    <p class="note">Text is free-form: any language, emoji, punctuation. Git City trims it, turns line breaks into spaces, removes invisible control and text-direction characters, and shortens it to the limit. Colours are exactly <code>#</code> plus six hex digits. <code>?biome=</code> and <code>?city=</code> in the page URL override <code>island.biome</code> / <code>island.shape</code> for previews.</p>
+  </section>
+
+  <section id="caching">
+    <div class="eyebrow">Updates</div>
+    <h2>Caching</h2>
+    <ul>
+      <li>Both files are read from <code>raw.githubusercontent.com</code> (your default branch), not the GitHub API, so they never use up the 60-requests-an-hour budget.</li>
+      <li>GitHub's CDN caches them for <b>up to 5 minutes</b>. A hard reload doesn't skip that cache.</li>
+      <li>A city waits at most 4 seconds for <code>city.json</code>. If it's slower, the automatic city appears first and your settings follow as soon as the file arrives. <code>building.json</code> gets 3 seconds and never holds a city back.</li>
+      <li>A missing file (404) is simply the automatic look. Your browser may log each 404 in its console; that's normal.</li>
+    </ul>
+  </section>
+
+  <section id="troubleshooting">
+    <div class="eyebrow">Help</div>
+    <h2>Troubleshooting</h2>
+    <dl class="faq">
+      <dt>A notice says "city.json ignored: …"</dt>
+      <dd>The file exists but can't be used at all: invalid JSON (the notice says where), larger than 32 KB, or not a JSON object. Fix it, commit, wait up to 5 minutes. The same notice appears in <b>Customize</b> and in the browser console.</dd>
+      <dt>A notice says "city.json: N settings ignored"</dt>
+      <dd>The file loaded, but some fields were dropped (a misspelt key, a colour like <code>red</code>, a repository that isn't yours). Open <b>Customize</b> for the list, or the browser console, where each one is logged with its reason. Problems in a <code>building.json</code> are logged in the console (<code>[git-city] owner/repo/.git-city/building.json: …</code>).</dd>
+      <dt>Nothing changes</dt>
+      <dd>Wait out the 5-minute cache. Check the path is exactly <code>.git-city/city.json</code> (or <code>building.json</code>) on the default branch, and that the repository is public and, for <code>city.json</code>, named exactly like your login.</dd>
+      <dt>A landmark is missing</dt>
+      <dd>Landmarks are best effort: each needs a free site of the right kind (the roller coaster needs the big fairground, wind turbines a hillside). Try another biome or fewer landmarks.</dd>
+      <dt>My building.json is ignored</dt>
+      <dd>The owner's <code>city.json</code> may set the same fields (the owner wins), the repository may be hidden, a fork or archived, or the building isn't among the 16 most-starred: click it in the city to load its file.</dd>
+    </dl>
+  </section>
+
+  <section id="security">
+    <div class="eyebrow">Security &amp; privacy</div>
+    <h2>What Git City does with your file</h2>
+    <div class="callout safe">
+      <ul style="margin: 0; padding-left: 18px">
+        <li><b>Data only, never code.</b> The files are read with <code>JSON.parse</code> and nothing else. No scripts, no templates, no HTML.</li>
+        <li><b>A strict whitelist.</b> Only the fields above are read. Names come from fixed lists, colours must be <code>#rrggbb</code>, numbers are clamped, logins and repository names are checked, and files over 32 KB (<code>city.json</code>) or 16 KB (<code>building.json</code>) are ignored unread.</li>
+        <li><b>Your text is yours, and it stays text.</b> There is no content moderation. Text only ever reaches the page as painted pixels (signs, graffiti, the plane) or plain text (the profile card), never as HTML.</li>
+        <li><b>No external URLs.</b> No field is a URL, and Git City never loads an image, font, frame or link named in a config. Avatars come from <code>github.com</code>. Pictures shown from a repository's README during the tour are only taken from GitHub's own image hosts (<code>raw.githubusercontent.com</code>, <code>user-images</code>, <code>private-user-images</code>, <code>camo.githubusercontent.com</code>, <code>github.com</code>).</li>
+        <li><b>Defence in depth.</b> The app runs under a strict Content-Security-Policy. Scripts come only from Git City itself and the three.js CDN, and data only from GitHub.</li>
+        <li><b>Nothing is written for you.</b> Publishing opens GitHub's own editor; Git City never sees a token, and you commit the file yourself.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="./">← Back to Git City</a>
+    <a href="https://github.com/schlunsen/git-city/blob/main/docs/city-config.md" rel="noopener">docs/city-config.md</a>
+    <a href="https://github.com/schlunsen/git-city/blob/main/docs/building-config.md" rel="noopener">docs/building-config.md</a>
+    <a href="./schema/city-config.v1.json">city-config.v1.json</a>
+    <a href="./schema/building-config.v1.json">building-config.v1.json</a>
+  </div>
+</footer>
+<script type="module" src="./customize-page.js"></script>
+</body>
+</html>

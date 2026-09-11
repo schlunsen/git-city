@@ -69,6 +69,19 @@ async function pinned(login) {
   } catch { return []; }
 }
 
+// The developer's UTC offset: GitHub doesn't publish a timezone, but a commit
+// patch keeps its author's original "Date: ... +0200". Read it from the latest push.
+async function tzOffset(events) {
+  const push = events.find(e => e.type === 'PushEvent' && e.payload?.head && e.repo?.name);
+  if (!push) return null;
+  try {
+    const res = await fetch(`${API}/repos/${push.repo.name}/commits/${push.payload.head}`, { headers: { ...headers, Accept: 'application/vnd.github.patch' } });
+    if (!res.ok) return null;
+    const m = (await res.text()).slice(0, 4096).match(/^Date: .* ([+-])(\d{2})(\d{2})$/m);
+    return m ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : null;
+  } catch { return null; }
+}
+
 export async function scrape(login) {
   const user = await get(`${API}/users/${encodeURIComponent(login)}`);
   const repos = await get(`${API}/users/${encodeURIComponent(login)}/repos?per_page=100&sort=updated`);
@@ -84,6 +97,7 @@ export async function scrape(login) {
     repos: repos.map(trimRepo),
     events: events.map(e => trimEvent(e, new Set(repos.map(r => r.full_name)))),
     pinned: await pinned(login),
+    tz_offset: await tzOffset(events), // minutes east of UTC, or null
   };
 }
 
@@ -95,7 +109,7 @@ for (const login of logins) {
     const fx = await scrape(login);
     const file = path.join(OUT, `${login}.json`);
     await writeFile(file, JSON.stringify(fx));
-    console.log(`✓ ${login}: ${fx.repos.length} repos, ${fx.events.length} events, pinned [${fx.pinned.join(', ')}] → ${path.relative(process.cwd(), file)}`);
+    console.log(`✓ ${login}: ${fx.repos.length} repos, ${fx.events.length} events, pinned [${fx.pinned.join(', ')}], tz ${fx.tz_offset ?? '?'} → ${path.relative(process.cwd(), file)}`);
   } catch (e) {
     failed++;
     console.error(`✗ ${login}: ${e.message}`);
