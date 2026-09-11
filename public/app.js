@@ -2446,8 +2446,13 @@ function onPointerUp(e) {
   raycaster.setFromCamera(pointerNDC, camera);
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
-  if (hits.length > 0) openPanel(hits[0].object.userData.building.repo);
-  else closePanel();
+  if (hits.length > 0) {
+    // Clicking a building plays its history straight away; the repo panel
+    // opens behind the player so the details are there when you close it.
+    const repo = hits[0].object.userData.building.repo;
+    openPanel(repo);
+    if (repo.full_name) openGource(repo, { x: e.clientX, y: e.clientY });
+  } else closePanel();
 }
 
 function openPanel(repo) {
@@ -2490,48 +2495,106 @@ function closePanel() {
 // Gource View in a lightbox: the repo's whole commit history replayed as a
 // growing tree, without leaving the city. The iframe only exists while the
 // player is open, so nothing plays or downloads in the background.
-function gourceUrl(repo) {
-  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000`;
+// video=1 opens Gource View's clean "▶ Video" composition as soon as the
+// history has loaded, instead of the full app UI; embed=1 hides its scrubber
+// and has it tell this page when the video opens / closes (postMessage).
+function gourceUrl(repo, { video = true } = {}) {
+  // music/volume: the embedded player plays "cipher", quietly.
+  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=cipher&volume=15' : ''}`;
 }
-function openGource(repo) {
+// The player loads hidden: a small chip shows progress at the clicked
+// building, and once Gource View's video is ready the player morphs out of that
+// point. Embedded Gource View posts 'video-open' / 'video-close' messages;
+// until a deployment has them, a timer reveals it and (same origin only) Esc
+// inside the frame is intercepted.
+const GOURCE_ORIGIN = new URL(GOURCE_VIEW).origin;
+let gourceTimer = 0;
+function openGource(repo, from = null) {
   let box = document.getElementById('gource-modal');
   if (!box) {
     box = document.createElement('div');
     box.id = 'gource-modal';
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-modal', 'true');
-    box.innerHTML = `<div class="gm-card">
-      <div class="gm-head"><span class="gm-title"></span>
-        <a class="gm-ext" target="_blank" rel="noopener">Open in new tab ↗</a>
-        <button class="gm-close" type="button" aria-label="Close">×</button></div>
-      <div class="gm-frame"></div></div>`;
-    box.addEventListener('click', (e) => { if (e.target === box) closeGource(); });
-    box.querySelector('.gm-close').addEventListener('click', closeGource);
+    box.innerHTML = `<div class="gm-loading" role="status"><span class="gm-spin"></span><span class="gm-ltext"></span>
+        <button class="gm-cancel" type="button" aria-label="Cancel">×</button></div>
+      <div class="gm-card">
+        <div class="gm-screen"><div class="gm-frame"></div><div class="gm-crt"></div></div>
+        <div class="gm-head"><span class="gm-led"></span><span class="gm-title"></span>
+          <a class="gm-ext" target="_blank" rel="noopener">Open in new tab ↗</a>
+          <button class="gm-close" type="button" aria-label="Close">×</button></div>
+      </div>`;
+    box.addEventListener('click', (e) => { if (e.target === box) closeGource(true); });
+    box.querySelector('.gm-close').addEventListener('click', () => closeGource(true));
+    box.querySelector('.gm-cancel').addEventListener('click', () => closeGource());
     document.body.appendChild(box);
   }
+  closeGource();
   const url = gourceUrl(repo);
+  const at = from || { x: innerWidth / 2, y: innerHeight / 2 };
+  box.style.setProperty('--gx', `${at.x}px`);
+  box.style.setProperty('--gy', `${at.y}px`);
   box.querySelector('.gm-title').textContent = `${repo.full_name} · commit history`;
+  box.querySelector('.gm-ltext').textContent = `Replaying ${repo.name}…`;
   box.querySelector('.gm-ext').href = url;
   const frame = document.createElement('iframe');
   frame.src = url;
   frame.title = `Gource View: ${repo.full_name}`;
   frame.allow = 'autoplay; fullscreen';
   frame.allowFullscreen = true;
+  frame.addEventListener('load', () => {
+    try { // same origin (the live site): Esc in the frame closes the whole player
+      frame.contentWindow.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeGource(true); }
+      }, true);
+    } catch { /* cross-origin (local preview): rely on postMessage */ }
+  });
   box.querySelector('.gm-frame').replaceChildren(frame);
-  box.classList.add('open');
+  box.classList.add('open', 'pending');
+  gourceTimer = setTimeout(revealGource, 9000); // fallback if no 'video-open' message arrives
   document.addEventListener('keydown', gourceKeys, true);
 }
-function closeGource() {
+function revealGource() {
+  const box = document.getElementById('gource-modal');
+  if (!box?.classList.contains('pending')) return;
+  clearTimeout(gourceTimer);
+  const card = box.querySelector('.gm-card').getBoundingClientRect();
+  const gx = parseFloat(box.style.getPropertyValue('--gx')), gy = parseFloat(box.style.getPropertyValue('--gy'));
+  box.style.setProperty('--ox', `${gx - card.left}px`);
+  box.style.setProperty('--oy', `${gy - card.top}px`);
+  box.classList.remove('pending');
+  box.classList.add('reveal');
+  // Start the video once the morph has (nearly) finished, so it's seen from its first frame.
+  const frame = box.querySelector('iframe');
+  setTimeout(() => frame?.contentWindow?.postMessage({ source: 'git-city', type: 'play' }, GOURCE_ORIGIN), 650);
+}
+let gourceOffTimer = 0;
+function closeGource(animated = false) {
+  clearTimeout(gourceTimer);
+  clearTimeout(gourceOffTimer);
   const box = document.getElementById('gource-modal');
   if (!box) return;
-  box.classList.remove('open');
+  if (animated && box.classList.contains('reveal') && !box.classList.contains('off')) {
+    box.classList.add('off'); // the tube powers off, then the set goes away
+    gourceOffTimer = setTimeout(() => closeGource(false), 360);
+    return;
+  }
+  box.classList.remove('open', 'pending', 'reveal', 'off');
   box.querySelector('.gm-frame').replaceChildren(); // stops playback and downloads
   document.removeEventListener('keydown', gourceKeys, true);
 }
+window.addEventListener('message', (e) => {
+  if (e.origin !== GOURCE_ORIGIN || e.data?.source !== 'gource-view') return;
+  // 'video-ready' arrives once the first frame is on screen; 'video-open' (the
+  // view has mounted) only arms a short fallback in case 'ready' never comes.
+  if (e.data.type === 'video-ready') revealGource();
+  else if (e.data.type === 'video-open') { clearTimeout(gourceTimer); gourceTimer = setTimeout(revealGource, 2500); }
+  else if (e.data.type === 'video-close' || e.data.type === 'error') closeGource(true);
+});
 function gourceKeys(e) {
   // While the player is open it owns the keyboard: Esc closes it and nothing
   // leaks through to the city's shortcuts (Space, T, explore keys).
-  if (e.key === 'Escape') closeGource();
+  if (e.key === 'Escape') closeGource(true);
   e.stopPropagation();
 }
 
@@ -2753,11 +2816,11 @@ function wireUI() {
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const login = input.value.trim();
-    if (login) loadCity(login);
+    if (login) explorer ? explorer.travelTo(login) : loadCity(login); // travel there through the island warp
   });
   document.querySelectorAll('#examples a[data-user]').forEach(a => a.addEventListener('click', (e) => {
     e.preventDefault();
-    loadCity(a.dataset.user);
+    explorer ? explorer.travelTo(a.dataset.user) : loadCity(a.dataset.user);
   }));
   $('daynight-btn').addEventListener('click', () => {
     setDayMode({ auto: 'day', day: 'night', night: 'cycle', cycle: 'auto' }[dayMode]);
@@ -3050,13 +3113,14 @@ function main() {
     // featured snapshot is looked up first, so a rate-limited hop leaves this island intact.
     travel: async (login) => {
       const key = FIXTURES[login.toLowerCase()] ? login.toLowerCase() : login;
-      if (!FIXTURES[key]) {
+      if (!FIXTURES[key] && !new URLSearchParams(location.search).has('demo')) {
         try { await fetchJSON(`${API}/users/${encodeURIComponent(key)}`); }
         catch (e) { return { ok: false, reason: e.message === 'notfound' ? 'no such GitHub user' : 'GitHub rate limit' }; }
       }
       return new Promise((resolve) => {
         const failed = () => resolve({ ok: false, reason: 'the island failed to load' });
         loadCity(key, { onBuilt: (l) => resolve({ ok: true, login: l }) }).then(failed, failed); // first resolve wins
+        $('loading').classList.add('hidden'); // the warp's cloud whiteout stands in for the loading screen
       });
     },
     onModeChange: (mode) => { if (mode !== 'orbit') { endTour(); camGoal = null; } setMenu(false); },
