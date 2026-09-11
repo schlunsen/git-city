@@ -28,7 +28,7 @@
  */
 
 // How many sprites each sheet was split into (see tools/ — assets are static).
-export const SPRITE_COUNTS = { clouds: 4, trees: 5, bushes: 5, props: 6, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
+export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 6, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5 };
 export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROCKET: 4 };
 // Attraction sites buildLand() reserves before the terrain: the ground each
@@ -55,8 +55,10 @@ export const LANDMARK_SITES = {
   recordShop: ['fair2', 'fair', 'bigFair'],
   robotMonument: ['wild', 'slopes'],
 };
-const TREE = { OAK: 0, POPLAR: 1, PINE: 2, ROUND: 3, CHERRY: 4 };
-const BUSH = { ROUND: 0, TULIPS: 1, LEAFY: 2, GRASS: 3, TOPIARY: 4 };
+const TREE = { OAK: 0, POPLAR: 1, PINE: 2, ROUND: 3, CHERRY: 4, WILLOW: 5, BIRCH: 6, ACACIA: 7, BAOBAB: 8, APPLE: 9 };
+const BUSH = { ROUND: 0, TULIPS: 1, LEAFY: 2, GRASS: 3, TOPIARY: 4, SUNFLOWERS: 5, CACTUS: 6, REEDS: 7, STUMP: 8, FERN: 9 };
+// The kerbside verge by the city block (willows and reeds grow by the water, below).
+const VERGE_BUSHES = [BUSH.ROUND, BUSH.TULIPS, BUSH.LEAFY, BUSH.GRASS, BUSH.TOPIARY];
 
 // Biomes: ground palette, relief, woods, water. Tree/bush lists are sprite
 // indices, repeated to weight the pick.
@@ -65,31 +67,35 @@ export const BIOMES = {
     label: 'Meadow isle',
     pal: { meadow: 0x8cda44, meadowLight: 0xacfa5d, forest: 0x5fb13c, highland: 0x7dbb62, rock: 0xb8ae9a, sand: 0xf1dfae, wetSand: 0xd6bd86 },
     relief: 15, mound: 1, forestT: 0.56, lakes: 1, river: true, beach: 1, shallow: 0x9af5e6, snow: 0,
-    trees: [TREE.OAK, TREE.ROUND, TREE.ROUND, TREE.POPLAR, TREE.CHERRY, TREE.PINE], bushes: [BUSH.ROUND, BUSH.TULIPS, BUSH.LEAFY, BUSH.GRASS],
+    trees: [TREE.OAK, TREE.ROUND, TREE.ROUND, TREE.POPLAR, TREE.CHERRY, TREE.PINE, TREE.APPLE, TREE.BIRCH],
+    bushes: [BUSH.ROUND, BUSH.TULIPS, BUSH.LEAFY, BUSH.GRASS, BUSH.SUNFLOWERS, BUSH.STUMP, BUSH.FERN],
   },
   alpine: {
     label: 'Alpine isle',
     pal: { meadow: 0x7fcf55, meadowLight: 0x9de36f, forest: 0x4c9a45, highland: 0x86a88a, rock: 0x7a7066, sand: 0xe6dcc0, wetSand: 0xc9bc98 },
     relief: 24, mound: 1.75, forestT: 0.5, lakes: 1, river: true, beach: 0.75, shallow: 0x8fe3ec, snow: 8.5,
-    trees: [TREE.PINE, TREE.PINE, TREE.PINE, TREE.PINE, TREE.POPLAR, TREE.ROUND], bushes: [BUSH.ROUND, BUSH.LEAFY, BUSH.GRASS],
+    trees: [TREE.PINE, TREE.PINE, TREE.PINE, TREE.PINE, TREE.POPLAR, TREE.ROUND, TREE.BIRCH, TREE.BIRCH],
+    bushes: [BUSH.ROUND, BUSH.LEAFY, BUSH.GRASS, BUSH.FERN, BUSH.FERN, BUSH.STUMP],
   },
   tropical: {
     label: 'Tropical isle',
     pal: { meadow: 0x96e04c, meadowLight: 0xb8f262, forest: 0x52b848, highland: 0x86cc5a, rock: 0xc9b89a, sand: 0xfbeac0, wetSand: 0xe9cf95 },
     relief: 8, mound: 0.65, forestT: 0.6, lakes: 1, river: false, beach: 1.9, shallow: 0x6ff5e0, snow: 0, palms: 80,
-    trees: [TREE.ROUND, TREE.ROUND, TREE.OAK, TREE.POPLAR, TREE.CHERRY, TREE.CHERRY], bushes: [BUSH.TULIPS, BUSH.TULIPS, BUSH.LEAFY, BUSH.ROUND],
+    trees: [TREE.ROUND, TREE.ROUND, TREE.OAK, TREE.POPLAR, TREE.CHERRY, TREE.CHERRY], bushes: [BUSH.TULIPS, BUSH.TULIPS, BUSH.LEAFY, BUSH.ROUND, BUSH.FERN, BUSH.FERN],
   },
   savanna: {
     label: 'Savanna isle',
     pal: { meadow: 0xd4c45a, meadowLight: 0xe8da7c, forest: 0xa3b24c, highland: 0xc9a46e, rock: 0xc99a6e, sand: 0xf3dba6, wetSand: 0xdcc088 },
     relief: 12, mound: 1.1, forestT: 0.68, lakes: 1, river: false, beach: 1.2, shallow: 0x9aeede, snow: 0,
-    trees: [TREE.OAK, TREE.OAK, TREE.OAK, TREE.POPLAR, TREE.ROUND], bushes: [BUSH.GRASS, BUSH.GRASS, BUSH.LEAFY, BUSH.ROUND],
+    trees: [TREE.ACACIA, TREE.ACACIA, TREE.ACACIA, TREE.BAOBAB, TREE.OAK, TREE.POPLAR, TREE.ROUND],
+    bushes: [BUSH.GRASS, BUSH.GRASS, BUSH.LEAFY, BUSH.ROUND, BUSH.CACTUS, BUSH.CACTUS, BUSH.SUNFLOWERS],
   },
   lakeland: {
     label: 'Lakeland isle',
     pal: { meadow: 0x7fd04a, meadowLight: 0x9be860, forest: 0x4f9e3a, highland: 0x78b466, rock: 0xafa898, sand: 0xeadcae, wetSand: 0xcdb888 },
     relief: 11, mound: 0.9, forestT: 0.5, lakes: 3, river: true, beach: 0.9, shallow: 0x94ecdf, snow: 0,
-    trees: [TREE.PINE, TREE.PINE, TREE.ROUND, TREE.OAK, TREE.POPLAR], bushes: [BUSH.ROUND, BUSH.LEAFY, BUSH.GRASS, BUSH.TULIPS],
+    trees: [TREE.PINE, TREE.PINE, TREE.ROUND, TREE.OAK, TREE.POPLAR, TREE.BIRCH, TREE.BIRCH],
+    bushes: [BUSH.ROUND, BUSH.LEAFY, BUSH.GRASS, BUSH.TULIPS, BUSH.FERN, BUSH.STUMP],
   },
 };
 const BIOME_BY_LANG = {
@@ -785,7 +791,7 @@ export function createWorld(THREE, scene, deps) {
 
     // Launch pad (landmarks-4): a rocket and gantry a little inland from the
     // coast, on the islands of developers with some following. It draws from
-    // its own random stream, so every other feature stays exactly where it was.
+    // its own random stream, so it doesn't shift the island's shared rnd() sequence.
     let PAD = null;
     if (T.fame >= PAD_FAME) {
       const pr = seededRandom((T.seed ^ 0x5eed) >>> 0);
@@ -1118,7 +1124,7 @@ export function createWorld(THREE, scene, deps) {
     };
     along(3.2, 54, (x, z, i) => {
       if (i % 5 === 0 || roadDist(x, z) < 1.2) return;
-      plant(`bushes-${Math.floor(rnd() * SPRITE_COUNTS.bushes)}`, 1.6 + rnd() * 1.2, x, z);
+      plant(pickOf('bushes', VERGE_BUSHES), 1.6 + rnd() * 1.2, x, z);
     });
     along(7.5, 40, (x, z) => { if (roadDist(x, z) > 2) plant(tree(), 5 + rnd() * 3.5, x, z); });
     // Street furniture on the sidewalk band just outside the boulevard.
@@ -1234,8 +1240,8 @@ export function createWorld(THREE, scene, deps) {
 
     // Scenery accents: a fountain by the fair, a little pier on the beach, and a
     // scatter of autumn trees, rock clusters and a bench in open ground. They draw
-    // from their own random stream (like the launch pad), so everything else on
-    // the island stays exactly where it was.
+    // from their own random stream (like the launch pad), so they don't shift the
+    // island's shared rnd() sequence.
     const ar = seededRandom((T.seed ^ 0xacce5) >>> 0);
     const accentFree = (x, z, r) => roadDist(x, z) > r && sdSlab(x, z) > r + 10
       && keepOut.every((k) => Math.hypot(x - k.x, z - k.z) > k.r) && heightAt(x, z) > -0.3 && slopeAt(x, z) < 0.2;
@@ -1286,6 +1292,34 @@ export function createWorld(THREE, scene, deps) {
       if (ar() < 0.5 || !accentFree(x, z, 3) || coastAt(x, z) <= 0.14) continue;
       plant(`props-${PROP.BENCH}`, 1.6, x, z);
       break;
+    }
+
+    // Water's edge: weeping willows lean over the lakes (not on tropical or savanna
+    // isles) and reeds fringe the lakes and rivers. Their own random stream too.
+    const wr = seededRandom((T.seed ^ 0x3a7e5) >>> 0);
+    const shore = (x, z) => { const h = heightAt(x, z); return h > -0.5 && h < 0.9 && sdSlab(x, z) > 12 && roadDist(x, z) > 2; };
+    const willows = T.biome === 'savanna' || T.biome === 'tropical' ? 0 : T.biome === 'lakeland' ? 3 : 2;
+    for (const l of lakes) {
+      for (let i = 0, n = 0; i < 24 && n < willows; i++) {
+        const a = wr() * TAU, d = l.r + 2.8 + wr() * 2.4, x = l.x + Math.cos(a) * d, z = l.z + Math.sin(a) * d;
+        if (!isFree(x, z, 2.5) || heightAt(x, z) > 2.5) continue;
+        plant(`trees-${TREE.WILLOW}`, 6 + wr() * 2.5, x, z);
+        keepOut.push({ x, z, r: 2.8 });
+        n++;
+      }
+      for (let i = 0, n = 0; i < 30 && n < 9; i++) {
+        const a = wr() * TAU, d = l.r + 0.4 + wr() * 1.4, x = l.x + Math.cos(a) * d, z = l.z + Math.sin(a) * d;
+        if (!shore(x, z)) continue;
+        plant(`bushes-${BUSH.REEDS}`, 1.5 + wr() * 0.7, x, z, undefined, false);
+        n++;
+      }
+    }
+    for (const r of rivers) {
+      for (let i = 2; i < r.length - 1; i += 3) {
+        const p = r[i], q = r[i + 1], dx = q.x - p.x, dz = q.z - p.z, L = Math.hypot(dx, dz) || 1, s = wr() < 0.5 ? -1 : 1;
+        const off = RIVER_W / 2 + 0.6 + wr() * 0.8, x = p.x - (dz / L) * off * s, z = p.z + (dx / L) * off * s;
+        if (wr() < 0.55 && shore(x, z)) plant(`bushes-${BUSH.REEDS}`, 1.4 + wr() * 0.6, x, z, undefined, false);
+      }
     }
 
     const highRocks = [];
