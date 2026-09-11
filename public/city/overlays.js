@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { scene, clock } from './scene.js';
 import { buildingMeshes } from './buildings.js';
 import { cityLayout } from './block.js';
-import { CELL, SIDEWALK, langMeta, starsToHeight, worldForCell } from './layout.js';
+import { CELL, SIDEWALK, STREET_W, langMeta, starsToHeight, worldForCell } from './layout.js';
 import { roundRect } from './toon.js';
 import { disposeObject } from './util.js';
 import { contributionDays, buildHeatmapRing } from '../city-enhancements.js';
@@ -96,7 +96,7 @@ function cellDist(gx, gz) { // cells are addressed from the plaza
 
 export function buildDistrictBaseplates(THREE, assignments) {
   districtBaseplates = new THREE.Group();
-  const geometry = new THREE.BoxGeometry(6.6, 0.16, 6.6);
+  const geometry = new THREE.BoxGeometry(CELL - STREET_W - 0.3, 0.16, CELL - STREET_W - 0.3); // the lot, inside its streets
   for (const a of assignments) {
     const material = new THREE.MeshLambertMaterial({ color: langMeta(a.district).color, transparent: true, opacity: 0.28 });
     const slab = new THREE.Mesh(geometry, material);

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { carGroup } from './scene.js';
 import { toonMat, getOutlineMat, noRaycast, box, hullOf, mergeParts, hashStr, seededRandom } from './toon.js';
-import { CELL, makeCityLayout } from './layout.js';
+import { CELL, LANE_OFFSET, STREET_W, makeCityLayout } from './layout.js';
 import { cityLayout, boulevardLane } from './block.js';
 import { roundedRect } from '../world.js';
 
@@ -161,10 +161,10 @@ export function buildCars(user) {
   // either side of its centreline); the inner loop hugs the plaza.
   const L = cityLayout || makeCityLayout('square');
   const specs = [
-    { path: boulevardLane(L, 0.85), dir: -1, kinds: boulevard.slice(0, 6), speed: 10 },
-    { path: boulevardLane(L, -0.85), dir: 1, kinds: boulevard.slice(6), speed: 10 },
-    { path: roundedRect(THREE, INNER_RING + 0.8, 2.8, THREE.Path), dir: -1, kinds: inner.slice(0, 2), speed: 6.5 },
-    { path: roundedRect(THREE, INNER_RING - 0.8, 1.2, THREE.Path), dir: 1, kinds: inner.slice(2), speed: 6.5 },
+    { path: boulevardLane(L, LANE_OFFSET), dir: -1, kinds: boulevard.slice(0, 6), speed: 10 },
+    { path: boulevardLane(L, -LANE_OFFSET), dir: 1, kinds: boulevard.slice(6), speed: 10 },
+    { path: roundedRect(THREE, INNER_RING + STREET_W / 4, 3.0, THREE.Path), dir: -1, kinds: inner.slice(0, 2), speed: 6.5 },
+    { path: roundedRect(THREE, INNER_RING - STREET_W / 4, 1.0, THREE.Path), dir: 1, kinds: inner.slice(2), speed: 6.5 },
   ];
   carLanes = specs.map(spec => {
     const path = spec.path;

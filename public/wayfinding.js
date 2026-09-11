@@ -1,3 +1,4 @@
+import { STREET_W } from './city/layout.js';
 // ---------------------------------------------------------------------------
 // wayfinding.js — finding your way around Git City at street level.
 //
@@ -29,7 +30,7 @@ const MONO = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
 const DISPLAY = '"Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
 const BLADE_H = 0.32;             // world height of a street-name blade
 const POST_TOP = 2.0;             // blades sit above head height, under the shop fascias' reach
-const ROAD_HALF = 1.6;            // inner streets are 3.2 wide (city/block.js buildBlock)
+const ROAD_HALF = STREET_W / 2;   // inner streets (city/layout.js STREET_W, drawn by city/block.js)
 const noRaycast = () => {};
 
 let postMat = null;               // street-sign green, created once through envMat

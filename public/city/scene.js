@@ -9,7 +9,7 @@ import { SunLight } from 'three/addons/lights/SunLight.js';
 import { buildSky } from '../city-enhancements.js';
 import { createWorld } from '../world.js';
 import { envMat, seededRandom } from './toon.js';
-import { DISTRICT, CELL, SLAB_HALF, SLAB_R } from './layout.js';
+import { DISTRICT, CELL, SLAB_HALF, SLAB_R, STREET_W } from './layout.js';
 
 export let scene, camera, renderer, controls, clock;
 export let sun, moon, hemi, cityGroup, carGroup;
@@ -94,6 +94,6 @@ export function initScene(hooks = {}) { // hooks: onControlStart / onControlEnd 
 
 // The island (world.js): built once, re-dressed per profile by world.setProfile().
 export function initWorld() {
-  world = createWorld(THREE, scene, { envMat, seededRandom, DISTRICT, CELL, slabHalf: SLAB_HALF, slabRadius: SLAB_R });
+  world = createWorld(THREE, scene, { envMat, seededRandom, DISTRICT, CELL, slabHalf: SLAB_HALF, slabRadius: SLAB_R, streetW: STREET_W });
   return world;
 }

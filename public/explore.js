@@ -19,6 +19,7 @@
 // Vehicles, HUD, touch controls and puffs all live here; the CSS is injected.
 // ---------------------------------------------------------------------------
 
+import { LANE_OFFSET } from './city/layout.js'; // the boulevard's car lanes (drive mode spawns on the outer one)
 import { createBombRun } from './game.js'; // the bomb-run mini game (fly mode)
 import { injectStyle, WARP_FRAG, injectTravelStyle } from './explore-style.js'; // CSS + travel-warp shader
 
@@ -649,12 +650,12 @@ export function createExplorer(THREE, deps = {}) {
     const out = Math.min(4.5, SIDEWALK - 1.5);
     return best && { x: best.ex - best.dx * out, z: best.ez - best.dz * out, dx: best.dx, dz: best.dz };
   }
-  // ... and the point of the boulevard's outer lane (the host's boulevardLane(L, 0.85)
+  // ... and the point of the boulevard's outer lane (the host's boulevardLane(L, LANE_OFFSET)
   // resamples this same contour) on the camera's bearing, with its tangent.
   function layoutBoulevard(cx, cz) {
     const L = getLayout();
     let pts = null;
-    try { pts = typeof L?.contour === 'function' ? L.contour(0.85) : null; } catch { pts = null; }
+    try { pts = typeof L?.contour === 'function' ? L.contour(LANE_OFFSET) : null; } catch { pts = null; }
     if (!pts || pts.length < 8) return null;
     const N = pts.length, a = ((Math.atan2(cz, cx) / (Math.PI * 2)) % 1 + 1) % 1, k = Math.floor(a * N) % N;
     const p = pts[k], q = pts[(k + 2) % N], tl = Math.hypot(q.x - p.x, q.z - p.z) || 1;
