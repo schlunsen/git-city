@@ -3655,7 +3655,11 @@ function applyProfile(user, repos, version = cityVersion) {
   explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
   renderExplorer(user, visible);
   applyCityLook(cfg);
-  loadBuildingConfigs(visible, version); // repos' own .git-city/building.json (top 16; cached)
+  // Repos' own .git-city/building.json (featured, pinned, top-starred; cached). Wait until the
+  // browser is idle after the first heavy frames, so the fetches aren't starved into timeouts.
+  const startBuildingConfigs = () => { if (version === cityVersion) loadBuildingConfigs(visible, version); };
+  if ('requestIdleCallback' in window) requestIdleCallback(startBuildingConfigs, { timeout: 2500 });
+  else setTimeout(startBuildingConfigs, 1500);
   return visible;
 }
 // look / plane / island name. time, weather, tv and fx set how the city opens;
