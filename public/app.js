@@ -21,6 +21,8 @@ import { createExplorer } from './explore.js'; // walk / drive / fly explore mod
 import { fetchNeighbors } from './neighbors.js';
 import { buildRepoSigns } from './repo-signs.js'; // repo names on every building (fascia + tower crowns) // portal gates to the next developer's island
 import { buildWayfinding } from './wayfinding.js'; // repo-named street signs + the explore-mode name tag
+import { fetchCityConfig, normalizeCityConfig } from './city-config.js'; // the developer's .git-city/city.json (validated, data only)
+import { createCustomizer, showToast } from './customize.js'; // Customize panel: live preview + publish via GitHub's editor
 
 // ---------------------------------------------------------------------------
 // Config
@@ -79,8 +81,15 @@ let windowPulse = [];      // { mat, phase, base } for "office party" windows
 let currentLogin = DEFAULT_USER;
 let cityVersion = 0;
 let districtBaseplates = null;
-let tour = { active: false, t: 0, legs: null, leg: 0, card: null }; // showcase flight (see updateTour)
+let tour = { active: false, paused: false, t: 0, legs: null, leg: 0, card: null, stops: null, stop: 0 }; // showcase flight (see updateTour)
 let weatherMode = 'clear'; // 'clear' | 'rain' | 'snow'
+// city.json of the profile on screen: { login, found, error, warnings, published, config }.
+// `config` is what the city shows: the published file, or a Customize draft
+// while previewing (both normalizeCityConfig() output, or null).
+let cityConfig = null;
+let profileNow = null;     // { user, repos } on screen; the Customize preview rebuilds from it
+let customizer = null;     // customize.js handle
+const viewerLook = { dayMode: null, weather: null }; // the viewer's own choice while a city.json overrides it
 
 // ---- Timeline / actor state (Gource-style playback) ------------------------
 const ACCENT = 0x64dedb;
@@ -666,13 +675,15 @@ function initScene() {
   // Pause the idle auto-rotate while the user is dragging.
   let idleTimer = null;
   controls.addEventListener('start', () => {
-    endTour();
+    if (tour.active) tour.paused = true; // look around; the tour picks up again when you let go
+    if (tourResumeTimer) clearTimeout(tourResumeTimer);
     camGoal = null;
     cine = null;
     controls.autoRotate = false;
     if (idleTimer) clearTimeout(idleTimer);
   });
   controls.addEventListener('end', () => {
+    if (tour.active && tour.paused) tourResumeTimer = setTimeout(() => { if (tour.active && tour.paused) tourJump(0); }, 2500);
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => { if (!tour.active && flyover) controls.autoRotate = true; }, 4000);
   });
@@ -807,9 +818,9 @@ function cityDescriptor(L) {
 // year), big enough for every repo shown. ?city=round previews a shape.
 const CITY_SHAPE_BY_PROFILE = true; // false: every city is square unless ?city= asks for a shape
 function cityLayoutFor(user, repos) {
-  const need = Math.max(1, Math.min(MAX_BUILDINGS, (repos || []).filter(r => !r.fork && !r.archived).length));
+  const need = Math.max(1, rankRepos(repos).length); // repos hidden by city.json need no lot
   const seed = hashStr(`city-v1:${String(user?.login || '').toLowerCase()}:${String(user?.created_at || '').slice(0, 4)}`);
-  const override = new URLSearchParams(location.search).get('city');
+  const override = new URLSearchParams(location.search).get('city') || cfgNow()?.island.shape; // ?city= preview, then city.json
   const shape = CITY_SHAPE_BY_PROFILE ? chooseCityShape(seed, override) : chooseCityShape(seed, override || 'square');
   return makeCityLayout(shape, need, seed);
 }
@@ -1011,6 +1022,11 @@ function buildPlaza() {
       poolMat.opacity = glow * 0.7;
       poolMat.visible = glow > 0.02;
     },
+    setAccent(hex) { // city.json look.accent; null brings back the house teal
+      const c = hex ?? ACCENT;
+      tealMat.color.setHex(c); tealMat.emissive.setHex(c);
+      finial.material.color.setHex(c); finial.material.emissive.setHex(c);
+    },
   };
 }
 
@@ -1138,10 +1154,7 @@ function buildCity(repos, user) {
   closePanel();
   document.getElementById('tooltip').classList.remove('show');
 
-  const ranked = [...repos]
-    .filter(r => !r.fork && !r.archived)
-    .sort((a, b) => b.stargazers_count - a.stargazers_count)
-    .slice(0, MAX_BUILDINGS);
+  const ranked = rankRepos(repos); // city.json: hidden repos out, featured ones first (closest to the plaza)
 
   // A profile with no (or only forked/archived) repos still gets a city —
   // pad with one placeholder "town hall" so the layout math is defined.
@@ -1163,12 +1176,11 @@ function buildCity(repos, user) {
     const { x, z } = worldForCell(a.gx, a.gz);
     const h = starsToHeight(repo.stargazers_count);
     const f = starsToFootprint(repo.stargazers_count);
-    const color = LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR;
-    createBuilding(repo, x, z, h, f, color);
+    createBuilding(repo, x, z, h, f, repoColor(repo), repoCfg(repo)?.style); // language colour unless city.json says otherwise
   });
 
   // Repo names on the buildings, readable from walk / drive / fly.
-  buildRepoSigns(THREE, buildingMeshes, (repo) => LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR);
+  buildRepoSigns(THREE, buildingMeshes, repoColor, { signFor: (repo) => repoCfg(repo)?.sign });
   // Streets named after the repos along them, and the explore-mode name tag (wayfinding.js).
   wayfinding?.dispose();
   wayfinding = buildWayfinding(THREE, { parent: cityGroup, buildings: buildingMeshes, streets: L.streets, cell: CELL, plazaRadius: PLAZA_R, envMat, ink: getOutlineMat() });
@@ -1189,10 +1201,10 @@ function buildCity(repos, user) {
 
   buildAvatar(user);
   buildCars(user);
-  return repos.filter(r => !r.fork && !r.archived).sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, MAX_BUILDINGS);
+  return rankRepos(repos).sort((a, b) => b.stargazers_count - a.stargazers_count); // what's built, tallest first
 }
 
-function createBuilding(repo, x, z, h, f, color) {
+function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.json repos[name].style
   const group = new THREE.Group();
   const rnd = seededRandom(hashStr(repo.full_name || repo.name || ''));
   const pal = buildingPalette(color);
@@ -1204,7 +1216,12 @@ function createBuilding(repo, x, z, h, f, color) {
   if (h >= 28 && rnd() > 0.3) tiers = [{ h: h * 0.46, f }, { h: h * 0.32, f: f * 0.8 }, { h: h * 0.22, f: f * 0.62 }];
   else if (h >= 15 && rnd() > 0.35) tiers = [{ h: h * 0.6, f }, { h: h * 0.4, f: f * 0.74 }];
   else tiers = [{ h, f }];
-  const hip = tiers.length === 1 && h < 9 && rnd() > 0.45;
+  let hip = tiers.length === 1 && h < 9 && rnd() > 0.45;
+  // city.json style changes the silhouette only (height and footprint still follow
+  // the stars); applied after the draws above so the rest of the building is unchanged.
+  if (form === 'tower') { tiers = h >= 8 ? [{ h: h * 0.5, f }, { h: h * 0.3, f: f * 0.78 }, { h: h * 0.2, f: f * 0.6 }] : [{ h: h * 0.62, f }, { h: h * 0.38, f: f * 0.72 }]; hip = false; }
+  else if (form === 'block') { tiers = [{ h, f }]; hip = false; }
+  else if (form === 'house') { tiers = [{ h, f }]; hip = true; }
 
   const roofH = 0.7, over = 0.45;
   const roofMat = toonMat({ color: pal.roof });
@@ -1827,8 +1844,9 @@ function overviewLeg(bearing) {
   const look = new THREE.Vector3(0, 4, 0);
   return { dur: 7, pos: (u, o) => o.set(Math.cos(bearing + u * 0.6) * 150, 72, Math.sin(bearing + u * 0.6) * 150), look: (u, o) => o.copy(look) };
 }
-function buildShowcase() {
-  const stops = [...buildingMeshes].sort((a, b) => (b.repo.stargazers_count || 0) - (a.repo.stargazers_count || 0)).slice(0, 8);
+function buildShowcase(start = 0) {
+  if (!tour.stops) tour.stops = [...buildingMeshes].sort((a, b) => (b.repo.stargazers_count || 0) - (a.repo.stargazers_count || 0)).slice(0, 8);
+  const stops = tour.stops;
   if (!stops.length) return null;
   const legs = [];
   let pos = camera.position.clone(), look = controls.target.clone();
@@ -1840,10 +1858,10 @@ function buildShowcase() {
     legs.push(leg);
     pos = leg.pos(1, new THREE.Vector3()); look = leg.look(1, new THREE.Vector3());
   };
-  stops.forEach((b, i) => {
-    push(Object.assign(orbitLeg(b, bearing), { stop: i + 1, of: stops.length }));
-    if (i % 3 === 2) { bearing += 2.1; push(overviewLeg(bearing)); }
-  });
+  for (let i = start; i < stops.length; i++) {
+    push(Object.assign(orbitLeg(stops[i], bearing), { stop: i + 1, of: stops.length }));
+    if (i % 3 === 2 && i < stops.length - 1) { bearing += 2.1; push(overviewLeg(bearing)); }
+  }
   return legs;
 }
 function updateTour(dt) {
@@ -1853,10 +1871,26 @@ function updateTour(dt) {
   let leg = tour.legs[tour.leg];
   while (leg && tour.t >= leg.dur) { tour.t -= leg.dur; leg = tour.legs[++tour.leg]; }
   if (!leg) { tour.legs = null; tour.t = 0; return; } // loop: the next frame plans a new round from here
+  if (!leg.next && leg.repo && !leg.planned) {
+    leg.planned = true; // entering this stop: stay longer if its README has a picture to show
+    if (readmeKnown.get(leg.repo.full_name)?.image) leg.dur = Math.max(leg.dur, 11);
+  }
   const u = tour.t / leg.dur;
+  if (leg.stop) tour.stop = leg.stop - 1;
   camera.position.copy(leg.pos(u, _tp));
   controls.target.copy(leg.look(u, _tl));
   showcaseCard(leg.repo ? leg : null);
+}
+// Jump the showcase to the next (+1) / previous (-1) repo, or back to the
+// current one (0, after the user looked around): fly there from wherever the camera is.
+function tourJump(dir) {
+  if (!tour.active) return;
+  if (!tour.stops) buildShowcase(); // fixes the stop list
+  const n = tour.stops?.length || 0;
+  if (!n) return;
+  tour.legs = buildShowcase(((tour.stop || 0) + dir + n) % n);
+  tour.leg = 0; tour.t = 0; tour.paused = false;
+  controls.autoRotate = false;
 }
 // A small TV set for the showcase: which repo the camera is heading to or
 // circling, what it is, and how popular. It flickers like a CRT on each change.
@@ -1867,8 +1901,13 @@ function showcaseCard(leg) {
     el.id = 'showcase-card';
     el.setAttribute('aria-live', 'polite');
     el.innerHTML = `<div class="sc-screen"><div class="sc-kicker"></div><div class="sc-name"></div>
-        <div class="sc-desc"></div><div class="sc-meta"></div></div>
-      <div class="sc-chin"><span class="sc-led"></span><span class="sc-stop"></span><span class="sc-hint">click a building to watch its history</span></div>`;
+        <div class="sc-pic"><img alt="" referrerpolicy="no-referrer" decoding="async"></div>
+        <div class="sc-desc"></div><div class="sc-meta"></div><div class="sc-readme"></div></div>
+      <div class="sc-chin"><span class="sc-led"></span>
+        <button class="sc-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button><span class="sc-stop"></span>
+        <button class="sc-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
+        <span class="sc-hint">← → switch · click a building to watch</span></div>`;
+    el.querySelectorAll('.sc-ch').forEach(b => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
     document.body.appendChild(el);
   }
   const repo = leg?.repo || null, key = repo ? `${repo.full_name || repo.name}|${leg.next ? 'next' : 'here'}` : null;
@@ -1885,16 +1924,120 @@ function showcaseCard(leg) {
   el.querySelector('.sc-meta').replaceChildren(...meta.map((t) => Object.assign(document.createElement('span'), { textContent: t })));
   el.querySelector('.sc-stop').textContent = leg.stop ? `${leg.stop} / ${leg.of}` : '';
   el.style.setProperty('--sc-lang', langHex(repo.language));
+  // A few lines from the README (plain text only), and the next stop's fetched ahead.
+  const readme = el.querySelector('.sc-readme'), pic = el.querySelector('.sc-pic img');
+  const stillHere = () => tour.card && tour.card.startsWith(`${repo.full_name || repo.name}|`);
+  if (!sameRepo) { readme.textContent = ''; el.classList.remove('has-pic', 'pic-loading', 'pic-in'); pic.removeAttribute('src'); }
+  readmeExcerpt(repo).then(({ text, image }) => {
+    if (!stillHere()) return;
+    readme.textContent = text;
+    if (image && pic.getAttribute('src') !== image) {
+      // Reserve the screen at once (a "tuning in" static), then tune the picture in when it arrives.
+      el.classList.add('has-pic', 'pic-loading');
+      el.classList.remove('pic-in');
+      pic.onload = () => {
+        if (!stillHere()) return;
+        if (pic.naturalWidth < 120) { el.classList.remove('has-pic', 'pic-loading'); return; } // an icon, not a picture
+        el.classList.remove('pic-loading');
+        void pic.offsetWidth;
+        el.classList.add('pic-in');
+      };
+      pic.onerror = () => el.classList.remove('has-pic', 'pic-loading');
+      pic.src = image;
+    }
+  });
+  const upcoming = tour.stops?.[leg.stop % (tour.stops?.length || 1)];
+  if (upcoming) readmeExcerpt(upcoming.repo);
   el.classList.add('show');
   if (!sameRepo) { el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip'); } // CRT channel change
 }
+// README excerpts for the showcase TV: fetched from raw.githubusercontent.com
+// (no API quota), cached per repo. Text is plain text only (never HTML). The
+// picture is the README's first real image, and only if GitHub hosts it —
+// visitors' browsers never fetch from arbitrary sites a README points at.
+const readmeCache = new Map();
+const readmeKnown = new Map(); // resolved excerpts, readable synchronously (the tour plans stop lengths with it)
+const README_IMG_HOSTS = new Set(['raw.githubusercontent.com', 'user-images.githubusercontent.com',
+  'private-user-images.githubusercontent.com', 'camo.githubusercontent.com', 'github.com']);
+function readmeExcerpt(repo) {
+  const key = repo?.full_name;
+  if (!key) return Promise.resolve({ text: '', image: '' });
+  if (!readmeCache.has(key)) readmeCache.set(key, (async () => {
+    // Raw URLs are case-sensitive: README.md is most common, readme.md next (e.g. sindresorhus).
+    for (const name of ['README.md', 'readme.md']) {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 4000);
+      try {
+        const r = await fetch(`https://raw.githubusercontent.com/${key}/HEAD/${name}`, { signal: ctrl.signal });
+        if (r.ok) {
+          const md = (await r.text()).slice(0, 30000);
+          const found = { text: markdownExcerpt(md), image: readmeImage(md, key) };
+          readmeKnown.set(key, found);
+          return found;
+        }
+      } catch { /* offline or slow: try the next spelling */ } finally { clearTimeout(to); }
+    }
+    readmeKnown.set(key, { text: '', image: '' });
+    return readmeKnown.get(key);
+  })());
+  return readmeCache.get(key);
+}
+function readmeImage(md, fullName) {
+  const srcs = [];
+  for (const m of md.matchAll(/!\[[^\]]*\]\(\s*<?([^)\s>]+)/g)) srcs.push([m.index, m[1]]);
+  for (const m of md.matchAll(/<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi)) srcs.push([m.index, m[1]]);
+  srcs.sort((a, b) => a[0] - b[0]);
+  for (const [, raw] of srcs) {
+    const src = raw.trim();
+    if (/badge|shields\.io|travis|circleci|codecov|coveralls|gitter|sponsor|backer|opencollective|donate|patreon|buymeacoffee/i.test(src)) continue;
+    let url;
+    try {
+      url = /^https?:\/\//i.test(src) ? new URL(src)
+        : new URL(src.replace(/^\.?\//, ''), `https://raw.githubusercontent.com/${fullName}/HEAD/`);
+    } catch { continue; }
+    if (url.protocol !== 'https:' || !README_IMG_HOSTS.has(url.hostname)) continue;
+    if (url.hostname === 'github.com') {
+      // github.com/<o>/<r>/blob/<ref>/<path> -> raw; user-attachments pass through.
+      const m = url.pathname.match(/^\/([^/]+)\/([^/]+)\/(?:blob|raw)\/(.+)$/);
+      if (m) url = new URL(`https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}`);
+      else if (!url.pathname.startsWith('/user-attachments/')) continue;
+    }
+    return url.href;
+  }
+  return '';
+}
+function markdownExcerpt(md) {
+  const text = md
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    // Whole HTML blocks (centred logos, sponsor strips, badge tables) are chrome, not prose.
+    .replace(/<(div|p|table|picture|details|center|h[1-6]|sup|sub)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)/g, ' ')   // linked badges
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')                // images
+    .replace(/<[^>]*>/g, ' ')                             // stray html
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')              // links -> their text
+    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"').replace(/&#0?39;|&apos;/gi, "'").replace(/&[a-z]+;|&#\d+;/gi, ' ');
+  const paras = text.split(/\n\s*\n/)
+    .map((p) => p.replace(/^\s{0,3}(#+|>|[-*+]|\d+\.)\s*/gm, '').replace(/[*_`~|]/g, '').replace(/\s+/g, ' ').trim())
+    .filter((p) => {
+      const words = p.split(' ');
+      if (words.length < 8 || !/[a-z]{3}/.test(p) || /^(table of contents|contents)\b/i.test(p)) return false;
+      if (!/[.!?:;,]/.test(p)) return false; // prose, not a row of link labels
+      const caps = words.filter((w) => /^[A-Z]/.test(w)).length;
+      return caps / words.length < 0.6 && !/\bsponsor(ed|s)?\b/i.test(p);
+    });
+  const out = paras.slice(0, 2).join(' ');
+  return out.length > 460 ? `${out.slice(0, 457).trimEnd()}…` : out;
+}
 function startTour() {
-  tour.active = true; tour.t = 0; tour.leg = 0; tour.legs = null;
+  tour.active = true; tour.paused = false; tour.t = 0; tour.leg = 0; tour.legs = null; tour.stops = null; tour.stop = 0;
   controls.autoRotate = false;
   document.getElementById('tour-btn')?.classList.add('on');
 }
 function endTour() {
-  tour.active = false; tour.legs = null;
+  tour.active = false; tour.paused = false; tour.legs = null; tour.stops = null;
   showcaseCard(null);
   document.getElementById('tour-btn')?.classList.remove('on');
 }
@@ -2400,6 +2543,7 @@ function updateBeams(dt) {
 // ---------------------------------------------------------------------------
 function applyDayFactor(t) {
   // t in [0,1): 0 = midday, 0.5 = midnight.
+  if (dayMode === 'sunset') t = 0.2; // city.json look.time "sunset": a fixed low sun (~30% daylight)
   const elev = Math.cos(t * Math.PI * 2);           // 1 noon -> -1 midnight
   const day = THREE.MathUtils.clamp(elev, 0, 1);     // 0..1 daylight amount
   dayFactor = day;
@@ -2756,6 +2900,7 @@ function renderTopCard(title, rows, dot) {
 // the repo panel (✕, Esc, or a click on empty ground) flies back to where you
 // were orbiting and resumes the orbit.
 let orbitReturn = null;
+let tourResumeTimer = 0;
 // A short camera script (same legs as the showcase): { legs, leg, t, onDone }.
 let cine = null;
 function updateCine(dt) {
@@ -2933,18 +3078,18 @@ function setProfile(open) {
 }
 function readPref(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function writePref(key, value) { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } }
-function setFx(on) {
+function setFx(on, { remember = true } = {}) { // remember: false for a city.json look.fx (not the viewer's preference)
   fxOn = on;
   $('fx-btn').classList.toggle('on', on);
-  writePref('gc-fx', on ? '1' : '0');
+  if (remember) writePref('gc-fx', on ? '1' : '0');
 }
 // Old-TV mode: a CRT shader on the 3D view plus a light scanline overlay on the
 // whole page. Switching it on plays a quick "power on" flick.
-function setTv(on, { animate = true } = {}) {
+function setTv(on, { animate = true, remember = true } = {}) { // remember: false for a city.json look.tv
   tvOn = on;
   $('tv-btn').classList.toggle('on', on);
   document.body.classList.toggle('tv', on);
-  writePref('gc-tv', on ? '1' : '0');
+  if (remember) writePref('gc-tv', on ? '1' : '0');
   const canvas = renderer.domElement;
   canvas.classList.remove('tv-power-on');
   if (on && animate) { void canvas.offsetWidth; canvas.classList.add('tv-power-on'); }
@@ -2952,7 +3097,7 @@ function setTv(on, { animate = true } = {}) {
 
 function setDayMode(mode) {
   dayMode = mode;
-  $('dn-label').textContent = { auto: 'Auto', cycle: 'Cycle', day: 'Day', night: 'Night' }[mode];
+  $('dn-label').textContent = { auto: 'Auto', cycle: 'Cycle', day: 'Day', night: 'Night', sunset: 'Sunset' }[mode];
   $('daynight-btn').classList.toggle('on', mode === 'auto' || mode === 'cycle');
 }
 // Daylight from the viewer's local time: dark until ~05:30, full day 08:30–17:00,
@@ -2978,7 +3123,7 @@ function wireUI() {
     explorer ? explorer.travelTo(a.dataset.user) : loadCity(a.dataset.user);
   }));
   $('daynight-btn').addEventListener('click', () => {
-    setDayMode({ auto: 'day', day: 'night', night: 'cycle', cycle: 'auto' }[dayMode]);
+    setDayMode({ auto: 'day', day: 'night', night: 'cycle', cycle: 'auto', sunset: 'night' }[dayMode]); // sunset: only via city.json
   });
   const flyBtn = $('flyover-btn');
   flyBtn.addEventListener('click', () => {
@@ -3001,12 +3146,15 @@ function wireUI() {
     const order = { clear: 'rain', rain: 'snow', snow: 'clear' };
     setWeather(order[weatherMode], wxBtn);
   });
-  // FX and TV are per-viewer preferences, remembered in this browser.
+  // FX and TV are per-viewer preferences, remembered in this browser. A city whose
+  // city.json sets look.fx / look.tv opens that way instead; toggling there lasts
+  // the visit and leaves the saved preference alone.
   const fxBtn = $('fx-btn');
   setFx(readPref('gc-fx') === '1');
-  fxBtn.addEventListener('click', () => setFx(!fxOn));
+  fxBtn.addEventListener('click', () => setFx(!fxOn, { remember: cfgNow()?.look.fx === undefined }));
   setTv(readPref('gc-tv') === '1', { animate: false });
-  $('tv-btn').addEventListener('click', () => setTv(!tvOn));
+  $('tv-btn').addEventListener('click', () => setTv(!tvOn, { remember: cfgNow()?.look.tv === undefined }));
+  $('customize-btn')?.addEventListener('click', () => customizer?.open()); // city.json editor (customize.js)
   // Transport
   $('play-btn').addEventListener('click', () => setPlaying(!play.playing));
   $('scrub').addEventListener('input', (e) => seekTo(Number(e.target.value) / 1000));
@@ -3039,10 +3187,11 @@ function wireUI() {
   window.addEventListener('keydown', (e) => {
     if (e.target.closest?.('input, textarea, [contenteditable=true]')) return;
     if (explorer?.wantsKey(e)) return; // exploring: Space jumps/drifts, T is ignored (Esc and V still pass)
+    if (tour.active && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); tourJump(e.key === 'ArrowRight' ? 1 : -1); return; }
     if (e.key === 't' || e.key === 'T') { tour.active ? endTour() : startTour(); }
     else if (e.key === ' ') { e.preventDefault(); setPlaying(!play.playing); }
     else if (e.key === 'Escape') { endTour(); closePanel(); setMenu(false); setProfile(false); }
-    else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn); }
+    else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn, { remember: cfgNow()?.look.tv === undefined }); }
   });
   $('panel-close').addEventListener('click', closePanel);
   $('reset-btn').addEventListener('click', resetCamera);
@@ -3101,9 +3250,10 @@ function animate(timestamp) {
   // back to orbit): the tour, camGoal glide, follow and controls.update() stand down.
   const exploring = explorer ? explorer.update(dt, clock.getElapsed()) : false;
   // Cinematic fly-through (drives the camera; OrbitControls paused while active)
-  if (tour.active && !exploring) updateTour(dt);
+  const touring = tour.active && !tour.paused;
+  if (touring && !exploring) updateTour(dt);
   else if (cine && !exploring) updateCine(dt); // click-a-building flight in / out
-  const scripted = tour.active || !!cine;
+  const scripted = touring || !!cine;
 
   if (exploring) { /* explore.js placed the camera this frame */ }
   else if (!scripted) {
@@ -3175,6 +3325,125 @@ function disposeObject(obj) {
 }
 
 // ---------------------------------------------------------------------------
+// City config: the developer's <login>/<login>/.git-city/city.json. city-config.js
+// fetches + validates it; this only reads the normalised result. Data only:
+// its text reaches the page through fillText / textContent.
+// ---------------------------------------------------------------------------
+const cfgNow = () => cityConfig?.config || null;
+// Repos in city order: hidden ones out, featured ones first (in their order), then by stars.
+function rankRepos(repos) {
+  const c = cfgNow();
+  const hidden = new Set((c?.hide || []).map(n => n.toLowerCase()));
+  const featured = (c?.featured || []).map(n => n.toLowerCase());
+  const pos = (r) => { const i = featured.indexOf(String(r.name).toLowerCase()); return i < 0 ? Infinity : i; };
+  return (repos || []).filter(r => !r.fork && !r.archived && !hidden.has(String(r.name).toLowerCase()))
+    .sort((a, b) => (pos(a) - pos(b)) || (b.stargazers_count - a.stargazers_count))
+    .slice(0, MAX_BUILDINGS);
+}
+const repoCfg = (repo) => cfgNow()?.repos[repo.name] || null; // a null-prototype map: any repo name is safe
+const hexNum = (hex) => parseInt(hex.slice(1), 16);
+function repoColor(repo) {
+  const c = repoCfg(repo)?.color;
+  return c ? hexNum(c) : (LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR);
+}
+/**
+ * The city's validated Gource View player settings (city.json "player"):
+ * { music?: 'floating-cities' | 'deliberate-thought' | 'cipher' | 'digital-lemonade' | 'crypto' | 'none',
+ *   volume?: integer 0-100 }. Empty when the developer set nothing.
+ */
+function cityPlayerSettings() {
+  const p = cfgNow()?.player;
+  return p ? { ...p } : {};
+}
+// The city.json fetch runs alongside the profile; validate it against the repos once both are in.
+// The city waits at most CONFIG_WAIT_MS for it: if the answer is slow (network, or a main thread
+// busy compiling shaders) the automatic city goes up and the file is applied when it lands
+// (the fetch itself gives up at 12 s).
+const CONFIG_WAIT_MS = 4000;
+async function readCityConfig(pending, user, repos, version = cityVersion) {
+  const res = await Promise.race([pending, new Promise((r) => setTimeout(r, CONFIG_WAIT_MS, null))]); // fetchCityConfig never throws
+  if (res) { settleCityConfig(res, user, repos); return; }
+  cityConfig = { login: user.login, found: false, error: null, warnings: [], published: null, config: null };
+  pending.then((late) => {
+    if (version !== cityVersion || customizer?.isOpen || customizer?.previewing) return;
+    settleCityConfig(late, user, repos);
+    if (cityConfig.config && profileNow?.user === user) rebuildForConfig();
+  });
+}
+function settleCityConfig(res, user, repos) {
+  let config = null, warnings = [], error = res.error;
+  if (res.found && !error) {
+    ({ config, warnings } = normalizeCityConfig(res.raw, { repos, login: user.login }));
+    if (!config) error = warnings[0];
+  }
+  cityConfig = { login: user.login, found: res.found, error, warnings: config ? warnings : [], published: config, config };
+  const where = `${user.login}/${user.login}/.git-city/city.json`;
+  if (res.found && error) {
+    console.warn(`[git-city] ${where} ignored: ${error}`);
+    showToast(`city.json ignored: ${error}`, { tone: 'bad' });
+  } else if (error) {
+    console.warn(`[git-city] ${where}: ${error}`); // network trouble: the automatic city, quietly
+  } else if (warnings.length) {
+    console.warn(`[git-city] ${where}: ${warnings.length} setting(s) ignored\n- ${warnings.join('\n- ')}`);
+    showToast(`city.json: ${warnings.length} setting${warnings.length === 1 ? '' : 's'} ignored. Open Customize for details.`, { tone: 'warn' });
+  }
+}
+// Island + city for a profile under the current config. loadCity and the
+// Customize preview share it, so a draft takes exactly the published path.
+function applyProfile(user, repos, version = cityVersion) {
+  profileNow = { user, repos };
+  const cfg = cfgNow();
+  setCityLayout(cityLayoutFor(user, repos));
+  world.setProfile({ user, repos, config: cfg }, cityLayout.city);
+  // Neighbour portal gates at sea (neighbors.js): the developer's picks first, topped up automatically;
+  // fire-and-forget, dropped if another city loaded meanwhile.
+  fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES), pinned: cfg?.neighbours || [] })
+    .then((list) => { if (version === cityVersion) world.setNeighbors(user.login, list); }).catch(() => {});
+  const visible = buildCity(repos, user);
+  explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
+  renderExplorer(user, visible);
+  applyCityLook(cfg);
+  return visible;
+}
+// look / plane / island name. time, weather, tv and fx set how the city opens;
+// the viewer's own choice returns in a city that doesn't set them, and the
+// saved gc-tv / gc-fx preferences are never overwritten by a config.
+function applyCityLook(cfg) {
+  const look = cfg?.look || {};
+  if (look.time) { viewerLook.dayMode ??= dayMode; setDayMode(look.time); }
+  else if (viewerLook.dayMode) { setDayMode(viewerLook.dayMode); viewerLook.dayMode = null; }
+  if (look.weather) { viewerLook.weather ??= weatherMode; setWeather(look.weather, $('weather-btn')); }
+  else if (viewerLook.weather) { setWeather(viewerLook.weather, $('weather-btn')); viewerLook.weather = null; }
+  const fx = look.fx ?? readPref('gc-fx') === '1';
+  if (fx !== fxOn) setFx(fx, { remember: false });
+  const tv = look.tv ?? readPref('gc-tv') === '1';
+  if (tv !== tvOn) setTv(tv, { remember: false, animate: false });
+  plazaFx?.setAccent(look.accent ? hexNum(look.accent) : null);
+  explorer?.setLivery?.({ color: cfg?.plane?.color ? hexNum(cfg.plane.color) : null, name: cfg?.plane?.name || '' });
+  const eyebrow = document.querySelector('#profile-head > .eyebrow');
+  if (eyebrow) eyebrow.textContent = cfg?.island?.name || 'Profile explorer';
+}
+// Customize: a raw draft goes through the validator and the build exactly like a fetched file.
+function rebuildForConfig() {
+  const { user, repos } = profileNow;
+  applyProfile(user, repos);
+  buildCommitShuttles(repos, user);
+  buildForkBeams(repos);
+}
+function previewCityConfig(draft) {
+  if (!profileNow || !cityConfig) return [];
+  const { config, warnings } = normalizeCityConfig(draft, { repos: profileNow.repos, login: profileNow.user.login });
+  cityConfig = { ...cityConfig, config };
+  rebuildForConfig();
+  return warnings;
+}
+function restoreCityConfig() {
+  if (!profileNow || !cityConfig) return;
+  cityConfig = { ...cityConfig, config: cityConfig.published };
+  rebuildForConfig();
+}
+
+// ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
 function resetCamera() {
@@ -3201,6 +3470,8 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
   play.playing = false; play.t = 0; play.lastIndex = -1;
   timeline = null;
   clearFeed();
+  customizer?.reset(); // a different city: drop any Customize draft
+  const configPending = fetchCityConfig(login, { timeout: 12000 }); // the developer's city.json, alongside the profile (never throws)
   try {
     const demo = new URLSearchParams(location.search).has('demo');
     let user, repos, sample = null;
@@ -3230,14 +3501,10 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     // The block's footprint and the island around it are generated from the
     // profile (same login, same city): shape from the login, biome from the
     // top language, attractions from fame.
-    setCityLayout(cityLayoutFor(user, repos));
-    world.setProfile({ user, repos }, cityLayout.city);
-    // Neighbour portal gates at sea (neighbors.js): fire-and-forget, dropped if another city loaded meanwhile.
-    fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES) })
-      .then((list) => { if (version === cityVersion) world.setNeighbors(user.login, list); }).catch(() => {});
-    const visibleRepos = buildCity(repos, user);
-    explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
-    renderExplorer(user, visibleRepos);
+    // The developer's city.json (if any) overrides those traits; a 404 is the automatic city.
+    await readCityConfig(configPending, user, repos, version);
+    if (version !== cityVersion) return;
+    const visibleRepos = applyProfile(user, repos, version); // layout, island, neighbours, buildings, HUD, look
     const url = new URL(location.href);
     url.searchParams.set('user', user.login);
     history.replaceState(null, '', url);
@@ -3307,6 +3574,16 @@ function main() {
   buildActor();
   dust = buildDust(THREE, scene);
   wireUI();
+  // Customize panel (customize.js): drafts preview through the same path as a fetched city.json.
+  customizer = createCustomizer({
+    context: () => (cityConfig && profileNow ? {
+      login: profileNow.user.login, repos: profileNow.repos, found: cityConfig.found, error: cityConfig.error,
+      warnings: cityConfig.warnings, published: cityConfig.published,
+    } : null),
+    preview: previewCityConfig,
+    restore: restoreCityConfig,
+    onOpen: () => { explorer?.setMode?.('orbit'); endTour(); setMenu(false); closePanel(); },
+  });
   // Single hand-written fullscreen post pass (bloom + grade + grain).
   postPass = createPostPass(THREE, renderer, scene, camera, { bloom: 0.55 });
   crtPass = createCrtPass(THREE, renderer, scene, camera, {
@@ -3318,7 +3595,7 @@ function main() {
   document.getElementById('search-input').value = startUser;
   animate();
   loadCity(startUser);
-  window.__city = { scene, world, camera, controls, explorer, debug: { get orbitReturn() { return orbitReturn; }, get camGoal() { return camGoal; }, get tour() { return tour.active; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
+  window.__city = { scene, world, camera, controls, explorer, get cityConfig() { return cityConfig; }, cityPlayerSettings, debug: { get orbitReturn() { return orbitReturn; }, get camGoal() { return camGoal; }, get tour() { return tour.active && { paused: tour.paused, stop: tour.stop, leg: tour.leg }; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
 }
 
 main();

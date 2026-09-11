@@ -5,7 +5,7 @@ import {
   normalizeCityConfig, parseCityConfigText, fetchCityConfig, serializeCityConfig, isEmptyConfig, cleanText,
   newFileUrl, editFileUrl, configUrl, OPTIONS, LIMITS, MAX_BYTES,
 } from '../public/city-config.js';
-import { BIOMES } from '../public/world.js';
+import { BIOMES, LANDMARK_SITES, SITE_KINDS } from '../public/world.js';
 import { ATTRACTIONS } from '../public/attractions.js';
 
 const REPOS = ['git-city', 'gource-view', 'dotfiles', 'Hefty', 'constructor'].map((name) => ({ name }));
@@ -282,6 +282,20 @@ test('the vocabulary matches the code it names (world.js, app.js, attractions.js
   const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
   const shapes = JSON.parse(app.match(/const CITY_SHAPE_NAMES = (\[[^\]]*\])/)[1].replace(/'/g, '"'));
   assert.deepEqual([...OPTIONS.shape], shapes);
+});
+
+test('every landmark has island sites that can hold it (world.js LANDMARK_SITES vs attractions.js)', () => {
+  assert.deepEqual(Object.keys(LANDMARK_SITES).sort(), [...OPTIONS.landmark].sort());
+  for (const a of ATTRACTIONS) {
+    const sites = LANDMARK_SITES[a.key];
+    assert.ok(sites.length, a.key);
+    for (const s of sites) {
+      const kind = SITE_KINDS[s.replace(/\d+$/, '')];
+      assert.ok(kind, `${a.key}: unknown site ${s}`);
+      assert.ok(a.tags.includes(kind.tag), `${a.key} (${a.tags}) can't stand on a ${kind.tag} site`);
+      assert.ok(a.radius <= kind.r + 1.5, `${a.key} (r ${a.radius}) doesn't fit ${s} (r ${kind.r})`);
+    }
+  }
 });
 
 test('the JSON Schema agrees with the validator', () => {
