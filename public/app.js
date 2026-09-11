@@ -2137,6 +2137,20 @@ function markdownExcerpt(md) {
   const out = paras.slice(0, 2).join(' ');
   return out.length > 460 ? `${out.slice(0, 457).trimEnd()}…` : out;
 }
+// Start (or steer) the showcase tour at one repo, e.g. from the bomb-run results
+// list: it flies there and carries on through the rest of the city from that stop.
+function tourToRepo(fullName) {
+  if (!tour.active) startTour();
+  if (!tour.stops) buildShowcase(); // fixes the stop list
+  const i = tour.stops ? tour.stops.findIndex((b) => b.repo.full_name === fullName) : -1;
+  if (i < 0) { // not a tour stop: just fly to it and open its panel
+    const b = buildingByName.get(fullName);
+    if (b) { endTour(); openPanel(b.repo); flyToBuilding(b); }
+    return;
+  }
+  tour.stop = i;
+  tourJump(0);
+}
 function startTour() {
   tour.active = true; tour.paused = false; tour.t = 0; tour.leg = 0; tour.legs = null; tour.stops = null; tour.stop = 0;
   controls.autoRotate = false;
@@ -3400,7 +3414,7 @@ function animate(timestamp) {
   }
   updateActor(dt);
   world?.update(dt, clock.getElapsed(), camera, controls.target);
-  wayfinding?.update(dt, clock.getElapsed(), camera, dayFactor, explorer?.mode); // street signs dim at night; tag follows explore modes
+  wayfinding?.update(dt, clock.getElapsed(), camera, dayFactor, explorer?.game?.active ? 'orbit' : explorer?.mode); // street signs dim at night; tag follows explore modes (not during the bomb run)
   if (dust) { dust.update(dt, clock.getElapsed()); dust.setNight(1 - dayFactor); }
   if (skyDome) skyDome.setTime(clock.getElapsed());
 
@@ -3831,6 +3845,10 @@ function main() {
         $('loading').classList.add('hidden'); // the warp's cloud whiteout stands in for the loading screen
       });
     },
+    buildings: () => buildingMeshes, // bomb run targets (game.js); the city is restored from snapshots on exit
+    login: () => currentLogin,       // best score per island
+    onGameStart: () => { endTour(); closePanel(); closeGource(); }, // the bomb run takes the screen
+    tourToRepo: (fullName) => tourToRepo(fullName), // end-card repo links: tour straight to that building
     onModeChange: (mode) => { if (mode !== 'orbit') { endTour(); camGoal = null; } setMenu(false); },
   });
   buildStreetlamps();
