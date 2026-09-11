@@ -325,8 +325,8 @@ const CITY_SHAPES = {
     return { cols: n, rows: n, sdf: (x, z) => sminPoly(sdRoundBox(x, z, L, W, 9), sdRoundBox(x, z, W, L, 9), 16) };
   } },
   octagon: { base: 13, make: n => { // chamfered square with rounded corners
-    const h = n * CELL / 2, d = h * 1.1;
-    return { cols: n, rows: n, sdf: (x, z) => -sminPoly(-sdRoundBox(x, z, h, h, 0), -((Math.abs(x) + Math.abs(z)) / Math.SQRT2 - d), 14) };
+    const h = n * CELL / 2; // a regular octagon: the diagonal flats as far out as the straight ones
+    return { cols: n, rows: n, sdf: (x, z) => -sminPoly(-sdRoundBox(x, z, h, h, 0), -((Math.abs(x) + Math.abs(z)) / Math.SQRT2 - h), 10) };
   } },
   blob: { base: 13, make: (n, seed) => { // an organic outline, its wobble seeded by the login
     let s = seed >>> 0;
@@ -800,7 +800,7 @@ function cityDescriptor(L) {
 }
 // Pick the footprint for a profile: deterministic per login (and account
 // year), big enough for every repo shown. ?city=round previews a shape.
-const CITY_SHAPE_BY_PROFILE = false; // off: every city is square unless ?city= asks for a shape
+const CITY_SHAPE_BY_PROFILE = true; // false: every city is square unless ?city= asks for a shape
 function cityLayoutFor(user, repos) {
   const need = Math.max(1, Math.min(MAX_BUILDINGS, (repos || []).filter(r => !r.fork && !r.archived).length));
   const seed = hashStr(`city-v1:${String(user?.login || '').toLowerCase()}:${String(user?.created_at || '').slice(0, 4)}`);

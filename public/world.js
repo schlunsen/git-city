@@ -415,6 +415,15 @@ export function createWorld(THREE, scene, deps) {
   const deckGeo = shared(new THREE.BoxGeometry(19, 0.35, 2.6)), deckInkGeo = shared(new THREE.BoxGeometry(19.3, 0.6, 2.9));
   const postGeo = shared(new THREE.CylinderGeometry(0.2, 0.2, 2.2, 6));
   const signBoardGeo = shared(new THREE.BoxGeometry(1, 1, 1));
+  // Neighbour gates: a glowing ring at sea with the next developer's avatar.
+  const gateRingGeo = shared(new THREE.TorusGeometry(4.6, 0.45, 10, 48));
+  const gateRingInkGeo = shared(new THREE.TorusGeometry(4.6, 0.68, 10, 48));
+  const gateDiscGeo = shared(new THREE.CircleGeometry(3.95, 48));
+  const gatePillarGeo = shared(new THREE.CylinderGeometry(1.3, 1.3, 120, 16, 1, true));
+  const gateBuoyGeo = shared(new THREE.CylinderGeometry(0.45, 0.6, 1.6, 10));
+  const gateRingMat = sharedEnvMat(0x1e5e5c, 0x64dedb, { emissive: 0x1e8f8a, emissiveIntensity: 0.6 });
+  const gateBuoyMat = sharedEnvMat(0x3a1c20, 0xe4574f);
+  const gatePillarMat = shared(new THREE.MeshBasicMaterial({ color: 0x64dedb, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
   const signPostGeo = shared(new THREE.CylinderGeometry(0.14, 0.17, 1, 6));
   const fenceMat = sharedEnvMat(0x2a2320, 0xf1e6cf);
   const fencePostGeo = shared(new THREE.BoxGeometry(0.22, 1.35, 0.22).translate(0, 0.55, 0));
@@ -1476,6 +1485,7 @@ export function createWorld(THREE, scene, deps) {
       }
       for (const o of animated) o.update?.(dt, elapsed);
       updateHerds(Math.min(dt, 0.1), elapsed);
+      updateGates(elapsed);
       updateGulls(elapsed);
       for (const b of bills) b.rotation.y = Math.atan2(cx - b.position.x, cz - b.position.z);
     }
@@ -1492,7 +1502,110 @@ export function createWorld(THREE, scene, deps) {
         if (o.isInstancedMesh) o.dispose();
       });
     }
-    return { traits: T, biome: B, group, tints: landTints, roads, island, heightAt, update, dispose, sites, herds, villages: VILLAGES, fair: FAIR, light: LIGHT, mill: MILL };
+    // ---- neighbour gates: portals at sea to the next developer's island ------------
+    // Up to six gates ring the island. Fly through a ring, or walk/drive onto
+    // the beach below one, and the host morphs the world into that profile.
+    const gates = [];
+    const gateGroup = new THREE.Group();
+    add(gateGroup);
+    const gateOffset = ((T.seed % 997) / 997) * TAU;
+    function avatarTexture(url, login) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const g = c.getContext('2d');
+      const paint = (img) => {
+        g.clearRect(0, 0, 256, 256);
+        g.save(); g.beginPath(); g.arc(128, 128, 118, 0, TAU); g.clip();
+        if (img) g.drawImage(img, 10, 10, 236, 236);
+        else {
+          g.fillStyle = '#2b3a55'; g.fillRect(0, 0, 256, 256);
+          g.fillStyle = '#64dedb'; g.font = '800 110px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(login.slice(0, 2).toUpperCase(), 128, 136);
+        }
+        g.restore();
+        g.lineWidth = 12; g.strokeStyle = '#1a2233'; g.beginPath(); g.arc(128, 128, 120, 0, TAU); g.stroke();
+      };
+      paint(null);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { paint(img); tex.needsUpdate = true; };
+      img.src = url;
+      return tex;
+    }
+    function makeGate(n) {
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(gateRingGeo, gateRingMat);
+      const ringInk = new THREE.Mesh(gateRingInkGeo, inkMat);
+      ring.position.y = ringInk.position.y = 6.2;
+      const tex = avatarTexture(n.avatar, n.login);
+      const faceMat = signLit(new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
+      const face = new THREE.Mesh(gateDiscGeo, faceMat);
+      face.position.y = 6.2;
+      const label = signTexture([{ text: `@${n.login}`, size: 62 }, { text: 'next island →', size: 32, weight: 700, color: '#2f7f6b' }], 512, 200);
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 2.8), signLit(new THREE.MeshBasicMaterial({ map: label, side: THREE.DoubleSide })));
+      plate.position.y = 13.4;
+      const pillar = new THREE.Mesh(gatePillarGeo, gatePillarMat);
+      pillar.position.y = 60;
+      const buoys = [-5.6, 5.6].map((x) => { const b = new THREE.Mesh(gateBuoyGeo, gateBuoyMat); b.position.set(x, 0.4, 0); return b; });
+      g.add(ring, ringInk, face, plate, pillar, ...buoys);
+      return g;
+    }
+    function setNeighbors(list) {
+      for (const gt of gates) {
+        gateGroup.remove(gt.obj);
+        gt.obj.traverse((o) => {
+          if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
+          if (o.material && !o.material.userData.shared) { o.material.map?.dispose(); o.material.dispose(); }
+        });
+      }
+      gates.length = 0;
+      const n = Math.min(6, list.length);
+      list.slice(0, n).forEach((nb, k) => {
+        let b = gateOffset + (k / n) * TAU;
+        if (angDist(b, LIGHT.a) < 0.3) b += 0.35; // keep clear of the lighthouse pier
+        const R = shoreR(b) * 1.32, x = Math.cos(b) * R, z = Math.sin(b) * R;
+        const obj = noRay(makeGate(nb));
+        obj.position.set(x, SEA_Y, z);
+        obj.rotation.y = Math.atan2(-Math.cos(b), -Math.sin(b)); // avatar and label face the island
+        gateGroup.add(obj);
+        gates.push({ ...nb, bearing: b, x, y: SEA_Y + 6.2, z, obj });
+      });
+    }
+    // Which gate (if any) a traveller at (x, y, z) is using. `mode` is the
+    // explore mode: 'fly' goes through the ring (or past it, close enough);
+    // 'walk' / 'drive' reach the beach below it.
+    function gateFor(x, y, z, mode) {
+      const b = Math.atan2(z, x);
+      for (const g of gates) {
+        if (mode === 'fly') {
+          if (Math.hypot(x - g.x, y - g.y, z - g.z) < 6.5) return g;
+          if (Math.hypot(x, z) > Math.hypot(g.x, g.z) + 4 && angDist(b, g.bearing) < 0.14) return g;
+        } else if (coastAt(x, z) < 0.035 && angDist(b, g.bearing) < 0.3) return g;
+      }
+      return null;
+    }
+    // Where someone arriving from bearing `b` (on this island) should appear,
+    // heading inland: out at sea for a plane, on the first dry, gentle ground
+    // for a car or walker. `heading` is the XZ angle, atan2(dz, dx).
+    function arrival(b, mode) {
+      if (mode === 'fly') {
+        const R = shoreR(b) * 1.45;
+        return { x: Math.cos(b) * R, y: 26, z: Math.sin(b) * R, heading: b + Math.PI };
+      }
+      for (let k = 0.09; k < 0.6; k += 0.01) {
+        const R = shoreR(b) * (1 - k), x = Math.cos(b) * R, z = Math.sin(b) * R, h = heightAt(x, z);
+        if (h > -0.3 && slopeAt(x, z) < 0.3 && keepOut.every((q) => Math.hypot(x - q.x, z - q.z) > q.r * 0.6)) return { x, y: h, z, heading: b + Math.PI };
+      }
+      return { x: Math.cos(b) * 70, y: GROUND, z: Math.sin(b) * 70, heading: b + Math.PI };
+    }
+    function updateGates(elapsed) {
+      gatePillarMat.opacity = 0.14 + Math.sin(elapsed * 2) * 0.05 + (1 - litNow) * 0.25;
+      for (const g of gates) g.obj.position.y = SEA_Y + Math.sin(elapsed * 0.9 + g.bearing * 3) * 0.18;
+    }
+
+    return { traits: T, biome: B, group, tints: landTints, roads, gates, setNeighbors, gateFor, arrival, island, heightAt, update, dispose, sites, herds, villages: VILLAGES, fair: FAIR, light: LIGHT, mill: MILL };
   }
 
   // The city block the island wraps around. The host can pass any shape to
@@ -1590,6 +1703,12 @@ export function createWorld(THREE, scene, deps) {
 
   return {
     setDay, update, setLots, roofDecal, cutout, setProfile,
+    // Neighbour travel (see neighbors.js). setNeighbors ignores a list for a
+    // login that is no longer on screen, so a slow fetch can't mislabel gates.
+    setNeighbors: (login, list) => { if (land && land.traits.login === String(login).toLowerCase()) land.setNeighbors(list); },
+    gateFor: (x, y, z, mode) => land?.gateFor(x, y, z, mode) ?? null,
+    arrival: (bearing, mode) => land?.arrival(bearing, mode) ?? null,
+    get gates() { return land?.gates ?? []; },
     heightAt: (x, z) => land?.heightAt(x, z) ?? GROUND,
     get traits() { return land?.traits ?? null; },
     islandRadius: ISLAND_R,
