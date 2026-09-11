@@ -26,12 +26,27 @@ async function getJSON(url, timeout = 5000) {
 
 /**
  * @param {string} login
- * @param {{ repos?: object[], fallback?: string[], max?: number }} opts
+ * @param {{ repos?: object[], fallback?: string[], max?: number, pinned?: string[] }} opts
  *   repos: the developer's repos (to find the most-starred one);
- *   fallback: logins to fill up with (e.g. the featured developers).
+ *   fallback: logins to fill up with (e.g. the featured developers);
+ *   pinned: neighbours the developer chose in their city.json (validated
+ *   logins), placed first; the automatic list only tops them up.
  * @returns {Promise<{ login: string, avatar: string, via: string }[]>}
  */
-export async function fetchNeighbors(login, { repos = [], fallback = [], max = 6 } = {}) {
+export async function fetchNeighbors(login, { repos = [], fallback = [], max = 6, pinned = [] } = {}) {
+  const self = login.toLowerCase(), pins = [];
+  for (const name of pinned) {
+    if (pins.length >= max || typeof name !== 'string' || name.toLowerCase() === self) continue;
+    if (pins.some((p) => p.login.toLowerCase() === name.toLowerCase())) continue;
+    pins.push({ login: name, avatar: `https://github.com/${encodeURIComponent(name)}.png?size=128`, via: 'neighbour' });
+  }
+  if (pins.length >= max) return pins; // a full hand-picked list costs no API requests
+  const auto = await autoNeighbors(login, { repos, fallback, max });
+  const seen = new Set(pins.map((p) => p.login.toLowerCase()));
+  return [...pins, ...auto.filter((n) => !seen.has(n.login.toLowerCase()))].slice(0, max);
+}
+
+async function autoNeighbors(login, { repos, fallback, max }) {
   const key = `gc-neighbors:${login.toLowerCase()}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) || 'null');
