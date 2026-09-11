@@ -29,7 +29,7 @@ export const MAX_BYTES = 32 * 1024;      // bigger files are ignored unread
 export const FETCH_TIMEOUT_MS = 4000;
 export const BUILDING_PATH = '.git-city/building.json';
 export const BUILDING_MAX_BYTES = 16 * 1024;
-export const BUILDING_TIMEOUT_MS = 3000;
+export const BUILDING_TIMEOUT_MS = 8000; // generous: slow devices read the reply late while the city draws its first frames
 
 // ---- vocabulary: the one place the allowed names live ----------------------
 // Mirrors world.js BIOMES, app.js CITY_SHAPE_NAMES, attractions.js ATTRACTIONS
