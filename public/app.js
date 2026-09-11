@@ -2069,7 +2069,7 @@ function main() {
   // Single hand-written fullscreen post pass (bloom + grade + grain).
   postPass = createPostPass(THREE, renderer, scene, camera, { bloom: 0.55 });
   crtPass = createCrtPass(THREE, renderer, scene, camera, {
-    scale: 0.5, motion: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+    motion: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   });
   setDayMode('auto');
   const fromUrl = new URLSearchParams(location.search).get('user');
