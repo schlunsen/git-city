@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   normalizeCityConfig, parseCityConfigText, fetchCityConfig, serializeCityConfig, isEmptyConfig, cleanText,
   newFileUrl, editFileUrl, configUrl, OPTIONS, LIMITS, MAX_BYTES,
+  normalizeBuildingConfig, mergeBuildingConfig, fetchBuildingConfig, serializeBuildingConfig, BUILDING_KEYS, BUILDING_MAX_BYTES,
 } from '../public/city-config.js';
 import { BIOMES, LANDMARK_SITES, SITE_KINDS } from '../public/world.js';
 import { ATTRACTIONS } from '../public/attractions.js';
@@ -323,4 +324,123 @@ test('the JSON Schema agrees with the validator', () => {
   for (const s of ['ok-name', '-a', 'a-', 'a--b', 'x'.repeat(39), 'x'.repeat(40)]) {
     assert.equal(re('login').test(s), normalizeCityConfig({ neighbours: [s] }).config.neighbours.length === 1, s);
   }
+});
+
+// ---- per-building config: city.json repos[name] and a repo's .git-city/building.json ----
+const BUILDING = {
+  style: 'stepped', color: '#e4574f', sign: 'you are here', billboard: 'Watch it grow',
+  graffiti: { text: 'ship it!', color: '#ff5ab4', style: 'bubble' }, roof: 'garden', neon: '#8c78ff', flag: '🏴‍☠️',
+};
+
+test('building fields: a full entry survives, in city.json and in building.json', () => {
+  const { config, warnings } = norm({ repos: { 'git-city': BUILDING } });
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(plain(config.repos['git-city']), BUILDING);
+  const mine = normalizeBuildingConfig({ $schema: 'x', version: 1, ...BUILDING });
+  assert.deepEqual(mine.warnings, []);
+  assert.deepEqual(plain(mine.config), BUILDING);
+  assert.deepEqual(Object.keys(normalizeBuildingConfig({}).config), []);
+});
+
+test('building fields: bad values are dropped with warnings', () => {
+  const { config, warnings } = normalizeBuildingConfig({
+    style: 'castle', roof: 'moon', neon: 'hotpink', flag: 7, color: '#fff',
+    graffiti: { text: 42, color: 'red', style: 'wildstyle', font: 'Comic Sans' }, src: 'https://evil.example/x.png',
+  });
+  assert.deepEqual(plain(config), {});
+  for (const k of ['style', 'roof', 'neon', 'flag', 'color', 'graffiti.text', 'graffiti.color', 'graffiti.style', '"font"', '"src"']) {
+    assert.ok(warnings.some((w) => w.includes(k)), k);
+  }
+  assert.ok(normalizeBuildingConfig({ graffiti: { color: '#ffffff' } }).warnings.some((w) => w.includes('needs "text"')));
+  assert.ok(normalizeBuildingConfig({ graffiti: 'ship it' }).warnings.some((w) => w.includes('expected an object')));
+  assert.deepEqual(plain(normalizeBuildingConfig({ roof: 'auto', style: 'auto' }).config), {}, 'auto is the default, not stored');
+});
+
+test('graffiti: oversized text is capped, controls stripped, markup kept as inert text', () => {
+  const long = 'x'.repeat(5000);
+  const { config, warnings } = normalizeBuildingConfig({ graffiti: { text: `  ${long}\n` } });
+  assert.equal(config.graffiti.text.length, LIMITS.graffiti);
+  assert.ok(warnings.some((w) => w.includes('graffiti.text: shortened')));
+  assert.equal(normalizeBuildingConfig({ graffiti: { text: 'a‮b c' } }).config.graffiti.text, 'ab c');
+  assert.equal(normalizeBuildingConfig({ graffiti: { text: '<script>alert(1)</script>' } }).config.graffiti.text, '<script>alert(1)</script>');
+  assert.equal(normalizeBuildingConfig({ graffiti: { text: '   ' } }).config.graffiti, undefined);
+  // An oversized building.json is refused before parsing.
+  assert.match(parseCityConfigText(`{"graffiti":{"text":"${'y'.repeat(BUILDING_MAX_BYTES)}"}}`, { maxBytes: BUILDING_MAX_BYTES, name: 'building.json' }).error, /building.json is larger than 16 KB/);
+});
+
+test('flag: an emoji counts as one character, at most three', () => {
+  const f = (v) => normalizeBuildingConfig({ flag: v });
+  assert.equal(f('🇩🇰').config.flag, '🇩🇰');
+  assert.equal(f('👩‍💻').config.flag, '👩‍💻');
+  assert.equal(f('GC!').config.flag, 'GC!');
+  assert.equal(f('ABCDE').config.flag, 'ABC');
+  assert.ok(f('ABCDE').warnings.some((w) => w.includes('flag')));
+  assert.equal(f('🇩🇰🇸🇪🇳🇴🇫🇮').config.flag, '🇩🇰🇸🇪🇳🇴');
+  assert.equal(f('a b').config.flag, 'ab');
+  assert.equal(f('').config.flag, undefined);
+  assert.ok(Array.from(f('😀'.repeat(40)).config.flag).length <= LIMITS.flagCodePoints);
+});
+
+test('building.json: prototype pollution and wrong roots go nowhere', () => {
+  const raw = JSON.parse('{"__proto__": {"polluted": 1, "roof": "pool"}, "constructor": {"prototype": {"polluted": 1}}, "graffiti": {"__proto__": {"text": "proto"}, "text": "real"}}');
+  const { config } = normalizeBuildingConfig(raw);
+  assert.equal(({}).polluted, undefined);
+  assert.equal(config.roof, undefined);
+  assert.deepEqual(plain(config), { graffiti: { text: 'real' } });
+  assert.ok(!Object.prototype.hasOwnProperty.call(config, '__proto__'));
+  // Inherited values are never read, even if something else polluted a prototype.
+  Object.prototype.roof = 'pool';
+  try { assert.equal(normalizeBuildingConfig({}).config.roof, undefined); } finally { delete Object.prototype.roof; }
+  for (const root of [null, [], 'x', 3]) assert.equal(normalizeBuildingConfig(root).config, null);
+});
+
+test('the owner\'s city.json entry wins over building.json, field by field', () => {
+  const repoFile = { graffiti: { text: 'from the repo' }, roof: 'solar', neon: '#00ff00', flag: 'R' };
+  const owner = { roof: 'helipad', color: '#123456' };
+  assert.deepEqual(mergeBuildingConfig(owner, repoFile), { color: '#123456', graffiti: { text: 'from the repo' }, roof: 'helipad', neon: '#00ff00', flag: 'R' });
+  assert.deepEqual(mergeBuildingConfig(null, repoFile), repoFile);
+  assert.deepEqual(mergeBuildingConfig(owner, null), owner);
+  assert.deepEqual(mergeBuildingConfig(null, null), {});
+  assert.deepEqual([...BUILDING_KEYS].sort(), Object.keys(BUILDING).sort());
+});
+
+test('fetchBuildingConfig: raw URL, 16 KB cap, 404, bad names never requested', async () => {
+  const calls = [];
+  const ok = await fetchBuildingConfig('schlunsen/git-city', { fetchImpl: async (url) => { calls.push(url); return response(JSON.stringify(BUILDING)); } });
+  assert.deepEqual(ok, { found: true, raw: BUILDING, error: null });
+  assert.equal(calls[0], 'https://raw.githubusercontent.com/schlunsen/git-city/HEAD/.git-city/building.json');
+  assert.deepEqual(await fetchBuildingConfig('a/b', { fetchImpl: async () => response('404', { status: 404 }) }), { found: false, raw: null, error: null });
+  assert.match((await fetchBuildingConfig('a/b', { fetchImpl: async () => response('x'.repeat(BUILDING_MAX_BYTES + 1)) })).error, /building.json is larger than 16 KB/);
+  let called = false;
+  for (const bad of ['a', 'a/b/c', '../x', 'a/..', 'a/.', '-a/b', 'a/b c', '', null]) {
+    assert.deepEqual(await fetchBuildingConfig(bad, { fetchImpl: async () => { called = true; return response('{}'); } }), { found: false, raw: null, error: null }, String(bad));
+  }
+  assert.equal(called, false);
+  const hang = (url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+  assert.match((await fetchBuildingConfig('a/b', { fetchImpl: hang, timeout: 30 })).error, /timed out/);
+});
+
+test('serializeBuildingConfig round-trips', () => {
+  const text = serializeBuildingConfig(BUILDING);
+  const back = normalizeBuildingConfig(JSON.parse(text));
+  assert.deepEqual(back.warnings, []);
+  assert.deepEqual(plain(back.config), BUILDING);
+});
+
+test('the building JSON Schema agrees with the validator and with city-config.v1.json', () => {
+  const read = (f) => JSON.parse(readFileSync(new URL(`../public/schema/${f}`, import.meta.url), 'utf8'));
+  const city = read('city-config.v1.json'), bld = read('building-config.v1.json');
+  const def = bld.$defs.building;
+  assert.deepEqual(city.properties.repos.additionalProperties, def, 'repos entries and building.json share one definition');
+  assert.deepEqual(Object.keys(def.properties).sort(), [...BUILDING_KEYS].sort());
+  assert.deepEqual(Object.fromEntries(Object.entries(bld.properties).filter(([k]) => k !== '$schema' && k !== 'version')), def.properties);
+  assert.deepEqual(def.properties.style.enum, [...OPTIONS.style]);
+  assert.deepEqual(def.properties.roof.enum, [...OPTIONS.roof]);
+  assert.deepEqual(def.properties.graffiti.properties.style.enum, [...OPTIONS.graffiti]);
+  assert.equal(def.properties.graffiti.properties.text.maxLength, LIMITS.graffiti);
+  assert.equal(def.properties.flag.maxLength, LIMITS.flagCodePoints);
+  assert.equal(def.properties.sign.maxLength, LIMITS.sign);
+  assert.equal(def.properties.billboard.maxLength, LIMITS.text);
+  assert.equal(bld.additionalProperties, false);
+  assert.deepEqual(bld.$defs.color, city.$defs.color);
 });
