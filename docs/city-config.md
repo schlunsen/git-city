@@ -9,6 +9,11 @@ neighbours, the look, the player's soundtrack and your plane.
 
 Every field is optional. Anything you leave out stays automatic.
 
+Prefer a web page? The same guide, with copy buttons and live examples, is at
+**[schlunsen.github.io/git-city/customize.html](https://schlunsen.github.io/git-city/customize.html)**.
+Maintainers styling a single repository's building: see
+[building-config.md](building-config.md).
+
 ## Quick start
 
 1. **Have a profile repository.** It's the public repository named exactly like
@@ -49,6 +54,7 @@ typo never breaks your city; it just doesn't do anything.
 | `look.weather` | name | `clear`, `rain`, `snow` | How the weather starts. |
 | `look.tv` | boolean | `true` / `false` | Old-television (CRT) look when your city opens. |
 | `look.fx` | boolean | `true` / `false` | Bloom, colour grade and grain when your city opens. |
+| `look.timezone` | name | an IANA time zone, ≤ 64 characters (`Europe/Copenhagen`, `Asia/Tokyo`, `UTC`) | Your local time: the city's automatic day and night follow it instead of the visitor's clock. |
 | `landmarks` | list of names | ≤ 6 of `rollerCoaster`, `carousel`, `circusTent`, `dropTower`, `windTurbines`, `windmill`, `farm`, `campsite`, `radioTower`, `observatory`, `balloonPad` | Attractions placed first, in your order. The island still tops up to its usual count (which grows with stars and followers). |
 | `neighbours` | list of logins | ≤ 6 GitHub logins | The islands you reach by flying off the map. Yours come first; the rest are filled automatically (who you follow, contributors, featured developers). |
 | `featured` | list of repo names | ≤ 12 of your repositories | Built next to the plaza and advertised first on the country billboards, in this order. |
@@ -56,7 +62,11 @@ typo never breaks your city; it just doesn't do anything.
 | `repos.<name>.color` | colour | `#rrggbb` | Facade colour instead of the language colour. |
 | `repos.<name>.sign` | text | ≤ 40 characters | Replaces the name on the building's shop signs and the stats line on its rooftop board. |
 | `repos.<name>.billboard` | text | ≤ 120 characters | Replaces the description on this repository's country billboard. |
-| `repos.<name>.style` | name | `auto`, `tower`, `block`, `house` | Silhouette: stepped tower with a spire, plain block, or pitched roof. Height still follows the stars. |
+| `repos.<name>.style` | name | `auto`, `tower`, `stepped`, `cottage`, `block` | Silhouette: tower with a spire, stepped tower, cottage with a pitched roof, or a plain block. Height still follows the stars. |
+| `repos.<name>.graffiti` | object | `text` (≤ 60 characters, required), `color` (`#rrggbb`), `style` (`tag`, `bubble`, `stencil`) | Spray-painted on two ground-floor walls, below the shop sign. |
+| `repos.<name>.roof` | name | `auto`, `garden`, `helipad`, `solar`, `pool`, `antenna`, `none` | What's on the flat roof (cottages ignore it). |
+| `repos.<name>.neon` | colour | `#rrggbb` | The colour the lit windows glow at night. |
+| `repos.<name>.flag` | text | an emoji or up to 3 characters | A small flag on the roof. |
 | `player.music` | name | `floating-cities`, `deliberate-thought`, `cipher`, `digital-lemonade`, `crypto`, `none` | Soundtrack of the in-page Gource View player (music by Kevin MacLeod, CC BY 4.0). |
 | `player.volume` | number | 0–100 | Its volume. |
 | `plane.color` | colour | `#rrggbb` | Fuselage and tail of your biplane in fly mode. |
@@ -84,6 +94,41 @@ More details:
   (the roller coaster needs the big fairground, wind turbines a hillside, the
   campsite a coast or wild spot). If the island has no room, it's skipped.
 
+## Building config
+
+Every building can be styled. The fields under `repos.<name>` (`style`,
+`color`, `sign`, `billboard`, `graffiti`, `roof`, `neon`, `flag`) are the
+**building config**, and they can come from two places:
+
+1. **Your `city.json`**, under `repos["<name>"]`, for any of your repositories.
+2. **The repository itself**, in `<owner>/<repo>/.git-city/building.json`
+   (same fields, at the top level), so maintainers can style their own
+   building. See [building-config.md](building-config.md).
+
+**Your `city.json` wins, field by field.** For example, if a repository's file
+sets `roof` and `graffiti` and you set `roof` and `color`, the building gets
+your roof and colour and the repository's graffiti.
+
+Git City reads `building.json` lazily: for the 16 most-starred buildings of a
+city when it loads, and for any building someone clicks. Each file is limited
+to 3 seconds and 16 KB, and cached for the visit.
+
+```json
+"repos": {
+  "git-city": {
+    "graffiti": { "text": "ship it!", "color": "#ff5ab4", "style": "bubble" },
+    "roof": "helipad",
+    "neon": "#8c78ff",
+    "flag": "🏙️",
+    "style": "tower"
+  }
+}
+```
+
+In **Customize** › Repositories, *edit* a repository to set these fields with
+a live graffiti preview. **Copy as building.json** turns the result into a
+file for the repository itself.
+
 ## Examples
 
 A name and a message:
@@ -107,7 +152,7 @@ Everything:
   "version": 1,
   "island": { "name": "Schlunsen Isle", "biome": "tropical", "shape": "round" },
   "welcome": "Welcome to the island of broken builds",
-  "look": { "accent": "#8c78ff", "time": "sunset", "weather": "snow", "tv": false, "fx": true },
+  "look": { "accent": "#8c78ff", "time": "sunset", "weather": "snow", "tv": false, "fx": true, "timezone": "Europe/Copenhagen" },
   "landmarks": ["rollerCoaster", "observatory", "campsite"],
   "neighbours": ["gaearon", "antfu", "sindresorhus"],
   "featured": ["git-city", "gource-view"],

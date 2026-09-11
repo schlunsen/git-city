@@ -11,7 +11,8 @@
       "description": "Editor hint only; Git City never loads it."
     },
     "version": {
-      "const": 1
+      "const": 1,
+      "description": "Always 1 for this schema."
     },
     "island": {
       "type": "object",
@@ -29,7 +30,8 @@
             "tropical",
             "savanna",
             "lakeland"
-          ]
+          ],
+          "description": "Ground palette, relief, trees and beaches. Default: from your top language."
         },
         "shape": {
           "enum": [
@@ -43,7 +45,8 @@
           ],
           "description": "Footprint of the paved city block."
         }
-      }
+      },
+      "description": "Your island: its name, ground and city shape."
     },
     "welcome": {
       "type": "string",
@@ -90,7 +93,8 @@
           "pattern": "^[A-Za-z][A-Za-z0-9_+\\-/]{0,63}$",
           "description": "Your IANA time zone, e.g. \"Europe/Copenhagen\" or \"Asia/Tokyo\": the city's automatic day and night follow your local time."
         }
-      }
+      },
+      "description": "How your city opens. Visitors can still change the light, weather, TV and FX during a visit."
     },
     "landmarks": {
       "type": "array",
@@ -184,17 +188,20 @@
               "text": {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 60
+                "maxLength": 60,
+                "description": "The words: free-form, up to 60 characters."
               },
               "color": {
-                "$ref": "#/$defs/color"
+                "$ref": "#/$defs/color",
+                "description": "Paint colour (default depends on the style)."
               },
               "style": {
                 "enum": [
                   "tag",
                   "bubble",
                   "stencil"
-                ]
+                ],
+                "description": "A quick marker tag, fat bubble letters, or a stencil. Default: tag."
               }
             },
             "description": "Spray-painted on the ground-floor walls."
@@ -236,12 +243,14 @@
             "digital-lemonade",
             "crypto",
             "none"
-          ]
+          ],
+          "description": "Track (music by Kevin MacLeod, CC BY 4.0), or none."
         },
         "volume": {
           "type": "number",
           "minimum": 0,
-          "maximum": 100
+          "maximum": 100,
+          "description": "Music volume, 0 to 100."
         }
       },
       "description": "Soundtrack of the in-page Gource View player."
@@ -259,7 +268,8 @@
           "maxLength": 24,
           "description": "Painted on both sides of the fuselage."
         }
-      }
+      },
+      "description": "Your biplane in the explore fly mode."
     }
   },
   "$defs": {

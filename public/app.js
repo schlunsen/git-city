@@ -1936,18 +1936,15 @@ function overviewLeg(bearing) {
   return { dur: 7, pos: (u, o) => o.set(Math.cos(bearing + u * 0.6) * 150, 72, Math.sin(bearing + u * 0.6) * 150), look: (u, o) => o.copy(look) };
 }
 // Tour order: the developer's highlights first (city.json "featured", then the
-// profile's pinned repos when known), then carry on with the most-starred rest.
+// profile's pinned repos when known), then on through all their other repos.
 function tourStops() {
   const byName = new Map(buildingMeshes.map(b => [String(b.repo.name).toLowerCase(), b]));
   const picks = [], seen = new Set();
   const add = (b, highlight) => { if (b && !seen.has(b)) { seen.add(b); picks.push({ b, highlight }); } };
   for (const n of cfgNow()?.featured || []) add(byName.get(String(n).toLowerCase()), 'featured');
   for (const n of pinnedRepos) add(byName.get(String(n).toLowerCase()), 'pinned');
-  const want = Math.max(8, picks.length + 4);
-  for (const b of [...buildingMeshes].sort((x, y) => (y.repo.stargazers_count || 0) - (x.repo.stargazers_count || 0))) {
-    if (picks.length >= want) break;
-    add(b, null);
-  }
+  // ...then every other repo in the city, most-starred first (the tour loops after the last).
+  for (const b of [...buildingMeshes].sort((x, y) => (y.repo.stargazers_count || 0) - (x.repo.stargazers_count || 0))) add(b, null);
   return picks;
 }
 function buildShowcase(start = 0) {
