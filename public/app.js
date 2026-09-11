@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
-  fetchEvents, contributionDays, buildHeatmapRing, buildSky, createPostPass, buildDust,
+  fetchEvents, contributionDays, buildHeatmapRing, buildSky, createPostPass, createCrtPass, buildDust,
 } from './city-enhancements.js';
 import {
   buildTimeline, paceTimeline, actorState, stepIndexAt, dailyHistogram, activityByRepo, dateParts,
@@ -57,6 +57,9 @@ let raycaster, pointerNDC;
 // ---- Visual enhancement state --------------------------------------------
 let skyDome = null;        // buildSky() handle (gradient dome + stars + sun/moon)
 let postPass = null;       // createPostPass() handle (bloom / grade / grain)
+let crtPass = null;        // createCrtPass() handle (old-TV look)
+let fxOn = false;          // bloom/grade pass — off by default, the flat toon look reads better
+let tvOn = false;          // old-television pass
 let heatmapRing = null;    // InstancedMesh of contribution bricks
 let lampGroup = null;      // streetlamps (neon at night)
 let world = null;          // createWorld() handle: island, hills, cutouts, clouds, decals
@@ -484,6 +487,7 @@ function onResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   if (postPass) postPass.resize(window.innerWidth, window.innerHeight);
+  if (crtPass) crtPass.resize(window.innerWidth, window.innerHeight);
 }
 
 // ---------------------------------------------------------------------------
@@ -1771,6 +1775,25 @@ function setupTimeline(events, repos) {
   }
 }
 
+function readPref(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function writePref(key, value) { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } }
+function setFx(on) {
+  fxOn = on;
+  $('fx-btn').classList.toggle('on', on);
+  writePref('gc-fx', on ? '1' : '0');
+}
+// Old-TV mode: a CRT shader on the 3D view plus a light scanline overlay on the
+// whole page. Switching it on plays a quick "power on" flick.
+function setTv(on, { animate = true } = {}) {
+  tvOn = on;
+  $('tv-btn').classList.toggle('on', on);
+  document.body.classList.toggle('tv', on);
+  writePref('gc-tv', on ? '1' : '0');
+  const canvas = renderer.domElement;
+  canvas.classList.remove('tv-power-on');
+  if (on && animate) { void canvas.offsetWidth; canvas.classList.add('tv-power-on'); }
+}
+
 function setDayMode(mode) {
   dayMode = mode;
   $('dn-label').textContent = { auto: 'Auto', cycle: 'Cycle', day: 'Day', night: 'Night' }[mode];
@@ -1818,13 +1841,12 @@ function wireUI() {
     const order = { clear: 'rain', rain: 'snow', snow: 'clear' };
     setWeather(order[weatherMode], wxBtn);
   });
+  // FX and TV are per-viewer preferences, remembered in this browser.
   const fxBtn = $('fx-btn');
-  fxBtn.classList.add('on');
-  window.__fxOn = true;
-  fxBtn.addEventListener('click', () => {
-    fxBtn.classList.toggle('on');
-    window.__fxOn = fxBtn.classList.contains('on');
-  });
+  setFx(readPref('gc-fx') === '1');
+  fxBtn.addEventListener('click', () => setFx(!fxOn));
+  setTv(readPref('gc-tv') === '1', { animate: false });
+  $('tv-btn').addEventListener('click', () => setTv(!tvOn));
   // Transport
   $('play-btn').addEventListener('click', () => setPlaying(!play.playing));
   $('scrub').addEventListener('input', (e) => seekTo(Number(e.target.value) / 1000));
@@ -1838,6 +1860,7 @@ function wireUI() {
     if (e.key === 't' || e.key === 'T') { tour.active ? endTour() : startTour(); }
     else if (e.key === ' ') { e.preventDefault(); setPlaying(!play.playing); }
     else if (e.key === 'Escape') { endTour(); closePanel(); }
+    else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn); }
   });
   $('panel-close').addEventListener('click', closePanel);
   $('reset-btn').addEventListener('click', resetCamera);
@@ -1905,8 +1928,9 @@ function animate() {
     controls.update();
   } else camera.lookAt(controls.target);
   districtSigns?.group.children.forEach(sign => sign.quaternion.copy(camera.quaternion));
-  // Route every frame through the post pass when FX is enabled.
-  if (postPass && window.__fxOn !== false) postPass.render(clock.elapsedTime, dayFactor);
+  // TV wins over FX (it has its own grade); otherwise FX or a plain render.
+  if (tvOn && crtPass) crtPass.render(clock.elapsedTime);
+  else if (fxOn && postPass) postPass.render(clock.elapsedTime, dayFactor);
   else renderer.render(scene, camera);
 }
 
@@ -2044,6 +2068,9 @@ function main() {
   wireUI();
   // Single hand-written fullscreen post pass (bloom + grade + grain).
   postPass = createPostPass(THREE, renderer, scene, camera, { bloom: 0.55 });
+  crtPass = createCrtPass(THREE, renderer, scene, camera, {
+    scale: 0.5, motion: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  });
   setDayMode('auto');
   const fromUrl = new URLSearchParams(location.search).get('user');
   const startUser = (fromUrl || DEFAULT_USER).replace(/^@/, '');
