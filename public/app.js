@@ -2551,7 +2551,9 @@ function openGource(repo, from = null) {
   });
   box.querySelector('.gm-frame').replaceChildren(frame);
   box.classList.add('open', 'pending');
-  gourceTimer = setTimeout(revealGource, 9000); // fallback if no 'video-open' message arrives
+  // Last-resort fallback only: gource-view posts 'video-ready' when its first frame is up
+  // (big histories like torvalds/linux can take well over 10 s to load).
+  gourceTimer = setTimeout(revealGource, 30000);
   document.addEventListener('keydown', gourceKeys, true);
 }
 function revealGource() {
