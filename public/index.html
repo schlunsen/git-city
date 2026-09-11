@@ -284,6 +284,14 @@
   #menu { display: contents; }
   .menu-btn, .profile-toggle { display: none; }
   #scene { touch-action: none; }
+  /* The page itself never scrolls or rubber-bands on touch devices: the body is
+     pinned, bars refuse page pans, and only the menu / profile / repo sheet
+     scroll — inside themselves. */
+  html, body { overscroll-behavior: none; }
+  body { position: fixed; inset: 0; }
+  #topbar, #transport, #clock, #feed, #legend, #loading { touch-action: none; }
+  #search-input { touch-action: manipulation; }
+  #menu, #explorer, #panel-body { overscroll-behavior: contain; touch-action: pan-y; }
   @media (hover: none) { #tooltip { display: none; } }
   @media (max-width: 900px), (max-height: 500px) {
     #topbar {
