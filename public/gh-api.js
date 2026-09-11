@@ -1,15 +1,20 @@
 /*
- * GitHub first, Gitilla's own cache second.
+ * Gitilla's cache first, GitHub second.
  *
  * A browser gets 60 unauthenticated GitHub requests an hour, which one curious
  * afternoon of clicking through neighbours burns straight through — and then
- * the city is empty. gitilla.com/api mirrors the handful of endpoints a city
- * needs: it keeps what GitHub said, revalidates with ETags, and serves what it
- * has when the quota is gone. So: ask GitHub, and only when GitHub refuses for
- * quota reasons, ask the mirror.
+ * the city is empty. gitilla.com/api mirrors the endpoints a city needs: it
+ * keeps what GitHub said, revalidates with ETags on its own (far larger)
+ * budget, and warms popular repositories in the background.
  *
- * The mirror is never asked first. It holds public data that may be minutes
- * old, and GitHub itself is always the fresher answer.
+ * So the mirror is asked first. It is usually warm, it costs the visitor no
+ * quota at all, and what it holds is at most a few minutes old — which for a
+ * profile, a repo list or an activity feed is indistinguishable from live.
+ * GitHub is the fallback for anything the mirror cannot serve or gets wrong.
+ *
+ * Freshness matters in one place: checking whether a repository exists while
+ * publishing a config, where a remembered 404 would be wrong. Those callers
+ * pass { fresh: true } and go to GitHub first.
  */
 
 // Same-origin when the page is served from gitilla.com, absolute elsewhere
@@ -50,8 +55,8 @@ export function isQuotaRefusal(res) {
   return left === null || left === undefined || left === '0';
 }
 
-/** fetch(), with the mirror as a fallback for quota refusals and network failures. */
-export async function ghFetch(url, opts = {}) {
+/** Ask GitHub, and fall back to the mirror when the quota is gone. */
+async function githubFirst(url, opts) {
   let res = null;
   try {
     res = await fetch(url, opts);
@@ -69,4 +74,24 @@ export async function ghFetch(url, opts = {}) {
   } catch {
     return res;
   }
+}
+
+/**
+ * fetch() for the GitHub API, through Gitilla's cache.
+ *
+ * The mirror answers first (no quota spent, usually warm). Anything it cannot
+ * serve — an endpoint it does not mirror, a page past the first, an error —
+ * falls through to GitHub. Pass { fresh: true } when a stale answer would be
+ * wrong, and GitHub is asked first instead.
+ */
+export async function ghFetch(url, opts = {}, { fresh = false } = {}) {
+  const alt = fresh ? null : mirrorFor(url);
+  if (!alt) return githubFirst(url, opts);
+  try {
+    const cached = await fetch(alt, opts);
+    if (cached.ok) return cached;
+  } catch {
+    /* the mirror is optional: fall through to GitHub */
+  }
+  return githubFirst(url, opts);
 }
