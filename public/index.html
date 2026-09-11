@@ -250,7 +250,34 @@
   #error.show { display: block; }
   #error a { color: #ff9db0; }
 
-  @media (max-width: 1100px) { #examples { display: none; } }
+  /* ---------- Old-TV mode ---------- */
+  /* The 3D view gets a CRT shader; this adds scanlines + vignette over the HUD too. */
+  body.tv::after {
+    content: ""; position: fixed; inset: 0; z-index: 60; pointer-events: none;
+    background:
+      repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at center, transparent 58%, rgba(0, 0, 0, 0.45) 100%);
+    animation: tv-flicker 4s steps(60) infinite;
+  }
+  body.tv #topbar, body.tv #transport, body.tv .card { text-shadow: 0 0 6px rgba(100, 222, 219, 0.28); }
+  @keyframes tv-flicker { 0%, 100% { opacity: 0.9; } 50% { opacity: 1; } 51% { opacity: 0.84; } 52% { opacity: 0.95; } }
+  #scene.tv-power-on { animation: tv-power-on 0.55s cubic-bezier(0.2, 0.7, 0.2, 1); }
+  @keyframes tv-power-on {
+    0% { transform: scale(1, 0.004); filter: brightness(4); }
+    35% { transform: scale(1, 0.004); filter: brightness(4); }
+    70% { transform: scale(1, 1.02); filter: brightness(1.6); }
+    100% { transform: none; filter: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { body.tv::after { animation: none; } #scene.tv-power-on { animation: none; } }
+
+  /* Keep the top bar on one line: shed the tagline, the "try" label and some
+     button padding first, then the developer pills. */
+  @media (max-width: 1560px) {
+    .brand .tag { display: none; }
+    #examples > span { display: none; }
+    .tb { padding: 7px 8px; }
+  }
+  @media (max-width: 1340px) { #examples { display: none; } }
   @media (max-width: 900px) {
     #topbar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
     .brand .tag { display: none; }
@@ -319,7 +346,8 @@
     <button id="tour-btn" class="tb" title="Cinematic fly-through (T)">Tour</button>
     <button id="daynight-btn" class="tb" title="Auto (local time) / day / night / 60s cycle"><span id="dn-label">Night</span></button>
     <button id="weather-btn" class="tb" title="Weather: clear / rain / snow">Clear</button>
-    <button id="fx-btn" class="tb on" title="Bloom / grade / grain">FX</button>
+    <button id="fx-btn" class="tb" title="Bloom / grade / grain">FX</button>
+    <button id="tv-btn" class="tb" title="Old television look (V)">TV</button>
   </div>
 </header>
 
