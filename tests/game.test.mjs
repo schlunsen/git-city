@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   GAME, STAGE_LABELS, buildingHp, applyDamage, damageStage, structureAt, hpTone, faceNormal, bombDamage, nextCombo,
   killScore, accuracy, regenBombs, formatStars, formatTime, boxDistance, bestKey,
-} from '../public/game.js';
+} from '../public/game-rules.js';
 
 test('tuning constants are frozen and sane', () => {
   assert.ok(Object.isFrozen(GAME));
