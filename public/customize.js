@@ -12,7 +12,7 @@
  * a validated login.
  */
 import {
-  OPTIONS, LABELS, LIMITS, CONFIG_PATH, PROFILE_README_DOCS,
+  OPTIONS, LABELS, LIMITS, CONFIG_PATH, PROFILE_README_DOCS, ORG_README_DOCS,
   normalizeCityConfig, serializeCityConfig, serializeBuildingConfig, newFileUrl, editFileUrl, blobUrl,
 } from './city-config.js';
 import { paintGraffiti } from './graffiti.js';
@@ -403,7 +403,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     return h('div', { class: 'cz-publish' }, h('div', { class: 'cz-actions' }, els.primary, els.copy), els.pubNote, els.alt,
       h('p', { class: 'cz-note' }, forOrg ? 'Needs the organization\'s public repository ' : 'Needs your public profile repository ', h('b', { text: forRepo }),
         forOrg ? ' (the one that holds its profile README). ' : ' (the one that holds your profile README). ',
-        h('a', { href: PROFILE_README_DOCS, target: '_blank', rel: 'noopener noreferrer', text: 'How profile repositories work ↗' })));
+        h('a', { href: forOrg ? ORG_README_DOCS : PROFILE_README_DOCS, target: '_blank', rel: 'noopener noreferrer', text: forOrg ? 'How organization profiles work ↗' : 'How profile repositories work ↗' })));
   }
   function updatePublish(ctx) {
     if (!els.primary) return;

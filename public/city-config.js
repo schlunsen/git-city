@@ -530,6 +530,8 @@ export async function fetchBuildingConfig(fullName, { signal, timeout = BUILDING
 
 // ---- publishing through GitHub's own editor (no tokens, no OAuth) ----------
 export const PROFILE_README_DOCS = 'https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme';
+// An organization keeps its city.json in .github, and GitHub documents that repository separately.
+export const ORG_README_DOCS = 'https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/customizing-your-organizations-profile';
 const branchPath = (b) => String(b || 'HEAD').split('/').map(encodeURIComponent).join('/');
 /** GitHub's "create new file" page, pre-filled with the JSON. */
 export function newFileUrl(repo, json, branch = 'HEAD') { // repo: "owner/name" (a bare login means <login>/<login>)
