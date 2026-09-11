@@ -19,6 +19,8 @@
 // Vehicles, HUD, touch controls and puffs all live here; the CSS is injected.
 // ---------------------------------------------------------------------------
 
+import { createBombRun } from './game.js'; // the bomb-run mini game (fly mode)
+
 const MODES = ['orbit', 'walk', 'drive', 'fly'];
 const LABEL = { orbit: 'Orbit', walk: 'Walk', drive: 'Drive', fly: 'Fly' };
 const EYE = 1.65, PLAYER_R = 0.45, WALK_SPEED = 5.2, RUN_SPEED = 11, JUMP_V = 7.4, GRAVITY = 22;
@@ -29,7 +31,7 @@ const CAR = { L: 3.0, W: 1.62, WR: 0.42, WB: 1.9, TRACK: 1.4, R: 0.8, AXLE: 0.66
 const PLANE = { MIN: 11, MAX: 54, FLOOR: 2.6, SOFT_R: 330, HARD_R: 430, CEIL: 190 };
 const TO_M = 1.6;            // world units -> metres for the HUD (a 3-unit car is ~4.8 m)
 const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight']);
+  'Space', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'KeyB', 'KeyG']);
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const damp = (dt, rate) => 1 - Math.exp(-dt * rate);
@@ -38,6 +40,9 @@ const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) 
 const noRaycast = () => {};
 
 export function createExplorer(THREE, deps = {}) {
+  let game = null;          // bomb run (game.js), created with the HUD below
+  let planeFrozen = false;  // crashed in the bomb run: the plane waits for Play again / Exit
+  const gameMouse = { fire: false, bomb: false }, gameInput = { fire: false, bomb: false };
   const { scene, camera, renderer, controls, onModeChange } = deps;
   if (!scene || !camera || !renderer) throw new Error('createExplorer: scene, camera and renderer are required');
   const canvas = renderer.domElement;
@@ -420,6 +425,7 @@ export function createExplorer(THREE, deps = {}) {
   function onKeyDown(e) {
     if (isTyping(e) || e.metaKey || e.altKey) return;
     if (!e.ctrlKey && e.code === 'KeyN') { flyToNext(); e.preventDefault(); return; } // next island
+    if (!e.ctrlKey && e.code === 'KeyG' && mode !== 'orbit') { startGame(); e.preventDefault(); return; } // bomb run
     if (!e.ctrlKey && /^Digit[1-4]$/.test(e.code)) {
       setMode(MODES[Number(e.code.slice(5)) - 1]);
       e.preventDefault();
@@ -427,6 +433,7 @@ export function createExplorer(THREE, deps = {}) {
     }
     if (e.code === 'Escape') {
       if (!menu.hidden) { closeMenu(); return; }
+      if (game?.active) { game.exit(); return; } // Esc ends the bomb run, back to plain flying
       // The first Esc only frees the mouse (the browser does that for us).
       if (mode !== 'orbit' && !locked && performance.now() - unlockedAt > 300) setMode('orbit');
       return;
@@ -436,7 +443,7 @@ export function createExplorer(THREE, deps = {}) {
     if (GAME_KEYS.has(e.code)) e.preventDefault();
   }
   function onKeyUp(e) { keys.delete(e.code); if (mode !== 'orbit' && GAME_KEYS.has(e.code)) e.preventDefault(); }
-  function clearInput() { keys.clear(); acts.clear(); joy.x = joy.y = 0; joy.id = null; drag = null; if (stickKnob) stickKnob.style.transform = ''; }
+  function clearInput() { gameMouse.fire = gameMouse.bomb = false; keys.clear(); acts.clear(); joy.x = joy.y = 0; joy.id = null; drag = null; if (stickKnob) stickKnob.style.transform = ''; }
   const k = (...codes) => (codes.some((c) => keys.has(c)) ? 1 : 0);
 
   function look(dx, dy, sens) {
@@ -454,6 +461,11 @@ export function createExplorer(THREE, deps = {}) {
   function onPointerDown(e) {
     if (mode === 'orbit' || e.target !== canvas) return;
     e.stopPropagation();
+    if (game?.active && e.pointerType === 'mouse' && (e.button === 0 || e.button === 2)) { // bomb run: left fires, right bombs
+      if (e.button === 0) gameMouse.fire = true; else gameMouse.bomb = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+      return;
+    }
     if (e.pointerType === 'touch' && !sawTouch) { sawTouch = true; syncUI(); }
     drag = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0, type: e.pointerType };
     try { canvas.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
@@ -461,6 +473,7 @@ export function createExplorer(THREE, deps = {}) {
   function onPointerMove(e) {
     if (mode === 'orbit' || e.target !== canvas) return;
     e.stopPropagation();
+    if (e.pointerType === 'mouse' && (gameMouse.fire || gameMouse.bomb || game?.active)) { gameMouse.fire = !!(e.buttons & 1) && !!game?.active; gameMouse.bomb = !!(e.buttons & 2) && !!game?.active; }
     if (locked || !drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
@@ -469,6 +482,7 @@ export function createExplorer(THREE, deps = {}) {
   function onPointerUp(e) {
     if (mode === 'orbit' || e.target !== canvas) return;
     e.stopPropagation();
+    if (e.pointerType === 'mouse') { gameMouse.fire = !!(e.buttons & 1) && !!game?.active; gameMouse.bomb = !!(e.buttons & 2) && !!game?.active; }
     if (drag && drag.moved < 6 && mode === 'walk' && e.pointerType === 'mouse' && !locked) requestLock();
     drag = null;
   }
@@ -550,6 +564,7 @@ export function createExplorer(THREE, deps = {}) {
 
   // Touch: one-thumb joystick + per-mode action buttons.
   const ACTS = { walk: [['jump', 'Jump'], ['run', 'Run']], drive: [['brake', 'Drift']], fly: [['faster', '+'], ['slower', '−']] };
+  const GAME_ACTS = [['fire', 'FIRE'], ['bomb', 'BOMB']]; // bomb run on touch: hold FIRE, tap BOMB
   function moveJoy(e) {
     const r = stick.getBoundingClientRect(), R = r.width / 2 - 8;
     let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
@@ -573,6 +588,7 @@ export function createExplorer(THREE, deps = {}) {
       : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · <b>Space</b> jump · <b>click</b> to mouse-look'),
     drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look',
     fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle · <b>N</b> next island',
+    game: () => '<b>Space</b>/<b>click</b> fire · <b>B</b>/<b>right-click</b> bomb · <b>A/D</b> bank · <b>W/S</b> dive · climb · <b>Esc</b> end',
   };
   function syncUI() {
     const on = mode !== 'orbit';
@@ -580,14 +596,17 @@ export function createExplorer(THREE, deps = {}) {
     document.body.classList.toggle('gcx-on', on);
     for (const b of hud.querySelectorAll('[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
     for (const b of menu.querySelectorAll('[data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
-    if (on) hintEl.innerHTML = HINTS[mode]();
+    const gaming = !!game?.active;
+    hud.classList.toggle('gcx-gaming', gaming);
+    if (on) hintEl.innerHTML = gaming ? HINTS.game() : HINTS[mode]();
     cross.hidden = !(mode === 'walk' && locked);
     const touchUI = on && (sawTouch || !!coarse?.matches);
     touch.hidden = !touchUI;
     hud.classList.toggle('gcx-touchy', touchUI);
-    if (touchUI && actsEl.dataset.mode !== mode) {
-      actsEl.dataset.mode = mode;
-      actsEl.innerHTML = (ACTS[mode] || []).map(([a, t]) => `<button type="button" class="gcx-act" data-act="${a}">${t}</button>`).join('');
+    const actsKey = gaming ? 'game' : mode;
+    if (touchUI && actsEl.dataset.mode !== actsKey) {
+      actsEl.dataset.mode = actsKey;
+      actsEl.innerHTML = ((gaming ? GAME_ACTS : ACTS[mode]) || []).map(([a, t]) => `<button type="button" class="gcx-act" data-act="${a}">${t}</button>`).join('');
       acts.clear();
     }
     if (button) {
@@ -723,6 +742,7 @@ export function createExplorer(THREE, deps = {}) {
   function setMode(next) {
     if (!MODES.includes(next) || next === mode) return;
     if (trip && trip.phase !== 'reveal') return; // mid-hop between islands
+    if (game?.active && next !== 'fly') game.exit(); // leaving the plane ends the bomb run (city restored)
     const prev = mode;
     clearInput();
     closeMenu();
@@ -948,9 +968,11 @@ export function createExplorer(THREE, deps = {}) {
     const r = Math.hypot(p.p.x, p.p.z);
     let homeTurn = 0;
     if (p.turnBack > 0) p.turnBack -= dt; // a failed portal hop: bank back toward the island
-    if (r > PLANE.SOFT_R || p.turnBack > 0) {
+    // Bomb run: the play area is the city block plus a margin; past it she banks back to the centre.
+    const out = game?.active ? sdSlab(p.p.x, p.p.z) - GAME_AREA : 0;
+    if (r > PLANE.SOFT_R || p.turnBack > 0 || out > 0) {
       const toC = Math.atan2(p.p.z / r, -p.p.x / r), diff = wrapAngle(toC - p.yaw);
-      const kk = p.turnBack > 0 ? 1 : clamp((r - PLANE.SOFT_R) / 60, 0, 1);
+      const kk = p.turnBack > 0 ? 1 : Math.max(clamp((r - PLANE.SOFT_R) / 60, 0, 1), clamp(out / 18, 0, 1));
       homeTurn = clamp(diff, -1, 1) * 1.4 * kk;
       if (!input.roll) rollTarget = -Math.sign(diff) * 0.7 * kk;
     }
@@ -964,8 +986,9 @@ export function createExplorer(THREE, deps = {}) {
     p.p.x += fx * p.speed * dt; p.p.y += fy * p.speed * dt; p.p.z += fz * p.speed * dt;
     const r2 = Math.hypot(p.p.x, p.p.z);
     if (r2 > PLANE.HARD_R) { p.p.x *= PLANE.HARD_R / r2; p.p.z *= PLANE.HARD_R / r2; }
+    const playing = game?.state === 'play'; // bomb run: buildings and the ground are for crashing into
     // Buildings: skim over roofs, glance off walls.
-    for (const b of getBoxes()) {
+    if (!playing) for (const b of getBoxes()) {
       if (p.p.y > b.max.y + 1.6 || p.p.x < b.min.x - 1.5 || p.p.x > b.max.x + 1.5 || p.p.z < b.min.z - 1.5 || p.p.z > b.max.z + 1.5) continue;
       if (p.p.y > b.max.y - 3) { p.p.y = b.max.y + 1.6; p.pitch = Math.max(p.pitch, 0.18); }
       else if (collide(p.p, 1.5, p.p.y - 1, p.p.y + 1, false)) {
@@ -978,7 +1001,7 @@ export function createExplorer(THREE, deps = {}) {
     // treetops on the island (trees aren't colliders), with a smooth ramp.
     const gy = groundAt(p.p.x, p.p.z), wooded = gy > SEA_LIMIT ? THREE.MathUtils.smoothstep(sdSlab(p.p.x, p.p.z), 2, 14) : 0;
     const floor = Math.max(gy, SEA_Y) + PLANE.FLOOR + wooded * 7;
-    if (p.p.y < floor) {
+    if (!playing && p.p.y < floor) {
       if (p.pitch < -0.15) { p.bump = Math.max(p.bump, 0.7); chase.shake = Math.max(chase.shake, 0.5); }
       p.p.y = floor; p.pitch = Math.max(p.pitch, 0.3);
     }
@@ -1004,7 +1027,8 @@ export function createExplorer(THREE, deps = {}) {
     chase.idle += dt;
     if (chase.idle > 1.5 && !drag) { chase.yaw *= Math.exp(-dt * 2); chase.pitch *= Math.exp(-dt * 2); }
     const yaw = p.yaw + chase.yaw, pp = p.pitch * 0.6, cp = Math.cos(pp);
-    const back = 13 * zoom, up = 3.8 * zoom + chase.pitch * 8;
+    const gm = game?.active ? 1 : 0; // bomb run: pulled back and up so rooftops read
+    const back = 13 * zoom * (1 + 0.35 * gm), up = (3.8 + 4 * gm) * zoom + chase.pitch * 8;
     _v.set(p.p.x - cp * Math.cos(yaw) * back, p.p.y - Math.sin(pp) * back + up, p.p.z + cp * Math.sin(yaw) * back);
     const cpf = Math.cos(p.pitch);
     _v2.set(p.p.x + cpf * Math.cos(p.yaw) * 7, p.p.y + Math.sin(p.pitch) * 7 + 0.9, p.p.z - cpf * Math.sin(p.yaw) * 7);
@@ -1181,11 +1205,11 @@ export function createExplorer(THREE, deps = {}) {
     if (login === edgeHint) return;
     edgeHint = login;
     if (mode === 'orbit') return;
-    hintEl.innerHTML = login ? `Keep flying to reach <b>@${escapeText(login)}</b>’s island →` : HINTS[mode]();
+    hintEl.innerHTML = login ? `Keep flying to reach <b>@${escapeText(login)}</b>’s island →` : game?.active ? HINTS.game() : HINTS[mode]();
   }
   const escapeText = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
   function checkGates(dt) {
-    if (sim !== 'fly' || mode !== 'fly' || exiting || trip) { setEdgeHint(null); return; }
+    if (sim !== 'fly' || mode !== 'fly' || exiting || trip || game?.active) { setEdgeHint(null); return; } // no island hops mid-game
     const W = getWorld(), gs = W?.gates || [];
     const r = Math.hypot(plane.p.x, plane.p.z);
     if (!guard.armed) {
@@ -1216,7 +1240,7 @@ export function createExplorer(THREE, deps = {}) {
   }
   // Only a plane is seen heading off; orbit / walk / drive morph in place and come back in the same mode.
   function flyToNext() {
-    if (trip || exiting) return;
+    if (trip || exiting || game?.active) return;
     const g = nextGate();
     if (!g || typeof deps.travel !== 'function') { toast('No neighbouring islands yet — try again in a moment'); return; }
     if (mode === 'fly') { plane.yaw = wrapAngle(-g.bearing); plane.pitch = 0.05; } // point her out to sea, toward that island
@@ -1238,7 +1262,7 @@ export function createExplorer(THREE, deps = {}) {
     if (now < nextAt) return;
     nextAt = now + 400;
     const g = nextGate(), title = g ? `Go to @${g.login}’s island (N)` : 'Next island (N): neighbours are still loading';
-    for (const b of nextBtns) { if (b.title !== title) b.title = title; b.disabled = !g || !!trip; }
+    for (const b of nextBtns) { if (b.title !== title) b.title = title; b.disabled = !g || !!trip || !!game?.active; }
   }
 
   // Any profile change (search box, chips, Next island) travels through the same warp and
@@ -1246,6 +1270,7 @@ export function createExplorer(THREE, deps = {}) {
   function travelTo(login, opts = {}) {
     login = String(login || '').trim().replace(/^@/, '');
     if (!login || typeof deps.travel !== 'function') return false;
+    if (game?.active) game.exit(); // a new island ends the bomb run (city restored first)
     if (trip || exiting) return true; // one hop at a time
     const known = (getWorld()?.gates || []).find((g) => g.login.toLowerCase() === login.toLowerCase());
     let bearing = opts.bearing ?? known?.bearing;
@@ -1262,6 +1287,73 @@ export function createExplorer(THREE, deps = {}) {
     for (const n of [warp, toastEl]) n.remove();
     if (warpFx) { warpFx.tex?.dispose(); warpFx.mat.dispose(); warpFx.quad.geometry.dispose(); warpFx = null; }
   }
+
+  // ---- bomb run (game.js): shoot and bomb the city from the plane ------------------------
+  // Offered in every explore mode (HUD button, G): it takes the plane and plays over the
+  // city block; a crash hides and freezes the plane until Play again / Exit.
+  const GAME_AREA = 50; // play area: the paved block plus this margin; past it she banks home
+  const gameView = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 1, fy: 0, fz: 0, rx: 0, rz: 1, speed: 0 };
+  function planeShown(v) { if (planeObj) { planeObj.root.visible = v; planeObj.blob.visible = v; } }
+  // Just outside the block on the camera's side, above the tallest roof, heading for the centre.
+  function spawnForGame(top = 24) {
+    const b = Math.hypot(camera.position.x, camera.position.z) > 1 ? Math.atan2(camera.position.z, camera.position.x) : 0.8;
+    let R = 40;
+    while (R < 400 && sdSlab(Math.cos(b) * R, Math.sin(b) * R) < 24) R += 2;
+    plane.p.set(Math.cos(b) * R, Math.max(top + 14, 30), Math.sin(b) * R);
+    plane.yaw = Math.atan2(Math.sin(b), -Math.cos(b)); plane.pitch = -0.04; plane.roll = 0;
+    plane.speed = 24; plane.throttle = 0.4; plane.turnBack = 0; plane.bump = 0;
+    planeFrozen = false; planeShown(true);
+    chase.yaw = chase.pitch = 0; chase.shake = 0;
+    beginBlend(0.7); placePlane(); flyCam(1, true);
+  }
+  game = createBombRun(THREE, {
+    scene, camera, ink, reducedMotion, seaY: SEA_Y, groundAt, toon: (hex) => toon(hex),
+    buildings: () => { try { return deps.buildings?.() || []; } catch { return []; } },
+    login: () => { try { return deps.login?.() || ''; } catch { return ''; } },
+    outside: (x, z) => sdSlab(x, z) - GAME_AREA,
+    obstacles: [{ x: 0, z: 0, r: 2.4, h: 16 }, { x: 0, z: 0, r: 4.7, h: 1.9 }], // the plaza monument: pillar and steps
+    input: () => {
+      gameInput.fire = !!(keys.has('Space') || gameMouse.fire || acts.has('fire'));
+      gameInput.bomb = !!(keys.has('KeyB') || gameMouse.bomb || acts.has('bomb'));
+      return gameInput;
+    },
+    shake: (a) => { chase.shake = Math.max(chase.shake, a); },
+    plane: {
+      state() {
+        const p = plane, cp = Math.cos(p.pitch), v = gameView;
+        v.x = p.p.x; v.y = p.p.y; v.z = p.p.z; v.speed = planeFrozen ? 0 : p.speed;
+        v.fx = cp * Math.cos(p.yaw); v.fy = Math.sin(p.pitch); v.fz = -cp * Math.sin(p.yaw);
+        v.vx = v.fx * v.speed; v.vy = v.fy * v.speed; v.vz = v.fz * v.speed;
+        v.rx = Math.sin(p.yaw); v.rz = Math.cos(p.yaw);
+        return v;
+      },
+      crash() { planeFrozen = true; planeShown(false); },
+      respawn({ top } = {}) { spawnForGame(top); },
+      release() { if (planeFrozen) spawnForGame(); planeFrozen = false; planeShown(true); },
+    },
+    onStart: () => { closeMenu(); try { deps.onGameStart?.(); } catch (err) { console.error(err); } },
+    // End-card repo link: the city is restored by exit(), then orbit, then the host's showcase tour to it.
+    onRepo: (fullName) => {
+      game.exit();
+      if (mode !== 'orbit') setMode('orbit');
+      try { deps.tourToRepo?.(fullName); } catch (err) { console.error(err); }
+    },
+    onChange: () => syncUI(),
+  });
+  function startGame() {
+    if (!game || game.active || trip || exiting) return;
+    if (mode !== 'fly') setMode('fly');
+    if (mode !== 'fly') return;
+    game.start();
+  }
+  const gameBtn = document.createElement('button');
+  gameBtn.type = 'button'; gameBtn.className = 'gcx-game';
+  gameBtn.title = 'Bomb run: shoot and bomb the city from the plane (G)';
+  gameBtn.innerHTML = '🎮<span class="gcx-lbl"> Bomb run</span>';
+  gameBtn.addEventListener('click', (e) => { e.stopPropagation(); startGame(); gameBtn.blur(); });
+  hud.querySelector('.gcx-exit').before(gameBtn);
+  const onCtx = (e) => { if (game?.active && e.target === canvas) e.preventDefault(); }; // right-click bombs
+  canvas.addEventListener('contextmenu', onCtx);
 
   // ---- public ---------------------------------------------------------------------------
   function update(dt, elapsed = 0) {
@@ -1283,7 +1375,8 @@ export function createExplorer(THREE, deps = {}) {
     const input = exiting ? NEUTRAL : readInput();
     if (sim === 'walk') simWalk(dt, input);
     else if (sim === 'drive') simDrive(dt, input);
-    else if (sim === 'fly') simFly(dt, input, elapsed);
+    else if (sim === 'fly') { if (planeFrozen) flyCam(dt, false); else simFly(dt, input, elapsed); }
+    if (game?.active && sim === 'fly' && !exiting) game.update(dt); // bomb run (game.js)
     if (!exiting) checkGates(dt); // reached a portal gate? start the trip to that island
     if (exiting && saved) {
       want.pos.copy(saved.pos);
@@ -1313,8 +1406,10 @@ export function createExplorer(THREE, deps = {}) {
     if (!exiting) updateGauge(dt);
     return true;
   }
-  function resetColliders() { boxes = null; needUnstick = !!sim; }
+  function resetColliders() { boxes = null; needUnstick = !!sim; game?.resync(); }
   function dispose() {
+    game?.dispose();
+    canvas.removeEventListener('contextmenu', onCtx);
     travelCleanup();
     removeEventListener('keydown', onKeyDown);
     removeEventListener('keyup', onKeyUp);
@@ -1347,6 +1442,7 @@ export function createExplorer(THREE, deps = {}) {
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
     wantsKey(e) { return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'; },
     update, postRender, dispose, resetColliders, flyToNext, travelTo,
+    startGame, get game() { return game; },
     groundAt, setLivery,
     /** Debug / test hooks: collider count, box list, and teleporting the active walker / car. */
     debug: {
