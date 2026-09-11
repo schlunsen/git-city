@@ -28,9 +28,9 @@
  */
 
 // How many sprites each sheet was split into (see tools/ — assets are static).
-export const SPRITE_COUNTS = { clouds: 4, trees: 5, bushes: 5, props: 6, houses: 6, landmarks: 4, lots: 4, roofs: 4 };
+export const SPRITE_COUNTS = { clouds: 4, trees: 5, bushes: 5, props: 6, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5 };
-export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3 };
+export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROCKET: 4 };
 // Attraction sites buildLand() reserves before the terrain: the ground each
 // kind offers (attractions.js tags + footprint radius). farm0..farm3 are the
 // fields by each village, fair2 a second fair lot.
@@ -98,6 +98,7 @@ const BIOME_BY_LANG = {
 };
 
 const TAU = Math.PI * 2;
+const PAD_FAME = 1.5; // worldTraits().fame (log10 of stars + followers) for a launch pad
 const smooth = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 function fnv(str) {
@@ -779,6 +780,21 @@ export function createWorld(THREE, scene, deps) {
       }
     }
 
+    // Launch pad (landmarks-4): a rocket and gantry a little inland from the
+    // coast, on the islands of developers with some following. It draws from
+    // its own random stream, so every other feature stays exactly where it was.
+    let PAD = null;
+    if (T.fame >= PAD_FAME) {
+      const pr = seededRandom((T.seed ^ 0x5eed) >>> 0);
+      for (let t = 0; t < 80 && !PAD; t++) {
+        const a = gapB[t % nv] + (pr() - 0.5) * 0.9;
+        const r = shoreR(a) * (0.7 + pr() * 0.16);
+        const x = Math.cos(a) * r, z = Math.sin(a) * r;
+        if (coastAt(x, z) >= 0.12 && siteFree(x, z, 7)) PAD = { a, x, z };
+      }
+      if (PAD) { keepOut.push({ x: PAD.x, z: PAD.z, r: 7 }); plateaus.push({ x: PAD.x, z: PAD.z, r: 9 }); }
+    }
+
     // ---- height -------------------------------------------------------------
     const beachW = 0.06 * B.beach;
     function heightAt(x, z) {
@@ -1203,6 +1219,10 @@ export function createWorld(THREE, scene, deps) {
     cutout(`landmarks-${LANDMARK.WINDMILL}`, 15, MILL.x, groundY(MILL.x, MILL.z), MILL.z, { parent: group, list: bills });
     cutout(`landmarks-${LANDMARK.FERRIS}`, 18, FAIR.x, groundY(FAIR.x, FAIR.z), FAIR.z, { parent: group, list: bills });
     for (const p of [LIGHT, MILL, FAIR]) shadowSpots.push({ x: p.x, y: groundY(p.x, p.z) + 0.1, z: p.z, w: 6 });
+    if (PAD) {
+      cutout(`landmarks-${LANDMARK.ROCKET}`, 17, PAD.x, groundY(PAD.x, PAD.z), PAD.z, { parent: group, list: bills });
+      shadowSpots.push({ x: PAD.x, y: groundY(PAD.x, PAD.z) + 0.1, z: PAD.z, w: 7 });
+    }
     for (let i = 0; i < 6; i++) {
       const a = bearing(FAIR, VILLAGES[nv - 1]) + 0.9 + i * 0.85;
       const kind = i % 2 ? PROP.CART : PROP.LAMP;

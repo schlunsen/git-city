@@ -1,2 +1,4 @@
 node_modules/
 .DS_Store
+# raw image-model sheets (scripts/assets/generate.py); only the keyed PNGs in public/assets/ are committed
+scripts/assets/raw/
