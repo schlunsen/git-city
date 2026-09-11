@@ -49,6 +49,26 @@ const trimEvent = (e, own) => ({
   payload: e.type === 'PushEvent' ? { size: e.payload?.size ?? e.payload?.commits?.length ?? 1 } : {},
 });
 
+// Pinned repositories (the "Pinned" row on a GitHub profile) are only exposed
+// through GraphQL, which needs a token: fine here (the Actions GITHUB_TOKEN),
+// impossible from the browser. Only the profile's own repos become buildings.
+async function pinned(login) {
+  if (!process.env.GITHUB_TOKEN) return [];
+  try {
+    const res = await fetch(`${API}/graphql`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: 'query($login:String!){user(login:$login){pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{name owner{login}}}}}}',
+        variables: { login },
+      }),
+    });
+    if (!res.ok) return [];
+    const nodes = (await res.json())?.data?.user?.pinnedItems?.nodes || [];
+    return nodes.filter(n => n?.owner?.login?.toLowerCase() === login.toLowerCase()).map(n => n.name);
+  } catch { return []; }
+}
+
 export async function scrape(login) {
   const user = await get(`${API}/users/${encodeURIComponent(login)}`);
   const repos = await get(`${API}/users/${encodeURIComponent(login)}/repos?per_page=100&sort=updated`);
@@ -63,6 +83,7 @@ export async function scrape(login) {
     user: trimUser(user),
     repos: repos.map(trimRepo),
     events: events.map(e => trimEvent(e, new Set(repos.map(r => r.full_name)))),
+    pinned: await pinned(login),
   };
 }
 
@@ -74,7 +95,7 @@ for (const login of logins) {
     const fx = await scrape(login);
     const file = path.join(OUT, `${login}.json`);
     await writeFile(file, JSON.stringify(fx));
-    console.log(`✓ ${login}: ${fx.repos.length} repos, ${fx.events.length} events → ${path.relative(process.cwd(), file)}`);
+    console.log(`✓ ${login}: ${fx.repos.length} repos, ${fx.events.length} events, pinned [${fx.pinned.join(', ')}] → ${path.relative(process.cwd(), file)}`);
   } catch (e) {
     failed++;
     console.error(`✗ ${login}: ${e.message}`);
