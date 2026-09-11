@@ -131,6 +131,8 @@ export function buildRepoSigns(THREE, buildings, colorFor = () => 0x64dedb, { si
   atlases = [];
   const fascias = [], roofs = [];
   for (const b of buildings) {
+    // Re-lettering (a building config arrived): drop this building's previous sign first.
+    for (const old of b.mesh.children.filter((c) => c.name === 'repo-sign')) { b.mesh.remove(old); old.geometry.dispose(); }
     const bodies = b.bodies || (b.body ? [b.body] : []);
     if (!bodies.length) continue;
     const color = colorFor(b.repo), sign = signFor?.(b.repo) || '';

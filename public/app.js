@@ -21,7 +21,8 @@ import { createExplorer } from './explore.js'; // walk / drive / fly explore mod
 import { fetchNeighbors } from './neighbors.js';
 import { buildRepoSigns } from './repo-signs.js'; // repo names on every building (fascia + tower crowns) // portal gates to the next developer's island
 import { buildWayfinding } from './wayfinding.js'; // repo-named street signs + the explore-mode name tag
-import { fetchCityConfig, normalizeCityConfig } from './city-config.js'; // the developer's .git-city/city.json (validated, data only)
+import { fetchCityConfig, normalizeCityConfig, fetchBuildingConfig, normalizeBuildingConfig, mergeBuildingConfig } from './city-config.js'; // city.json / building.json (validated, data only)
+import { paintGraffiti } from './graffiti.js'; // spray-painted wall text (building configs)
 import { createCustomizer, showToast } from './customize.js'; // Customize panel: live preview + publish via GitHub's editor
 
 // ---------------------------------------------------------------------------
@@ -259,7 +260,8 @@ async function loadFixture(login) {
   const fx = await res.json();
   const shift = Date.now() - new Date(fx.fetched_at).getTime();
   const events = (fx.events || []).map(e => ({ ...e, created_at: new Date(new Date(e.created_at).getTime() + shift).toISOString() }));
-  return { user: fx.user, repos: fx.repos, events, fetchedAt: fx.fetched_at, pinned: Array.isArray(fx.pinned) ? fx.pinned : [] };
+  return { user: fx.user, repos: fx.repos, events, fetchedAt: fx.fetched_at, pinned: Array.isArray(fx.pinned) ? fx.pinned : [],
+    tzOffset: Number.isFinite(fx.tz_offset) ? fx.tz_offset : null };
 }
 
 async function loadUser(login) {
@@ -1177,14 +1179,10 @@ function buildCity(repos, user) {
     const { x, z } = worldForCell(a.gx, a.gz);
     const h = starsToHeight(repo.stargazers_count);
     const f = starsToFootprint(repo.stargazers_count);
-    createBuilding(repo, x, z, h, f, repoColor(repo), repoCfg(repo)?.style); // language colour unless city.json says otherwise
+    createBuilding(repo, x, z, h, f, repoColor(repo), buildingCfg(repo)); // language colour unless a building config says otherwise
   });
 
-  // Repo names on the buildings, readable from walk / drive / fly.
-  buildRepoSigns(THREE, buildingMeshes, repoColor, { signFor: (repo) => repoCfg(repo)?.sign });
-  // Streets named after the repos along them, and the explore-mode name tag (wayfinding.js).
-  wayfinding?.dispose();
-  wayfinding = buildWayfinding(THREE, { parent: cityGroup, buildings: buildingMeshes, streets: L.streets, cell: CELL, plazaRadius: PLAZA_R, envMat, ink: getOutlineMat() });
+  decorateBuildings(L); // repo signs + street names
   buildDistrictSigns(THREE, slots.assignments);
   buildDistrictBaseplates(THREE, slots.assignments);
 
@@ -1205,7 +1203,8 @@ function buildCity(repos, user) {
   return rankRepos(repos).sort((a, b) => b.stargazers_count - a.stargazers_count); // what's built, tallest first
 }
 
-function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.json repos[name].style
+function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: building config (city.json repos[name] + building.json)
+  const form = bcfg?.style;
   const group = new THREE.Group();
   const rnd = seededRandom(hashStr(repo.full_name || repo.name || ''));
   const pal = buildingPalette(color);
@@ -1220,9 +1219,11 @@ function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.js
   let hip = tiers.length === 1 && h < 9 && rnd() > 0.45;
   // city.json style changes the silhouette only (height and footprint still follow
   // the stars); applied after the draws above so the rest of the building is unchanged.
-  if (form === 'tower') { tiers = h >= 8 ? [{ h: h * 0.5, f }, { h: h * 0.3, f: f * 0.78 }, { h: h * 0.2, f: f * 0.6 }] : [{ h: h * 0.62, f }, { h: h * 0.38, f: f * 0.72 }]; hip = false; }
+  if (form === 'tower') { tiers = [{ h, f }]; hip = false; } // one shaft; the spire goes on below
+  else if (form === 'stepped') { tiers = h >= 8 ? [{ h: h * 0.5, f }, { h: h * 0.3, f: f * 0.78 }, { h: h * 0.2, f: f * 0.6 }] : [{ h: h * 0.62, f }, { h: h * 0.38, f: f * 0.72 }]; hip = false; }
+  else if (form === 'cottage') { tiers = [{ h, f }]; hip = true; }
   else if (form === 'block') { tiers = [{ h, f }]; hip = false; }
-  else if (form === 'house') { tiers = [{ h, f }]; hip = true; }
+  const neon = bcfg?.neon ? hexNum(bcfg.neon) : 0xffffff; // building config "neon": the lit windows' glow
 
   const roofH = 0.7, over = 0.45;
   const roofMat = toonMat({ color: pal.roof });
@@ -1238,7 +1239,7 @@ function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.js
       cx += (rnd() - 0.5) * 2 * slack; cz += (rnd() - 0.5) * 2 * slack;
     }
     const { map, emissiveMap } = paintFacade(rnd, pal, tf, t.h, { ground: i === 0, style, litProb });
-    const mat = toonMat({ color: 0xffffff, map, emissive: 0xffffff, emissiveMap, emissiveIntensity: 0 });
+    const mat = toonMat({ color: 0xffffff, map, emissive: neon, emissiveMap, emissiveIntensity: 0 });
     const body = new THREE.Mesh(new THREE.BoxGeometry(tf, t.h, tf), mat);
     body.position.set(cx, baseY + t.h / 2, cz);
     body.castShadow = body.receiveShadow = true;
@@ -1263,6 +1264,8 @@ function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.js
     const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), toonMat({ color: 0x8a5a48 }));
     chimney.position.set(cx + topF * 0.25, topY + 1.1, cz - topF * 0.2);
     group.add(pyr, pyrHull, chimney);
+  } else if (bcfg?.roof) { // building config "roof" replaces the random decal / props
+    buildRoof(group, bcfg.roof, { cx, cz, topY, topF, size: topF + (tiers.length === 1 ? over : over * 0.6), propDark });
   } else {
     // Half the flat roofs get a painted top-down decal (helipad, garden,
     // gravel + HVAC, solar); the rest keep their 3D props.
@@ -1295,7 +1298,7 @@ function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.js
       ac.add(outlineBox(1.1, 0.7, 1.1, 0.16));
       group.add(ac);
     }
-    if (tiers.length === 3) {
+    if (tiers.length === 3 || form === 'tower') {
       const spire = new THREE.Mesh(new THREE.ConeGeometry(0.5, 3.4, 6), propMat);
       spire.position.set(cx, topY + 1.7, cz);
       const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.6, 4), propDark);
@@ -1307,6 +1310,10 @@ function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.js
       group.add(mast);
     }
   }
+
+  // Building config "graffiti" (ground-floor walls) and "flag" (roof, or the cottage's ridge).
+  if (bcfg?.graffiti) addGraffiti(group, bcfg.graffiti, { half: Math.max(2.2, tiers[0].f) / 2, height: tiers[0].h, x, z, seed: repo.full_name || repo.name || '' });
+  if (bcfg?.flag) addRoofFlag(group, bcfg.flag, hip ? { x: cx, y: topY + 1.7, z: cz } : { x: cx - topF / 2 + 0.55, y: topY, z: cz + topF / 2 - 0.55 }, propDark);
 
   // Rooftop beacon for the most-starred repos (a glowing cap light).
   let beacon = null;
@@ -1330,6 +1337,89 @@ function createBuilding(repo, x, z, h, f, color, form = null) { // form: city.js
   // Every tier is a raycast target with a back-reference to the building.
   for (const b of bodies) b.userData.building = entry;
   if (repo.full_name) buildingByName.set(repo.full_name, entry);
+}
+
+// ---- building config extras (city.json repos[name] / a repo's building.json) ----
+// "roof": one of world.js's painted roof decals, or a small prop.
+const ROOF_DECAL = { helipad: 1, garden: 2, solar: 3 }; // roofs-0 is gravel + HVAC
+function buildRoof(group, kind, { cx, cz, topY, topF, size, propDark }) {
+  if (Object.hasOwn(ROOF_DECAL, kind)) {
+    if (!world) return;
+    const d = world.roofDecal(ROOF_DECAL[kind], size - 0.5);
+    d.position.set(cx, topY + 0.02, cz);
+    group.add(d);
+  } else if (kind === 'pool') {
+    const w = Math.max(1.2, topF - 1.3), d = Math.max(1, w * 0.62);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(w + 0.7, 0.12, d + 0.7), toonMat({ color: 0xe9dfc9 }));
+    deck.position.set(cx, topY + 0.06, cz);
+    const water = new THREE.Mesh(new THREE.BoxGeometry(w, 0.1, d), toonMat({ color: 0x4fc9ec, emissive: 0x2a9fd0, emissiveIntensity: 0.25 }));
+    water.position.set(cx, topY + 0.17, cz);
+    const kerb = toonMat({ color: 0xf6f1e6 });
+    for (const [sx, sz, bw, bd] of [[0, 1, w + 0.3, 0.15], [0, -1, w + 0.3, 0.15], [1, 0, 0.15, d], [-1, 0, 0.15, d]]) {
+      const k = new THREE.Mesh(new THREE.BoxGeometry(bw, 0.22, bd), kerb);
+      k.position.set(cx + sx * (w / 2 + 0.075), topY + 0.23, cz + sz * (d / 2 + 0.075));
+      group.add(k);
+    }
+    group.add(deck, water);
+  } else if (kind === 'antenna') {
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.12, 4.4, 6), propDark);
+    mast.position.set(cx, topY + 2.2, cz);
+    const dish = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 6, 0, Math.PI * 2, 0, Math.PI / 3), toonMat({ color: 0xdfe3ec, side: THREE.DoubleSide }));
+    dish.rotation.x = -Math.PI / 2.4; dish.position.set(cx + 0.3, topY + 2.6, cz + 0.3);
+    for (const y of [1.5, 3.1]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 0.06), propDark);
+      bar.position.set(cx, topY + y, cz);
+      group.add(bar);
+    }
+    group.add(mast, dish);
+  } // 'none': a bare roof
+}
+// "graffiti": spray paint (graffiti.js, canvas fillText only) on two ground-floor
+// walls, below the shop fascia, on a decal just off the wall.
+function addGraffiti(group, g, { half, height, x, z, seed }) {
+  const fw = Math.min(half * 2 * 0.92, 5.2), fh = fw * (96 / 512);            // the fascia sign (repo-signs.js)
+  const fasciaBottom = Math.min(height - 0.35 - fh / 2, 2.75) - fh / 2;
+  const gh = Math.min(fasciaBottom - 0.3, half * 0.88), gw = gh * 2;          // the canvas is 2:1
+  if (gh < 0.45) return;
+  const tex = new THREE.CanvasTexture(paintGraffiti(document.createElement('canvas'), g, seed));
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const mat = toonMat({ map: tex, transparent: true, alphaTest: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  // The wall facing away from the plaza, and the one beside it.
+  let nx = x, nz = z;
+  if (Math.abs(nx) > Math.abs(nz)) { nx = Math.sign(nx) || 1; nz = 0; } else { nz = Math.sign(nz) || 1; nx = 0; }
+  for (const [ax, az] of [[nx, nz], [-nz, nx]]) {
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(gw, gh), mat);
+    quad.rotation.y = Math.atan2(ax, az);
+    quad.position.set(ax * (half + 0.04), 0.3 + gh / 2, az * (half + 0.04));
+    quad.raycast = noRaycast;
+    group.add(quad);
+  }
+}
+// "flag": an emoji or up to 3 characters on a little rooftop flag.
+function addRoofFlag(group, text, at, poleMat) {
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 2.4, 6), poleMat);
+  pole.position.set(at.x, at.y + 1.2, at.z);
+  const c = document.createElement('canvas');
+  c.width = 192; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#fdf8ec'; g.fillRect(0, 0, 192, 128);
+  g.lineWidth = 8; g.strokeStyle = '#1a2233'; g.strokeRect(4, 4, 184, 120);
+  let px = 84;
+  const font = () => `800 ${px}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+  g.font = font();
+  while (g.measureText(text).width > 168 && px > 24) { px -= 4; g.font = font(); }
+  g.fillStyle = '#1a2233'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 96, 70);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = toonMat({ map: tex });
+  const cloth = new THREE.PlaneGeometry(1.2, 0.8).translate(0.6, 0, 0);
+  const front = new THREE.Mesh(cloth, mat);
+  const back = new THREE.Mesh(cloth.clone().rotateY(Math.PI).translate(1.2, 0, 0), mat); // reads the right way round from behind
+  for (const m of [front, back]) { m.position.set(at.x + 0.05, at.y + 1.95, at.z); m.raycast = noRaycast; }
+  pole.raycast = noRaycast;
+  group.add(pole, front, back);
 }
 
 // ---------------------------------------------------------------------------
@@ -1846,18 +1936,15 @@ function overviewLeg(bearing) {
   return { dur: 7, pos: (u, o) => o.set(Math.cos(bearing + u * 0.6) * 150, 72, Math.sin(bearing + u * 0.6) * 150), look: (u, o) => o.copy(look) };
 }
 // Tour order: the developer's highlights first (city.json "featured", then the
-// profile's pinned repos when known), then carry on with the most-starred rest.
+// profile's pinned repos when known), then on through all their other repos.
 function tourStops() {
   const byName = new Map(buildingMeshes.map(b => [String(b.repo.name).toLowerCase(), b]));
   const picks = [], seen = new Set();
   const add = (b, highlight) => { if (b && !seen.has(b)) { seen.add(b); picks.push({ b, highlight }); } };
   for (const n of cfgNow()?.featured || []) add(byName.get(String(n).toLowerCase()), 'featured');
   for (const n of pinnedRepos) add(byName.get(String(n).toLowerCase()), 'pinned');
-  const want = Math.max(8, picks.length + 4);
-  for (const b of [...buildingMeshes].sort((x, y) => (y.repo.stargazers_count || 0) - (x.repo.stargazers_count || 0))) {
-    if (picks.length >= want) break;
-    add(b, null);
-  }
+  // ...then every other repo in the city, most-starred first (the tour loops after the last).
+  for (const b of [...buildingMeshes].sort((x, y) => (y.repo.stargazers_count || 0) - (x.repo.stargazers_count || 0))) add(b, null);
   return picks;
 }
 function buildShowcase(start = 0) {
@@ -2699,6 +2786,7 @@ function onPointerUp(e) {
 }
 
 function openPanel(repo) {
+  ensureBuildingConfig(repo); // its .git-city/building.json, if not fetched yet (restyles the building when it lands)
   if (isCompact()) { setMenu(false); setProfile(false); }
   const panel = document.getElementById('panel');
   const colorHex = LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR;
@@ -2895,7 +2983,9 @@ function renderExplorer(user, repos) {
     <div class="row"><span>Repositories</span><b class="tnum">${repos.length}</b></div>
     <div class="row"><span>Stars</span><b class="tnum">${fmtNum(totalStars)}</b></div>
     <div class="row"><span>Followers</span><b class="tnum">${fmtNum(user.followers)}</b></div>
-    <div class="row"><span>Top language</span><b>${topLang ? escapeHtml(prettify(topLang)) : '—'}</b></div>`;
+    <div class="row"><span>Top language</span><b>${topLang ? escapeHtml(prettify(topLang)) : '—'}</b></div>
+    <div class="row"><span>Local time</span><b class="tnum" id="dev-time">—</b></div>`;
+  updateDevClock();
   renderTopCard('Tallest towers', repos.slice(0, 5).map(r => ({
     full_name: r.full_name, name: r.name, language: r.language, value: `★ ${fmtNum(r.stargazers_count)}`,
   })), 'var(--orange)');
@@ -3118,9 +3208,58 @@ function setDayMode(mode) {
 }
 // Daylight from the viewer's local time: dark until ~05:30, full day 08:30–17:00,
 // dusk until ~20:00. Mapped back onto applyDayFactor's phase (0 = noon).
+// The city's clock: 'auto' day/night follows the developer's local time when
+// we know it: city.json look.timezone (IANA), else the UTC offset of their
+// latest commit (a commit patch keeps its author's "Date: ... +0200"), else
+// the viewer's own clock.
+let devTz = { offset: null }; // minutes east of UTC
+function devLocalTime(now = new Date()) {
+  const zone = cfgNow()?.look?.timezone;
+  if (zone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' }).formatToParts(now);
+      const get = (t) => Number(parts.find(p => p.type === t)?.value);
+      return { h: get('hour') + get('minute') / 60, label: zone.split('/').pop().replace(/_/g, ' ') };
+    } catch { /* not a zone this browser knows: fall through */ }
+  }
+  if (devTz.offset != null) {
+    const mins = (((now.getUTCHours() * 60 + now.getUTCMinutes() + devTz.offset) % 1440) + 1440) % 1440;
+    const a = Math.abs(devTz.offset), mm = a % 60;
+    return { h: mins / 60, label: `UTC${devTz.offset < 0 ? '−' : '+'}${Math.floor(a / 60)}${mm ? `:${String(mm).padStart(2, '0')}` : ''}` };
+  }
+  return { h: now.getHours() + now.getMinutes() / 60, label: 'your clock' };
+}
+function updateDevClock() {
+  const el = document.getElementById('dev-time');
+  if (!el) return;
+  const { h, label } = devLocalTime();
+  const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+  el.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${label}`;
+}
+setInterval(updateDevClock, 30000);
+const TZ_CACHE = 'gc-tz:';
+async function detectDevOffset(login, events) {
+  const key = TZ_CACHE + String(login).toLowerCase();
+  try { const c = JSON.parse(localStorage.getItem(key) || 'null'); if (c && Date.now() - c.t < 7 * 864e5) return c.offset; } catch { /* no storage */ }
+  const push = (events || []).find(e => e.type === 'PushEvent' && e.payload?.head && e.repo?.name);
+  if (!push) return null;
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const r = await fetch(`${API}/repos/${push.repo.name}/commits/${push.payload.head}`, { headers: { Accept: 'application/vnd.github.patch' }, signal: ctrl.signal });
+    if (!r.ok || !r.body) return null;
+    const reader = r.body.getReader(); // the Date header is near the top: read one chunk, not a whole big patch
+    const { value } = await reader.read();
+    reader.cancel().catch(() => {});
+    const m = new TextDecoder().decode(value || new Uint8Array()).slice(0, 4096).match(/^Date: .* ([+-])(\d{2})(\d{2})$/m);
+    if (!m) return null;
+    const offset = (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
+    try { localStorage.setItem(key, JSON.stringify({ offset, t: Date.now() })); } catch { /* no storage */ }
+    return offset;
+  } catch { return null; } finally { clearTimeout(to); }
+}
 function localClockPhase() {
-  const d = new Date();
-  const h = d.getHours() + d.getMinutes() / 60;
+  const h = devLocalTime().h;
   const ramp = (a, b) => THREE.MathUtils.clamp((h - a) / (b - a), 0, 1);
   const light = h < 12 ? ramp(5.5, 8.5) : 1 - ramp(17, 20);
   return Math.acos(light) / (Math.PI * 2);
@@ -3358,9 +3497,84 @@ function rankRepos(repos) {
 }
 const repoCfg = (repo) => cfgNow()?.repos[repo.name] || null; // a null-prototype map: any repo name is safe
 const hexNum = (hex) => parseInt(hex.slice(1), 16);
+// A repo's own .git-city/building.json, fetched lazily (the 16 most-starred buildings
+// of a city, and any building when it's clicked) and kept for the visit:
+// "owner/repo" (lower case) -> normalised config | null (none / unusable) | pending Promise.
+const buildingFiles = new Map();
+const BUILDING_PREFETCH = 16;
+const buildingFile = (repo) => { const f = buildingFiles.get(String(repo.full_name || '').toLowerCase()); return f && !(f instanceof Promise) ? f : null; };
+// The owner's city.json entry wins over the repo's file, field by field.
+const buildingCfg = (repo) => mergeBuildingConfig(repoCfg(repo), buildingFile(repo));
 function repoColor(repo) {
-  const c = repoCfg(repo)?.color;
+  const c = buildingCfg(repo).color;
   return c ? hexNum(c) : (LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR);
+}
+// Fetch + validate one building.json once per visit; resolves true when it set something.
+function fetchBuildingFor(repo) {
+  const key = String(repo.full_name || '').toLowerCase();
+  const cur = buildingFiles.get(key);
+  if (!key || cur !== undefined) return cur instanceof Promise ? cur.then(() => false) : Promise.resolve(false);
+  const where = `${repo.full_name}/.git-city/building.json`;
+  const p = fetchBuildingConfig(repo.full_name).then((res) => {
+    let cfg = null;
+    if (res.found && !res.error) {
+      const { config, warnings } = normalizeBuildingConfig(res.raw);
+      if (config && Object.keys(config).length) cfg = config;
+      if (warnings.length) console.warn(`[git-city] ${where}: ${warnings.length} setting(s) ignored\n- ${warnings.join('\n- ')}`);
+    } else if (res.found) console.warn(`[git-city] ${where} ignored: ${res.error}`);
+    buildingFiles.set(key, cfg);
+    return !!cfg;
+  });
+  buildingFiles.set(key, p);
+  return p;
+}
+function loadBuildingConfigs(visible, version) {
+  const top = [...visible].filter(r => r.full_name).sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, BUILDING_PREFETCH);
+  Promise.all(top.map(fetchBuildingFor)).then((set) => {
+    const hits = top.filter((r, i) => set[i]);
+    if (hits.length && version === cityVersion) refreshBuildings(hits);
+  });
+}
+function ensureBuildingConfig(repo) { // a clicked building: fetch its file if nobody has yet
+  const version = cityVersion;
+  fetchBuildingFor(repo).then((set) => { if (set && version === cityVersion) refreshBuildings([repo]); });
+}
+// Rebuild just these buildings in place (same lot), then re-letter the signs.
+function refreshBuildings(repos) {
+  let billboards = false;
+  for (const repo of repos) {
+    const b = buildingByName.get(repo.full_name);
+    const i = buildingMeshes.indexOf(b);
+    if (!b || i < 0) continue;
+    const { x, z } = b.mesh.position, r = b.repo;
+    cityGroup.remove(b.mesh);
+    disposeObject(b.mesh);
+    createBuilding(r, x, z, starsToHeight(r.stargazers_count), starsToFootprint(r.stargazers_count), repoColor(r), buildingCfg(r));
+    buildingMeshes.splice(i, 1, buildingMeshes.pop()); // keep the order (the top building leads)
+    if (hovered === b) hovered = null;
+    billboards ||= !!buildingFile(r)?.billboard;
+  }
+  decorateBuildings();
+  explorer?.resetColliders();
+  if (billboards && profileNow) world.setProfile({ ...profileNow, config: worldConfig() }, cityLayout.city);
+}
+// Signs and street names follow the buildings (rebuilt with them).
+function decorateBuildings(L = cityLayout) {
+  // Repo names on the buildings, readable from walk / drive / fly; city.json / building.json can re-letter them.
+  buildRepoSigns(THREE, buildingMeshes, repoColor, { signFor: (repo) => buildingCfg(repo).sign });
+  // Streets named after the repos along them, and the explore-mode name tag (wayfinding.js).
+  wayfinding?.dispose();
+  wayfinding = buildWayfinding(THREE, { parent: cityGroup, buildings: buildingMeshes, streets: L.streets, cell: CELL, plazaRadius: PLAZA_R, envMat, ink: getOutlineMat() });
+}
+// What world.js sees: city.json, plus billboard copy from repos' own building.json (the owner's wins).
+function worldConfig() {
+  const cfg = cfgNow();
+  const extra = (profileNow?.repos || []).filter((r) => buildingFile(r)?.billboard && !cfg?.repos[r.name]?.billboard);
+  if (!extra.length) return cfg;
+  const base = cfg || normalizeCityConfig({}).config;
+  const repos = Object.assign(Object.create(null), base.repos);
+  for (const r of extra) repos[r.name] = { ...repos[r.name], billboard: buildingFile(r).billboard };
+  return { ...base, repos };
 }
 /**
  * The city's validated Gource View player settings (city.json "player"):
@@ -3410,7 +3624,7 @@ function applyProfile(user, repos, version = cityVersion) {
   profileNow = { user, repos };
   const cfg = cfgNow();
   setCityLayout(cityLayoutFor(user, repos));
-  world.setProfile({ user, repos, config: cfg }, cityLayout.city);
+  world.setProfile({ user, repos, config: worldConfig() }, cityLayout.city);
   // Neighbour portal gates at sea (neighbors.js): the developer's picks first, topped up automatically;
   // fire-and-forget, dropped if another city loaded meanwhile.
   fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES), pinned: cfg?.neighbours || [] })
@@ -3419,6 +3633,7 @@ function applyProfile(user, repos, version = cityVersion) {
   explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
   renderExplorer(user, visible);
   applyCityLook(cfg);
+  loadBuildingConfigs(visible, version); // repos' own .git-city/building.json (top 16; cached)
   return visible;
 }
 // look / plane / island name. time, weather, tv and fx set how the city opens;
@@ -3492,11 +3707,13 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     const demo = new URLSearchParams(location.search).has('demo');
     let user, repos, sample = null;
     pinnedRepos = [];
+    devTz = { offset: null };
     // Featured developers ship with a daily-refreshed snapshot: use it while it
     // is fresh (no API budget spent), otherwise go live and keep it as a fallback.
     if (FIXTURES[login]) {
       const fx = await loadFixture(login).catch(() => null);
       pinnedRepos = fx?.pinned || []; // even a stale snapshot still knows the pins
+      if (fx?.tzOffset != null) devTz.offset = fx.tzOffset; // ...and the developer's UTC offset
       if (fx && (demo || Date.now() - Date.parse(fx.fetchedAt) < 48 * 3600e3)) { sample = fx; ({ user, repos } = fx); }
     }
     try {
@@ -3539,6 +3756,11 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     // The activity timeline arrives second so the city never waits on it.
     const events = sample ? sample.events : await fetchEvents(user.login);
     if (version !== cityVersion) return;
+    if (devTz.offset == null) {
+      detectDevOffset(user.login, events).then((o) => {
+        if (version === cityVersion && o != null) { devTz.offset = o; updateDevClock(); }
+      });
+    }
     buildRingFromEvents(events);
     setupTimeline(events, visibleRepos);
   } catch (e) {

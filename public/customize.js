@@ -13,8 +13,11 @@
  */
 import {
   OPTIONS, LABELS, LIMITS, CONFIG_PATH, PROFILE_README_DOCS,
-  normalizeCityConfig, serializeCityConfig, newFileUrl, editFileUrl, blobUrl,
+  normalizeCityConfig, serializeCityConfig, serializeBuildingConfig, newFileUrl, editFileUrl, blobUrl,
 } from './city-config.js';
+import { paintGraffiti } from './graffiti.js';
+
+const GUIDE = './customize.html'; // the how-to page (public/customize.html)
 
 const MAX_PREFILL_URL = 8000; // longer "new file" URLs get unreliable: fall back to copy + paste
 const PREVIEW_DELAY = 450;
@@ -87,6 +90,7 @@ export function showToast(text, { tone = 'info', ms = 7000 } = {}) {
  * }} hooks
  */
 export function createCustomizer({ context, preview, restore, onOpen }) {
+  injectStyle(); // also styles the profile card's "How to customize" link
   let root = null, pill = null;
   let draft = null, forLogin = null, live = true, previewing = false, lastJson = '', timer = 0;
   const repoInfo = new Map(); // login -> { exists: true|false|null, branch }
@@ -272,19 +276,57 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
         r.el.classList.toggle('is-edited', !!getIn(draft, ['repos', name]));
       }
     }
+    // One building's settings: the same fields a repo's own .git-city/building.json takes.
     function editor(name) {
-      const path = (k) => ['repos', name, k];
-      const setR = (k, v) => { setIn(draft, path(k), v); changed(); sync(); };
-      const sign = h('input', { type: 'text', value: getIn(draft, path('sign')) ?? '', maxLength: LIMITS.sign, placeholder: 'Shop sign text', oninput: () => setR('sign', sign.value) });
-      const bill = h('input', { type: 'text', value: getIn(draft, path('billboard')) ?? '', maxLength: LIMITS.text, placeholder: 'Country billboard text', oninput: () => setR('billboard', bill.value) });
-      const cur = getIn(draft, path('style'));
-      const style = h('select', { onchange: () => setR('style', style.value === 'auto' ? undefined : style.value) },
-        ...OPTIONS.style.map((v) => h('option', { value: v, text: LABELS.style[v], selected: v === (cur || 'auto') })));
-      const col = getIn(draft, path('color'));
-      const pick = h('input', { type: 'color', value: col || '#64dedb', disabled: !col, 'aria-label': 'Facade colour', oninput: () => setR('color', pick.value) });
-      const on = h('input', { type: 'checkbox', checked: !!col, 'aria-label': 'Custom facade colour', onchange: () => { pick.disabled = !on.checked; setR('color', on.checked ? pick.value : undefined); } });
-      return h('div', { class: 'cz-repo-edit' },
-        row('Sign', sign), row('Billboard', bill), row('Building', style), row('Facade', h('span', { class: 'cz-colour' }, on, pick)));
+      const path = (...k) => ['repos', name, ...k];
+      const setR = (p, v, after) => { setIn(draft, p, v); changed(); sync(); after?.(); };
+      const input = (p, max, placeholder, after) => {
+        const el = h('input', { type: 'text', value: getIn(draft, p) ?? '', maxLength: max, placeholder, oninput: () => setR(p, el.value, after) });
+        return el;
+      };
+      const choose = (p, list, labels, after) => { // list[0] is the default and isn't stored
+        const cur = getIn(draft, p) || list[0];
+        const el = h('select', { onchange: () => setR(p, el.value === list[0] ? undefined : el.value, after) },
+          ...list.map((v) => h('option', { value: v, text: labels[v] || v, selected: v === cur })));
+        return el;
+      };
+      const paint = (p, fallback, label, after) => {
+        const cur = getIn(draft, p);
+        const pick = h('input', { type: 'color', value: cur || fallback, disabled: !cur, 'aria-label': label, oninput: () => setR(p, pick.value, after) });
+        const on = h('input', { type: 'checkbox', checked: !!cur, 'aria-label': `Custom ${label.toLowerCase()}`, onchange: () => {
+          pick.disabled = !on.checked;
+          setR(p, on.checked ? pick.value : undefined, after);
+        } });
+        return h('span', { class: 'cz-colour' }, on, pick);
+      };
+      // Graffiti, previewed with the same painter as the walls (graffiti.js).
+      const wall = h('canvas', { class: 'cz-graffiti', role: 'img', 'aria-label': 'Graffiti preview' });
+      const redraw = () => {
+        const g = getIn(draft, path('graffiti')) || {};
+        const text = typeof g.text === 'string' ? g.text.trim().slice(0, LIMITS.graffiti) : '';
+        wall.hidden = !text;
+        if (text) paintGraffiti(wall, { text, color: /^#[0-9a-f]{6}$/i.test(g.color || '') ? g.color : undefined, style: g.style }, `${forLogin}/${name}`);
+      };
+      const copyFile = h('button', { type: 'button', class: 'cz-mini', text: 'Copy as building.json', title: 'For the repository itself: .git-city/building.json', onclick: () => {
+        const ctx = context();
+        const { config } = normalizeCityConfig(draft, { repos: ctx?.repos, login: ctx?.login });
+        copyText(serializeBuildingConfig(config?.repos[name] || {}), copyFile, 'Copy as building.json');
+      } });
+      const box = h('div', { class: 'cz-repo-edit' },
+        row('Sign', input(path('sign'), LIMITS.sign, 'Shop sign text')),
+        row('Billboard', input(path('billboard'), LIMITS.text, 'Country billboard text')),
+        row('Building', choose(path('style'), OPTIONS.style, LABELS.style)),
+        row('Roof', choose(path('roof'), OPTIONS.roof, LABELS.roof)),
+        row('Facade', paint(path('color'), '#64dedb', 'Facade colour')),
+        row('Neon', paint(path('neon'), '#ff5ab4', 'Neon colour'), 'The lit windows\' glow at night.'),
+        row('Flag', input(path('flag'), LIMITS.flagCodePoints, 'GC or an emoji'), 'An emoji or up to 3 characters.'),
+        row('Graffiti', input(path('graffiti', 'text'), LIMITS.graffiti, 'ship it!', redraw)),
+        row('Spray style', choose(path('graffiti', 'style'), OPTIONS.graffiti, LABELS.graffiti, redraw)),
+        row('Spray paint', paint(path('graffiti', 'color'), '#ff5ab4', 'Graffiti colour', redraw)),
+        wall,
+        h('div', { class: 'cz-actions' }, copyFile));
+      redraw();
+      return box;
     }
     for (const r of repos) {
       const name = r.name;
@@ -367,17 +409,32 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     const ctx = context();
     if (ctx?.login === login && root && !root.hidden) updatePublish(ctx);
   }
-  async function copyJson() {
+  async function copyText(text, btn, label) {
     let ok = false;
-    try { await navigator.clipboard.writeText(lastJson); ok = true; } catch {
-      const ta = h('textarea', { value: lastJson, readOnly: true });
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {
+      const ta = h('textarea', { value: text, readOnly: true });
       ta.style.position = 'fixed'; ta.style.opacity = '0';
       document.body.append(ta); ta.select();
       try { ok = document.execCommand('copy'); } catch { ok = false; }
       ta.remove();
     }
-    els.copy.textContent = ok ? 'Copied ✓' : 'Select the JSON below';
-    setTimeout(() => { if (els.copy) els.copy.textContent = 'Copy JSON'; }, 1800);
+    btn.textContent = ok ? 'Copied ✓' : 'Copy failed: select the text';
+    setTimeout(() => { btn.textContent = label; }, 1800);
+  }
+  const copyJson = () => copyText(lastJson, els.copy, 'Copy JSON');
+  // The browser's own zone first (you're most likely customizing from home), then every IANA zone.
+  function timezoneField() {
+    const cur = getIn(draft, ['look', 'timezone']);
+    let zones = [];
+    try { zones = Intl.supportedValuesOf('timeZone'); } catch { /* old browser: just the current value */ }
+    let mine = '';
+    try { mine = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { /* no zone */ }
+    if (cur && !zones.includes(cur)) zones = [cur, ...zones];
+    const el = h('select', { onchange: () => set(['look', 'timezone'], el.value || undefined) },
+      h('option', { value: '', text: 'Not set' }),
+      mine ? h('option', { value: mine, text: `${mine} (this browser)`, selected: cur === mine }) : null,
+      ...zones.filter((z) => z !== mine).map((z) => h('option', { value: z, text: z, selected: z === cur })));
+    return el;
   }
 
   // ---- the panel ----------------------------------------------------------------
@@ -408,7 +465,8 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     } });
     root.replaceChildren(
       h('div', { class: 'cz-head' },
-        h('div', {}, h('div', { class: 'eyebrow', text: 'Customize' }), h('div', { class: 'cz-title', text: `@${ctx.login}'s city` })),
+        h('div', {}, h('div', { class: 'eyebrow', text: 'Customize' }), h('div', { class: 'cz-title', text: `@${ctx.login}'s city` }),
+          h('a', { class: 'cz-guide', href: GUIDE, target: '_blank', rel: 'noopener', text: 'How customizing works ↗' })),
         h('button', { type: 'button', class: 'cz-close', 'aria-label': 'Close', text: '×', onclick: close })),
       h('div', { class: 'cz-body' },
         statusBlock(ctx),
@@ -424,6 +482,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
           row('Weather', selectField(['look', 'weather'], OPTIONS.weather, LABELS.weather, 'Visitor\'s choice')),
           row('Old TV', flagField(['look', 'tv'], 'On', 'Off')),
           row('FX', flagField(['look', 'fx'], 'On (bloom, grade, grain)', 'Off')),
+          row('Time zone', timezoneField(), 'Your local time drives the city\'s automatic day and night.'),
           h('small', { class: 'cz-note', text: 'These set how your city opens; visitors can still change them.' })),
         section('Neighbours', false, row('Logins', neighboursField(), `Up to ${LIMITS.neighbours}, reached by flying off the map. Topped up automatically.`)),
         section('Repositories', false, repoSection(ctx)),
@@ -511,6 +570,11 @@ function injectStyle() {
 #cz .cz-hide[aria-pressed="true"] { color: var(--ink-100); border-color: var(--line); background: rgba(255, 255, 255, 0.06); }
 #cz .cz-mini:disabled { opacity: 0.35; cursor: default; }
 #cz .cz-repo-edit { padding: 0 10px 8px; }
+#cz canvas.cz-graffiti { display: block; width: 100%; height: auto; margin: 6px 0 2px; border-radius: 6px; border: 1px solid var(--line);
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px) 0 0 / 100% 18px,
+    linear-gradient(90deg, rgba(0, 0, 0, 0.07) 1px, transparent 1px) 0 0 / 36px 100%, #cdbba5; }
+#cz .cz-guide { display: inline-block; margin-top: 4px; color: var(--accent); font-size: 11px; text-decoration: none; }
+#cz .cz-guide:hover { text-decoration: underline; }
 #cz .cz-preview { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding: 10px 0 4px; color: var(--ink-100); }
 #cz .cz-preview label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 #cz .cz-sub { margin: 10px 0 6px; }
@@ -535,6 +599,9 @@ function injectStyle() {
   font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink-100); word-break: break-word;
   opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; }
 #cz-toast.show { opacity: 1; transform: translate(-50%, 0); }
+#guide-link { display: inline-block; margin: -8px 0 12px; font-family: var(--mono); font-size: 11px; color: var(--accent);
+  text-decoration: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+#guide-link:hover { text-decoration: underline; }
 #cz-toast[data-tone="bad"] { border-left-color: #ff7a8a; }
 #cz-toast[data-tone="warn"] { border-left-color: var(--orange); }
 @media (max-width: 900px), (max-height: 500px) {
@@ -546,6 +613,7 @@ function injectStyle() {
   #cz .cz-chip { padding: 8px 12px; }
   #cz .cz-close { width: 44px; height: 44px; margin: -10px -12px 0 0; }
   #cz-pill { top: auto; bottom: calc(var(--transport-h, 90px) + 10px); }
+  #guide-link { display: none; } /* the peek card stays one line; the Customize panel links the guide */
 }
 @media (prefers-reduced-motion: reduce) { #cz-toast { transition: none; } }
 `;

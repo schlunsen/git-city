@@ -1684,6 +1684,7 @@ export function createWorld(THREE, scene, deps) {
   };
 
   let land = null;
+  let lastNeighbors = null; // { login, list } from setNeighbors, re-applied when the island is rebuilt
   // profile.config: a normalised city.json (city-config.js) or null.
   function setProfile(profile, city = squareCity) {
     const T = worldTraits(profile);
@@ -1700,6 +1701,7 @@ export function createWorld(THREE, scene, deps) {
     if (land) land.dispose();
     land = buildLand(T, city, profile);
     land.city = city;
+    if (lastNeighbors?.login === T.login) land.setNeighbors(lastNeighbors.list); // an island rebuilt for a config change keeps its gates
     return T;
   }
   // If the host never hands us a profile, still show an island.
@@ -1770,7 +1772,10 @@ export function createWorld(THREE, scene, deps) {
     setDay, update, setLots, roofDecal, cutout, setProfile,
     // Neighbour travel (see neighbors.js). setNeighbors ignores a list for a
     // login that is no longer on screen, so a slow fetch can't mislabel gates.
-    setNeighbors: (login, list) => { if (land && land.traits.login === String(login).toLowerCase()) land.setNeighbors(list); },
+    setNeighbors: (login, list) => {
+      lastNeighbors = { login: String(login).toLowerCase(), list };
+      if (land && land.traits.login === lastNeighbors.login) land.setNeighbors(list);
+    },
     gateFor: (x, y, z, mode) => land?.gateFor(x, y, z, mode) ?? null,
     arrival: (bearing, mode) => land?.arrival(bearing, mode) ?? null,
     get gates() { return land?.gates ?? []; },
