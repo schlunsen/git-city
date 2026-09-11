@@ -59,6 +59,34 @@ parking and construction sites.
 - Click a repo in the explorer on the left to fly the camera to it
 - Turn **Follow** on and the camera drifts after the developer as they work
 
+## Customize your city
+
+Your island is generated from your profile, but you can take over the parts
+you care about with one file in your profile repository,
+`<login>/<login>/.git-city/city.json`: name the island, write the welcome
+boards, pick the biome, city shape and landmarks, feature or hide
+repositories, give buildings their own colours, signs and billboards, choose
+your neighbours, set the look (accent, time, weather, TV / FX), the player's
+soundtrack and your plane's livery.
+
+```json
+{
+  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "version": 1,
+  "island": { "name": "Schlunsen Isle", "biome": "tropical" },
+  "welcome": "Welcome to my city!",
+  "featured": ["git-city", "gource-view"]
+}
+```
+
+Or open your city, press **Customize**, preview your changes live on the
+island, and **Publish**: it opens GitHub's own editor with the file filled in
+(no tokens, no OAuth). The file is data only, strictly validated, and never
+makes Git City load anything. See **[docs/city-config.md](docs/city-config.md)**
+for every field, the limits, caching (about 5 minutes) and troubleshooting,
+and [the JSON Schema](public/schema/city-config.v1.json) for editor
+autocompletion.
+
 ## How it's built
 
 Plain ES modules and [Three.js](https://threejs.org) from a CDN — no bundler,
