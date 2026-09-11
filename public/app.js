@@ -974,7 +974,7 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     onBuilt?.(user.login); // explore.js portal travel: the new island is ready
     // Open on the showcase flight around the buildings (the activity playback is one press of ▶ away).
     if (!prefersReducedMotion() && new URLSearchParams(location.search).get('tour') !== '0') {
-      setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !tour.active) startTour(); }, 1200);
+      setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !tour.active) startTour(); }, 10000); // a look around first
     }
     // The activity timeline arrives second so the city never waits on it.
     const events = sample ? sample.events : await fetchEvents(user.login);
