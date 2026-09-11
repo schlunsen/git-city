@@ -60,7 +60,7 @@ import { carKit, buildCars, updateCars } from './city/cars.js';
 import { gourceUrl, gourceCovering, openGource, closeGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
-import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
+import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
 
 // ---------------------------------------------------------------------------
 // App state (what the city modules own lives with them)
@@ -94,6 +94,7 @@ let explorer = null;         // explore.js handle (walk / drive / fly); owns the
 let wayfinding = null;       // wayfinding.js handle (street signs + name tag), rebuilt with the buildings
 let swallowTap = false;      // set when a tap only dismissed the compact menu
 let planeCam = null;         // clicking the sponsor plane: fly alongside it, read the banner, then the widget
+let planeWatchWanted = 0;    // the coffee button asked for a flypast: wall-clock deadline to catch it
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3();
 
 function onResize() {
@@ -307,13 +308,35 @@ function onPointerDown(e) {
 // Fly alongside the sponsor plane so its banner can be read, then offer the coffee.
 const PLANE_WATCH_MAX = 14;
 const _pcEye = new THREE.Vector3(), _pcLook = new THREE.Vector3();
-function watchPlane() {
-  if (explorer?.ownsCamera) { openSupport(); return; }   // walk / drive / fly own the camera
-  openSupport();                                        // the coffee panel opens straight away ...
-  if (!holdBannerPass(12)) return;                      // ... and if the pass is over, that is all
+// Ride along with the plane, if there is a pass to ride. A click lengthens it.
+function startPlaneWatch() {
+  if (explorer?.ownsCamera) return false;               // walk / drive / fly own the camera
+  if (!holdBannerPass(12)) return false;                // nothing overhead right now
   endTour();
   if (!planeCam) planeCam = { home: { position: camera.position.clone(), target: controls.target.clone(), autoRotate: controls.autoRotate }, t: 0, phase: 'watch' };
   controls.autoRotate = false;
+  return true;
+}
+function watchPlane() {          // clicking the plane in the city
+  openSupport();                 // the coffee panel opens straight away ...
+  startPlaneWatch();             // ... and we fly alongside if the pass is still on
+}
+// The widget's own button, bottom left. It opens its panel itself; we add the
+// flypast, summoning the plane if it is resting between passes.
+function coffeeButtonPressed() {
+  if (startPlaneWatch()) return;
+  if (summonBannerPlane()) planeWatchWanted = performance.now() + 30000;
+}
+// openSupport() presses that button in code, so only react to a real click.
+function hookCoffeeButton() {
+  let tries = 0;
+  const attach = () => {
+    const btn = document.getElementById('bmc-wbtn');
+    if (btn) { btn.addEventListener('click', (e) => { if (e.isTrusted) coffeeButtonPressed(); }); return true; }
+    return ++tries > 60;         // the widget is an external script: give it 30s to turn up
+  };
+  if (attach()) return;
+  const iv = setInterval(() => { if (attach()) clearInterval(iv); }, 500);
 }
 function releasePlaneCam() {
   if (!planeCam) return;
@@ -638,6 +661,7 @@ function wireUI() {
     else if (e.key === 'Escape') { endTour(); closePanel(); setMenu(false); setProfile(false); }
     else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn, { remember: cfgNow()?.look.tv === undefined }); }
   });
+  hookCoffeeButton(); // the Buy Me a Coffee button flies you to the plane too
   $('panel-close').addEventListener('click', closePanel);
   $('reset-btn').addEventListener('click', resetCamera);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
@@ -673,6 +697,10 @@ function animate(timestamp) {
 
   updateCars(dt);
   updateBannerPlane(dt, clock.getElapsed(), !!explorer?.game?.active); // hidden during the bomb run
+  if (planeWatchWanted) { // the coffee button asked for a flypast: climb aboard when it arrives
+    if (bannerPlaneFlying()) { planeWatchWanted = 0; startPlaneWatch(); }
+    else if (performance.now() > planeWatchWanted) planeWatchWanted = 0;
+  }
   updateFountain(dayFactor);
   updatePlaza(dt);
   updatePedestrians(dt);

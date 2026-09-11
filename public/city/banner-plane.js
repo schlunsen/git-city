@@ -217,6 +217,15 @@ export function holdBannerPass(sec = 12) {
   return true;
 }
 
+export function bannerPlaneFlying() { return !!rig && rig.flying; }
+
+// Bring the plane round now instead of waiting out its rest (the coffee button asks for this).
+export function summonBannerPlane() {
+  if (!rig || rig.flying) return false;
+  rig.next = now();
+  return true;
+}
+
 // Open the Buy Me a Coffee widget (index.html loads it); the page itself if it's unavailable.
 export function openSupport() {
   const btn = document.getElementById('bmc-wbtn');
