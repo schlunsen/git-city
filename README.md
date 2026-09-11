@@ -159,8 +159,10 @@ author there to see their city here.
 ## Credits
 
 The cutout sprites, tiles and backdrop in [`public/assets/`](public/assets) were
-generated with an image model, then chroma-keyed and split by script. They are
-part of this repository and covered by its license. Language colours follow
+generated with an image model, then chroma-keyed and split by script. The
+prompts, the scripts and a step-by-step guide to adding new art are in
+[docs/assets.md](docs/assets.md). They are part of this repository and covered
+by its license. Language colours follow
 GitHub's linguist palette.
 
 ## License
