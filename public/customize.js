@@ -13,8 +13,11 @@
  */
 import {
   OPTIONS, LABELS, LIMITS, CONFIG_PATH, PROFILE_README_DOCS,
-  normalizeCityConfig, serializeCityConfig, newFileUrl, editFileUrl, blobUrl,
+  normalizeCityConfig, serializeCityConfig, serializeBuildingConfig, newFileUrl, editFileUrl, blobUrl,
 } from './city-config.js';
+import { paintGraffiti } from './graffiti.js';
+
+const GUIDE = './customize.html'; // the how-to page (public/customize.html)
 
 const MAX_PREFILL_URL = 8000; // longer "new file" URLs get unreliable: fall back to copy + paste
 const PREVIEW_DELAY = 450;

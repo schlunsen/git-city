@@ -1,0 +1,5 @@
+{
+  "$schema": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
+  "version": 1,
+  "graffiti": { "text": "code in motion", "color": "#ff5ab4", "style": "bubble" }
+}

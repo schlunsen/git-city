@@ -6,78 +6,243 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string", "description": "Editor hint only; Git City never loads it." },
-    "version": { "const": 1 },
+    "$schema": {
+      "type": "string",
+      "description": "Editor hint only; Git City never loads it."
+    },
+    "version": {
+      "const": 1
+    },
     "island": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "name": { "type": "string", "maxLength": 40, "description": "Shown on the welcome boards and in the profile card." },
-        "biome": { "enum": ["meadow", "alpine", "tropical", "savanna", "lakeland"] },
-        "shape": { "enum": ["square", "wide", "tall", "round", "plus", "octagon", "blob"], "description": "Footprint of the paved city block." }
+        "name": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Shown on the welcome boards and in the profile card."
+        },
+        "biome": {
+          "enum": [
+            "meadow",
+            "alpine",
+            "tropical",
+            "savanna",
+            "lakeland"
+          ]
+        },
+        "shape": {
+          "enum": [
+            "square",
+            "wide",
+            "tall",
+            "round",
+            "plus",
+            "octagon",
+            "blob"
+          ],
+          "description": "Footprint of the paved city block."
+        }
       }
     },
-    "welcome": { "type": "string", "maxLength": 120, "description": "Message on the welcome boards where the roads leave town." },
+    "welcome": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Message on the welcome boards where the roads leave town."
+    },
     "look": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "accent": { "$ref": "#/$defs/color", "description": "Glow colour of the plaza monument and its inlays." },
-        "time": { "enum": ["auto", "day", "sunset", "night", "cycle"], "description": "Starting light; visitors can still change it." },
-        "weather": { "enum": ["clear", "rain", "snow"], "description": "Starting weather; visitors can still change it." },
-        "tv": { "type": "boolean", "description": "Old-television (CRT) look on or off when your city opens; visitors can still toggle it." },
-        "fx": { "type": "boolean", "description": "Bloom / colour grade / grain on or off when your city opens; visitors can still toggle it." }
+        "accent": {
+          "$ref": "#/$defs/color",
+          "description": "Glow colour of the plaza monument and its inlays."
+        },
+        "time": {
+          "enum": [
+            "auto",
+            "day",
+            "sunset",
+            "night",
+            "cycle"
+          ],
+          "description": "Starting light; visitors can still change it."
+        },
+        "weather": {
+          "enum": [
+            "clear",
+            "rain",
+            "snow"
+          ],
+          "description": "Starting weather; visitors can still change it."
+        },
+        "tv": {
+          "type": "boolean",
+          "description": "Old-television (CRT) look on or off when your city opens; visitors can still toggle it."
+        },
+        "fx": {
+          "type": "boolean",
+          "description": "Bloom / colour grade / grain on or off when your city opens; visitors can still toggle it."
+        },
+        "timezone": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z][A-Za-z0-9_+\\-/]{0,63}$",
+          "description": "Your IANA time zone, e.g. \"Europe/Copenhagen\" or \"Asia/Tokyo\": the city's automatic day and night follow your local time."
+        }
       }
     },
     "landmarks": {
       "type": "array",
       "maxItems": 6,
       "uniqueItems": true,
-      "items": { "enum": ["rollerCoaster", "carousel", "circusTent", "dropTower", "windTurbines", "windmill", "farm", "campsite", "radioTower", "observatory", "balloonPad"] },
+      "items": {
+        "enum": [
+          "rollerCoaster",
+          "carousel",
+          "circusTent",
+          "dropTower",
+          "windTurbines",
+          "windmill",
+          "farm",
+          "campsite",
+          "radioTower",
+          "observatory",
+          "balloonPad"
+        ]
+      },
       "description": "Attractions placed first (best effort: each needs a free site of the right kind)."
     },
     "neighbours": {
       "type": "array",
       "maxItems": 6,
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/login" },
+      "items": {
+        "$ref": "#/$defs/login"
+      },
       "description": "GitHub logins reached by flying off the map; topped up automatically."
     },
     "featured": {
       "type": "array",
       "maxItems": 12,
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/repo" },
+      "items": {
+        "$ref": "#/$defs/repo"
+      },
       "description": "Your repositories, in order: built next to the plaza and advertised first on the country billboards."
     },
     "hide": {
       "type": "array",
       "maxItems": 50,
       "uniqueItems": true,
-      "items": { "$ref": "#/$defs/repo" },
+      "items": {
+        "$ref": "#/$defs/repo"
+      },
       "description": "Your repositories to leave out of the city."
     },
     "repos": {
       "type": "object",
       "maxProperties": 100,
-      "propertyNames": { "$ref": "#/$defs/repo" },
+      "propertyNames": {
+        "$ref": "#/$defs/repo"
+      },
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "style": { "enum": ["auto", "tower", "block", "house"], "description": "Building silhouette; height still follows the stars." },
-          "color": { "$ref": "#/$defs/color", "description": "Facade colour (instead of the language colour)." },
-          "sign": { "type": "string", "maxLength": 40, "description": "Text on the building's shop signs and rooftop board." },
-          "billboard": { "type": "string", "maxLength": 120, "description": "Text on this repository's country billboard." }
+          "style": {
+            "enum": [
+              "auto",
+              "tower",
+              "stepped",
+              "cottage",
+              "block"
+            ],
+            "description": "Silhouette: tower with a spire, stepped tower, cottage with a pitched roof, or a plain block. Height still follows the stars."
+          },
+          "color": {
+            "$ref": "#/$defs/color",
+            "description": "Facade colour (instead of the language colour)."
+          },
+          "sign": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Text on the building's shop signs and rooftop board."
+          },
+          "billboard": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Text on this repository's country billboard."
+          },
+          "graffiti": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "color": {
+                "$ref": "#/$defs/color"
+              },
+              "style": {
+                "enum": [
+                  "tag",
+                  "bubble",
+                  "stencil"
+                ]
+              }
+            },
+            "description": "Spray-painted on the ground-floor walls."
+          },
+          "roof": {
+            "enum": [
+              "auto",
+              "garden",
+              "helipad",
+              "solar",
+              "pool",
+              "antenna",
+              "none"
+            ],
+            "description": "What's on the (flat) roof."
+          },
+          "neon": {
+            "$ref": "#/$defs/color",
+            "description": "Night glow colour of the lit windows."
+          },
+          "flag": {
+            "type": "string",
+            "maxLength": 16,
+            "description": "An emoji or up to 3 characters on a small rooftop flag."
+          }
         }
-      }
+      },
+      "description": "Per-building settings, keyed by your repository names. The same fields as a repository's own .git-city/building.json; these win, field by field."
     },
     "player": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "music": { "enum": ["floating-cities", "deliberate-thought", "cipher", "digital-lemonade", "crypto", "none"] },
-        "volume": { "type": "number", "minimum": 0, "maximum": 100 }
+        "music": {
+          "enum": [
+            "floating-cities",
+            "deliberate-thought",
+            "cipher",
+            "digital-lemonade",
+            "crypto",
+            "none"
+          ]
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
       },
       "description": "Soundtrack of the in-page Gource View player."
     },
@@ -85,14 +250,30 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "color": { "$ref": "#/$defs/color", "description": "Fuselage and tail colour of the explore-mode biplane." },
-        "name": { "type": "string", "maxLength": 24, "description": "Painted on both sides of the fuselage." }
+        "color": {
+          "$ref": "#/$defs/color",
+          "description": "Fuselage and tail colour of the explore-mode biplane."
+        },
+        "name": {
+          "type": "string",
+          "maxLength": 24,
+          "description": "Painted on both sides of the fuselage."
+        }
       }
     }
   },
   "$defs": {
-    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-    "login": { "type": "string", "pattern": "^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$" },
-    "repo": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,100}$" }
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$"
+    },
+    "login": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$"
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,100}$"
+    }
   }
 }
