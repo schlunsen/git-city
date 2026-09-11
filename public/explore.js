@@ -680,6 +680,7 @@ export function createExplorer(THREE, deps = {}) {
   }
   function setMode(next) {
     if (!MODES.includes(next) || next === mode) return;
+    if (trip && trip.phase !== 'reveal') return; // mid-hop between islands
     const prev = mode;
     clearInput();
     closeMenu();
@@ -904,8 +905,10 @@ export function createExplorer(THREE, deps = {}) {
     // Soft world bound: past SOFT_R the plane banks itself back toward the island.
     const r = Math.hypot(p.p.x, p.p.z);
     let homeTurn = 0;
-    if (r > PLANE.SOFT_R) {
-      const toC = Math.atan2(p.p.z / r, -p.p.x / r), diff = wrapAngle(toC - p.yaw), kk = clamp((r - PLANE.SOFT_R) / 60, 0, 1);
+    if (p.turnBack > 0) p.turnBack -= dt; // a failed portal hop: bank back toward the island
+    if (r > PLANE.SOFT_R || p.turnBack > 0) {
+      const toC = Math.atan2(p.p.z / r, -p.p.x / r), diff = wrapAngle(toC - p.yaw);
+      const kk = p.turnBack > 0 ? 1 : clamp((r - PLANE.SOFT_R) / 60, 0, 1);
       homeTurn = clamp(diff, -1, 1) * 1.4 * kk;
       if (!input.roll) rollTarget = -Math.sign(diff) * 0.7 * kk;
     }
@@ -998,11 +1001,231 @@ export function createExplorer(THREE, deps = {}) {
     gaugeEl.hidden = !txt;
   }
 
+  // ---- neighbour travel: portal gates at sea morph the world into the next profile ----
+  // deps.world()        -> the world handle: gates, gateFor(x, y, z, mode), arrival(bearing, mode)
+  // deps.travel(login)  -> Promise<{ ok, login?, reason? }>, settling once the new city is built
+  const getWorld = () => { try { return deps.world?.() || null; } catch { return null; } };
+  let trip = null;                                           // { gate, mode, phase: 'cover' | 'load' | 'reveal', t0 }
+  const guard = { armed: true, t: 0, x0: 0, z0: 0, r0: Infinity }; // no re-trigger right after arriving
+  const COVER_MS = 850, REVEAL_MS = 950;
+  const warp = el('div', 'gcx-warp', `
+    <div class="gcx-cloud c1"></div><div class="gcx-cloud c2"></div><div class="gcx-cloud c3"></div>
+    <div class="gcx-cloud c4"></div><div class="gcx-cloud c5"></div>
+    <div class="gcx-warp-card"><img class="gcx-warp-av" alt="" referrerpolicy="no-referrer">
+      <div class="gcx-warp-title"></div><div class="gcx-warp-sub"></div></div>`);
+  warp.hidden = true;
+  warp.setAttribute('aria-live', 'polite');
+  const toastEl = el('div', 'gcx-toast', ''), gatesEl = el('div', 'gcx-gates', '');
+  toastEl.hidden = true; toastEl.setAttribute('role', 'status');
+  document.body.append(warp, toastEl, gatesEl);
+  const warpAv = warp.querySelector('.gcx-warp-av'), warpTitle = warp.querySelector('.gcx-warp-title'), warpSub = warp.querySelector('.gcx-warp-sub');
+  warpAv.addEventListener('error', () => { warpAv.style.visibility = 'hidden'; });
+  injectTravelStyle();
+  let toastTimer = 0;
+  function toast(msg) {
+    toastEl.textContent = msg; toastEl.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 5500);
+  }
+  const _gp = new THREE.Vector3(), _gq = new THREE.Vector3();
+  function playerPos() {
+    if (sim === 'fly') return _gq.copy(plane.p);
+    if (sim === 'drive') return _gq.set(car.p.x, car.y, car.p.z);
+    if (sim === 'walk') return _gq.copy(walker.p);
+    return _gq.copy(camera.position);
+  }
+  function armGuard() {
+    const p = playerPos();
+    Object.assign(guard, { armed: false, t: 0, x0: p.x, z0: p.z, r0: Math.hypot(p.x, p.z) });
+  }
+  // Screen position of a world point; `front` is false behind the camera.
+  function toScreen(x, y, z) {
+    _gp.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
+    const front = _gp.z < -0.5;
+    _gp.applyMatrix4(camera.projectionMatrix);
+    return { x: (_gp.x + 1) / 2 * innerWidth, y: (1 - _gp.y) / 2 * innerHeight, nx: _gp.x, ny: _gp.y, front };
+  }
+  function startTravel(gate) {
+    if (trip || typeof deps.travel !== 'function' || !gate?.login) return;
+    const m = mode !== 'orbit' && sim ? sim : 'orbit';
+    trip = { gate, mode: m, phase: 'cover', t0: performance.now() };
+    camera.updateMatrixWorld();
+    const s = toScreen(gate.x, gate.y, gate.z);
+    const on = s.front && s.x > 0 && s.x < innerWidth && s.y > 0 && s.y < innerHeight;
+    warp.style.setProperty('--ix', on ? `${s.x}px` : '50%');
+    warp.style.setProperty('--iy', on ? `${s.y}px` : '50%');
+    warpTitle.textContent = `${m === 'walk' || m === 'drive' ? '⛴ Sailing' : '✈ Flying'} to @${gate.login}’s island…`;
+    warpSub.textContent = gate.via ? `next island · ${gate.via}` : 'next island';
+    warpAv.style.visibility = '';
+    warpAv.src = gate.avatar || '';
+    warp.hidden = false;
+    void warp.offsetWidth; // restart the iris from a closed circle
+    warp.classList.add('on');
+    closeMenu();
+  }
+  // Advance the trip; true while the world is being swapped (hold the sim still).
+  function updateTravel() {
+    if (!trip) return false;
+    const now = performance.now();
+    if (trip.phase === 'cover' && now - trip.t0 >= COVER_MS) {
+      trip.phase = 'load';
+      const t = trip;
+      Promise.resolve().then(() => deps.travel(t.gate.login))
+        .then((r) => arrive(t, r && r.ok !== false, r?.reason), (e) => arrive(t, false, e?.message));
+    }
+    if (trip.phase === 'reveal' && now - trip.t0 >= REVEAL_MS) { warp.hidden = true; trip = null; return false; }
+    return trip.phase === 'load';
+  }
+  function arrive(t, ok, reason) {
+    if (trip !== t) return;
+    if (ok) {
+      resetColliders();
+      const a = t.mode !== 'orbit' && sim === t.mode ? getWorld()?.arrival?.(t.gate.bearing + Math.PI, t.mode) : null;
+      if (a) placeAt(a);
+    } else {
+      toast(`Couldn’t reach @${t.gate.login} — ${reason || 'GitHub rate limit'}, try another gate`);
+      if (sim === t.mode) turnBack();
+    }
+    if (sim) armGuard();
+    // Hold a beat so the new island has rendered, then open the iris on the view's centre.
+    warp.style.setProperty('--ix', '50%'); warp.style.setProperty('--iy', '50%');
+    t.phase = 'reveal'; t.t0 = performance.now() + 180;
+    setTimeout(() => { if (trip === t) warp.classList.remove('on'); }, 180);
+  }
+  // Come out of the far side of the new island, facing inland (heading = atan2(dz, dx)).
+  function placeAt(a) {
+    const h = a.heading;
+    if (sim === 'fly') {
+      plane.p.set(a.x, a.y, a.z); plane.yaw = wrapAngle(-h); plane.pitch = plane.roll = 0; plane.turnBack = 0; // speed kept
+      placePlane(); flyCam(1, true);
+    } else if (sim === 'drive') {
+      const keep = Math.min(Math.abs(car.vf), 8);
+      car.p.set(a.x, 0, a.z); car.yaw = wrapAngle(-h); car.v.set(Math.cos(car.yaw) * keep, -Math.sin(car.yaw) * keep);
+      car.steer = 0; car.y = groundAt(a.x, a.z); tiltCar(1); placeCar(); driveCam(1, true);
+    } else if (sim === 'walk') {
+      walker.p.set(a.x, groundAt(a.x, a.z), a.z); walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h));
+      walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
+    }
+    chase.yaw = chase.pitch = 0; blend = null;
+  }
+  // A failed hop: the plane banks back toward the island, the car / walker is nudged inland.
+  function turnBack() {
+    if (sim === 'fly') { plane.turnBack = 3.2; return; }
+    const p = sim === 'drive' ? car.p : walker.p, r = Math.hypot(p.x, p.z) || 1, ix = -p.x / r, iz = -p.z / r, h = Math.atan2(iz, ix);
+    p.x += ix * 6; p.z += iz * 6;
+    if (sim === 'drive') { car.yaw = wrapAngle(-h); car.v.set(0, 0); car.y = groundAt(p.x, p.z); tiltCar(1); placeCar(); driveCam(1, true); }
+    else { walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h)); walker.v.set(0, 0, 0); walker.p.y = groundAt(p.x, p.z); }
+    blend = null;
+  }
+  function checkGates(dt) {
+    if (trip || !sim || mode === 'orbit' || exiting) return;
+    const W = getWorld(), gs = W?.gates;
+    if (typeof W?.gateFor !== 'function' || !gs?.length) return;
+    const p = playerPos();
+    if (!guard.armed) {
+      guard.t += dt;
+      const rMin = Math.min(...gs.map((g) => Math.hypot(g.x, g.z)));
+      if (guard.t >= 4 && (Math.hypot(p.x, p.z) < Math.min(rMin, guard.r0) - 10 || Math.hypot(p.x - guard.x0, p.z - guard.z0) > 90)) guard.armed = true;
+      else return;
+    }
+    let g = W.gateFor(p.x, p.y, p.z, sim);
+    if (!g && sim !== 'fly') { // the car's nose / the walker's next step reach the waterline first
+      const ax = sim === 'drive' ? Math.cos(car.yaw) * 1.8 * Math.sign(car.vf || 1) : -Math.sin(walker.yaw) * 0.9;
+      const az = sim === 'drive' ? -Math.sin(car.yaw) * 1.8 * Math.sign(car.vf || 1) : -Math.cos(walker.yaw) * 0.9;
+      g = W.gateFor(p.x + ax, p.y, p.z + az, sim);
+    }
+    if (g) startTravel(g);
+  }
+  // Gate chips: over the gate when it's in view, pinned to the screen edge with an arrow otherwise.
+  const chips = new Map();
+  let chipT = 0, insetTop = 70, insetBottom = 150;
+  function updateGateHud(dt) {
+    const gs = mode !== 'orbit' && !exiting && !trip ? (getWorld()?.gates || []) : [];
+    gatesEl.hidden = !gs.length;
+    const live = new Set(gs.map((g) => g.login));
+    for (const [login, c] of chips) if (!live.has(login)) { c.el.remove(); chips.delete(login); }
+    if (!gs.length) return;
+    chipT -= dt;
+    const text = chipT <= 0;
+    if (text) {
+      chipT = 0.25;
+      const cs = getComputedStyle(document.documentElement);
+      insetTop = (parseFloat(cs.getPropertyValue('--topbar-h')) || 58) + 16;
+      insetBottom = (parseFloat(cs.getPropertyValue('--transport-h')) || 96) + 70;
+    }
+    camera.updateMatrixWorld();
+    const p = playerPos(), W2 = innerWidth / 2, H2 = innerHeight / 2, m = 60;
+    let nearest = null, nd = Infinity;
+    for (const g of gs) {
+      let c = chips.get(g.login);
+      if (!c) {
+        const n = el('div', 'gcx-gate', '<i class="gcx-arr"></i><img alt="" referrerpolicy="no-referrer"><span></span>');
+        n.querySelector('img').src = g.avatar || '';
+        n.querySelector('img').addEventListener('error', (e) => { e.target.style.visibility = 'hidden'; });
+        gatesEl.append(n);
+        c = { el: n, arr: n.querySelector('.gcx-arr'), txt: n.querySelector('span') };
+        chips.set(g.login, c);
+      }
+      const d = Math.hypot(g.x - p.x, g.z - p.z);
+      if (d < nd) { nd = d; nearest = c; }
+      const s = toScreen(g.x, g.y + 10, g.z);
+      let x = s.x, y = s.y, ang = 0;
+      const inView = s.front && x > m && x < innerWidth - m && y > insetTop + 10 && y < innerHeight - insetBottom;
+      if (!inView) {
+        let dx = s.nx * W2, dy = -s.ny * H2;
+        if (!s.front) { dx = -dx; dy = -dy; }
+        if (Math.abs(dx) + Math.abs(dy) < 1e-3) dy = 1;
+        const k = Math.min((W2 - m) / Math.max(Math.abs(dx), 1e-3),
+          (dy < 0 ? H2 - insetTop - 10 : H2 - insetBottom) / Math.max(Math.abs(dy), 1e-3));
+        x = W2 + dx * k; y = H2 + dy * k; ang = Math.atan2(dy, dx);
+      }
+      c.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
+      c.el.classList.toggle('edge', !inView);
+      if (!inView) c.arr.style.transform = `rotate(${ang.toFixed(3)}rad)`;
+      if (text) c.txt.innerHTML = `<b>@${escapeText(g.login)}</b> · ${Math.round(d * TO_M)} m`;
+      c.el.classList.remove('near');
+    }
+    if (nearest && nd < 120) nearest.el.classList.add('near');
+  }
+  const escapeText = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  // Orbit view: click a gate's ring to hop there too.
+  let orbitDown = null;
+  function gateAtScreen(cx, cy) {
+    camera.updateMatrixWorld();
+    const f = innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+    let best = null, bd = Infinity;
+    for (const g of getWorld()?.gates || []) {
+      const depth = _gp.set(g.x, g.y, g.z).applyMatrix4(camera.matrixWorldInverse).z;
+      if (depth > -1) continue;
+      const s = toScreen(g.x, g.y, g.z), d = Math.hypot(s.x - cx, s.y - cy), rPx = Math.max(16, 5.5 * f / -depth);
+      if (d < rPx && d < bd) { bd = d; best = g; }
+    }
+    return best;
+  }
+  const onOrbitDown = (e) => { orbitDown = mode === 'orbit' && !exiting && !trip && e.target === canvas && e.button === 0 ? { x: e.clientX, y: e.clientY } : null; };
+  const onOrbitUp = (e) => {
+    const d = orbitDown; orbitDown = null;
+    if (!d || mode !== 'orbit' || trip || e.target !== canvas || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
+    const g = gateAtScreen(e.clientX, e.clientY);
+    if (g) startTravel(g);
+  };
+  addEventListener('pointerdown', onOrbitDown, cap);
+  addEventListener('pointerup', onOrbitUp, cap);
+  function travelCleanup() {
+    removeEventListener('pointerdown', onOrbitDown, cap);
+    removeEventListener('pointerup', onOrbitUp, cap);
+    clearTimeout(toastTimer);
+    for (const n of [warp, toastEl, gatesEl]) n.remove();
+    chips.clear();
+  }
+
   // ---- public ---------------------------------------------------------------------------
   function update(dt, elapsed = 0) {
     dt = Math.min(Math.max(dt || 0, 0), 0.05);
     updatePuffs(dt);
+    const swapping = updateTravel(); // portal trip: hold still while the next island is built
+    if (deps.gateHud) updateGateHud(dt);
     if (mode === 'orbit' && !exiting) return false;
+    if (swapping) return true;
     if (needUnstick && sim) {
       needUnstick = false;
       if (sim === 'walk') {
@@ -1016,6 +1239,7 @@ export function createExplorer(THREE, deps = {}) {
     if (sim === 'walk') simWalk(dt, input);
     else if (sim === 'drive') simDrive(dt, input);
     else if (sim === 'fly') simFly(dt, input, elapsed);
+    if (!exiting) checkGates(dt); // reached a portal gate? start the trip to that island
     if (exiting && saved) {
       want.pos.copy(saved.pos);
       _m.lookAt(saved.pos, saved.target, UP);
@@ -1084,7 +1308,11 @@ export function createExplorer(THREE, deps = {}) {
       place(x, z, yaw = 0) {
         if (sim === 'walk') { walker.p.set(x, groundAt(x, z), z); walker.yaw = yaw; walker.v.set(0, 0, 0); }
         else if (sim === 'drive') { car.p.set(x, 0, z); car.yaw = yaw; car.v.set(0, 0); car.y = groundAt(x, z); }
+        guard.armed = true;
       },
+      fly(x, y, z, yaw = 0) { if (sim === 'fly') { plane.p.set(x, y, z); plane.yaw = yaw; plane.pitch = plane.roll = 0; guard.armed = true; } },
+      trip: () => (trip ? { login: trip.gate.login, phase: trip.phase, mode: trip.mode } : null),
+      armed: () => guard.armed,
     },
     get state() { return { mode, sim, car: { x: car.p.x, y: car.y, z: car.p.z, speed: car.vf, pitch: car.pitch, roll: car.roll }, plane: { ...plane.p, speed: plane.speed, roll: plane.roll, pitch: plane.pitch }, walker: { ...walker.p } }; },
   };
@@ -1139,5 +1367,52 @@ function injectStyle() {
     /* Touch controls need the corners: tuck the host's floating cards away while exploring. */
     body.gcx-on #explorer, body.gcx-on #clock, body.gcx-on #feed, body.gcx-on #legend { visibility: hidden; }
   }`;
+  document.head.append(s);
+}
+
+// Travel styles: the teal cloud iris between islands, the failure toast, gate chips.
+function injectTravelStyle() {
+  if (document.getElementById('gcx-travel-style')) return;
+  const s = document.createElement('style');
+  s.id = 'gcx-travel-style';
+  s.textContent = `
+  .gcx-warp { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; overflow: hidden; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 42%, #9af3e9 0%, #52cdc6 42%, #1f7a82 100%);
+    clip-path: circle(0px at var(--ix, 50%) var(--iy, 50%)); transition: clip-path 850ms cubic-bezier(0.65, 0, 0.35, 1); }
+  .gcx-warp.on { clip-path: circle(150vmax at var(--ix, 50%) var(--iy, 50%)); pointer-events: auto; }
+  .gcx-warp[hidden], .gcx-toast[hidden], .gcx-gates[hidden] { display: none !important; }
+  .gcx-cloud { position: absolute; left: 0; width: 220px; height: 70px; border-radius: 999px; background: #fff;
+    filter: drop-shadow(4px 0 0 #0a0d16) drop-shadow(-4px 0 0 #0a0d16) drop-shadow(0 4px 0 #0a0d16) drop-shadow(0 -4px 0 #0a0d16);
+    animation: gcx-drift 5s linear infinite; }
+  .gcx-cloud::before, .gcx-cloud::after { content: ""; position: absolute; border-radius: 50%; background: #fff; }
+  .gcx-cloud::before { width: 100px; height: 100px; left: 34px; top: -52px; }
+  .gcx-cloud::after { width: 72px; height: 72px; left: 116px; top: -34px; }
+  .gcx-cloud.c1 { top: 12%; animation-duration: 4.2s; animation-delay: -1s; }
+  .gcx-cloud.c2 { top: 30%; transform: scale(0.7); animation-duration: 5.6s; animation-delay: -3.4s; }
+  .gcx-cloud.c3 { top: 68%; animation-duration: 3.8s; animation-delay: -2.2s; }
+  .gcx-cloud.c4 { top: 84%; animation-duration: 6.2s; animation-delay: -0.4s; }
+  .gcx-cloud.c5 { top: 52%; animation-duration: 4.8s; animation-delay: -4.1s; }
+  @keyframes gcx-drift { from { translate: 115vw 0; } to { translate: -40vw 0; } }
+  .gcx-warp-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 0 20px; text-align: center;
+    animation: gcx-bob 1.8s ease-in-out infinite; }
+  @keyframes gcx-bob { 50% { transform: translateY(-8px); } }
+  .gcx-warp-av { width: 116px; height: 116px; border-radius: 50%; object-fit: cover; background: #2b3a55;
+    border: 6px solid #0a0d16; box-shadow: 0 0 0 6px #f6efe1, 0 16px 34px rgba(8, 37, 36, 0.35); }
+  .gcx-warp-title { font: 700 clamp(20px, 3.4vw, 36px)/1.15 var(--display, system-ui, sans-serif); color: #0a1a24; text-shadow: 0 2px 0 rgba(255, 255, 255, 0.55); }
+  .gcx-warp-sub { font: 600 11px var(--mono, ui-monospace, monospace); letter-spacing: 0.16em; text-transform: uppercase; color: #0d3b3d; }
+  @media (prefers-reduced-motion: reduce) { .gcx-cloud, .gcx-warp-card { animation: none; } .gcx-warp { transition-duration: 1ms; } }
+  .gcx-toast { position: fixed; left: 50%; top: calc(var(--topbar-h, 58px) + 16px); transform: translateX(-50%); z-index: 70; max-width: calc(100vw - 24px);
+    padding: 10px 16px; border-radius: 10px; background: rgba(44, 18, 24, 0.94); border: 1px solid rgba(255, 128, 120, 0.4);
+    color: #ffe9e6; font: 12px/1.4 var(--mono, ui-monospace, monospace); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); }
+  .gcx-gates { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+  .gcx-gate { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; white-space: nowrap;
+    border-radius: 999px; background: rgba(17, 24, 36, 0.74); border: 1px solid rgba(100, 222, 219, 0.3); color: var(--ink-300, #c2cad8);
+    font: 11px var(--mono, ui-monospace, monospace); opacity: 0.72; transition: opacity 0.2s; }
+  .gcx-gate img { width: 20px; height: 20px; border-radius: 50%; background: #2b3a55; }
+  .gcx-gate b { color: var(--ink-100, #f1f4f9); font-weight: 600; }
+  .gcx-gate.near { opacity: 1; border-color: var(--accent, #64dedb); box-shadow: 0 0 0 3px rgba(100, 222, 219, 0.22); }
+  .gcx-arr { display: none; width: 0; height: 0; margin-left: 5px; border-left: 8px solid var(--accent, #64dedb);
+    border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+  .gcx-gate.edge .gcx-arr { display: block; }`;
   document.head.append(s);
 }
