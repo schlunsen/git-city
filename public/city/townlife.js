@@ -12,7 +12,7 @@ import { disposeObject } from './util.js';
 export let lampGroup = null;   // streetlamps (neon at night)
 let fountain = null;           // { group, update(t, day) }
 let pedestrians = null;        // { people, dogs, meshes, dogMesh, dogInk, leash }
-let weather = null;            // { points, geo, data, rainMat, snowMat, mode }
+let weather = null;            // { points, geo, data, rainMat, snowMat, N }
 export let weatherMode = 'clear'; // 'clear' | 'rain' | 'snow'
 
 // Streetlamps along the main boulevard with emissive cones that read as neon
@@ -251,7 +251,7 @@ export function buildWeather() {
   const points = new THREE.Points(geo, rainMat);
   points.visible = false;
   scene.add(points);
-  weather = { points, geo, data, rainMat, snowMat, mode: 'clear' };
+  weather = { points, geo, data, rainMat, snowMat, N };
 }
 
 export function setWeather(mode, btn) {
@@ -329,15 +329,17 @@ export function updatePedestrians(dt) {
   leash.geometry.attributes.position.needsUpdate = true;
 }
 export function updateWeather(dt) {
-  if (!weather || weather.mode === 'clear') return;
+  if (!weather || weatherMode === 'clear') return; // setWeather() sets the mode
   const { points, geo, data, N } = weather;
   const pos = geo.attributes.position.array;
-  const rain = weather.mode === 'rain';
+  const rain = weatherMode === 'rain';
+  const fall = rain ? 1 : 0.18, sway = rain ? 2 : 3.5; // snow drifts down slowly and sways more
+  const t = clock.getElapsed();
   for (let i = 0; i < N; i++) {
-    data[i].y -= data[i].speed * dt;
+    data[i].y -= data[i].speed * fall * dt;
     if (data[i].y < 0) data[i].y = 60;
     pos[i*3+1] = data[i].y;
-    pos[i*3] += Math.sin(clock.getElapsed() + data[i].drift) * dt * 2;
+    pos[i*3] += Math.sin(t + data[i].drift) * dt * sway;
   }
   geo.attributes.position.needsUpdate = true;
   // stretch rain into streaks via scale (cheap fake)
