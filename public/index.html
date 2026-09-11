@@ -241,21 +241,80 @@
   #panel-gource-ext { display: block; text-align: center; margin-top: 6px; font-size: 11px; color: var(--ink-500); text-decoration: none; }
   #panel-gource-ext:hover { color: var(--ink-300); }
 
-  /* ---------- Gource View player (repo history, in-page) ---------- */
+  /* ---------- Gource View player: an old TV set, in the city's TV-mode style ---------- */
   #gource-modal { position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center;
-    background: rgba(6, 10, 18, 0.8); padding: 24px; }
+    background: rgba(6, 10, 18, 0.82); padding: 24px; }
   #gource-modal.open { display: flex; }
-  #gource-modal .gm-card { width: min(1200px, 100%); height: min(780px, 100%); display: flex; flex-direction: column;
-    background: rgba(17, 24, 36, 0.97); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); }
-  #gource-modal .gm-head { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--line);
-    font-family: var(--mono); font-size: 12px; }
-  #gource-modal .gm-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-100); }
-  #gource-modal .gm-ext { color: var(--purple); text-decoration: none; white-space: nowrap; }
-  #gource-modal .gm-close { background: none; border: none; color: var(--ink-500); font-size: 22px; cursor: pointer; line-height: 1; padding: 0 2px; }
-  #gource-modal .gm-close:hover { color: var(--ink-100); }
-  #gource-modal .gm-frame { flex: 1; position: relative; background: #0b111a; }
+  #gource-modal .gm-card { width: min(1180px, 100%); height: min(800px, 100%); display: flex; flex-direction: column; gap: 10px;
+    padding: 18px 18px 10px; border-radius: 30px; background: linear-gradient(160deg, #2b3244, #171c28 55%, #10141c);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -3px 0 rgba(0, 0, 0, 0.45); }
+  #gource-modal .gm-screen { flex: 1; position: relative; border-radius: 24px / 30px; overflow: hidden; background: #04070c;
+    box-shadow: 0 0 0 3px #090c13, 0 0 0 5px rgba(255, 255, 255, 0.05); }
+  #gource-modal .gm-frame, #gource-modal .gm-crt { position: absolute; inset: 0; border-radius: inherit; }
   #gource-modal iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-  @media (max-width: 720px) { #gource-modal { padding: 0; } #gource-modal .gm-card { border-radius: 0; height: 100%; } }
+  /* CRT glass over the picture: glare, vignette, scanlines, aperture mask, a faint flicker and a slow rolling bar. */
+  #gource-modal .gm-crt { pointer-events: none; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 28% 16%, rgba(255, 255, 255, 0.08), transparent 42%),
+      radial-gradient(ellipse at center, transparent 64%, rgba(0, 0, 0, 0.32) 100%), /* subtle vignette */
+      repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0.24) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(to right, rgba(255, 70, 70, 0.05) 0 1px, rgba(70, 255, 130, 0.04) 1px 2px, rgba(70, 130, 255, 0.05) 2px 3px);
+    box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.4), inset 0 0 8px rgba(0, 0, 0, 0.7);
+    animation: gm-flicker 0.12s steps(2) infinite; }
+  #gource-modal .gm-crt::after { content: ""; position: absolute; left: 0; right: 0; height: 18%; top: -20%;
+    background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.05), transparent); animation: gm-roll 7s linear infinite; }
+  /* The chin: power LED, title, a link out and a round knob to switch off. */
+  #gource-modal .gm-head { display: flex; align-items: center; gap: 12px; padding: 0 6px; min-height: 28px; font-family: var(--mono); font-size: 12px; }
+  #gource-modal .gm-led { width: 8px; height: 8px; border-radius: 50%; background: #ff5a4f; box-shadow: 0 0 8px #ff5a4f; flex: none; }
+  #gource-modal .gm-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-300); letter-spacing: 0.04em; }
+  #gource-modal .gm-ext { color: var(--purple); text-decoration: none; white-space: nowrap; }
+  #gource-modal .gm-close { width: 28px; height: 28px; flex: none; border-radius: 50%; cursor: pointer; line-height: 1; font-size: 15px;
+    color: var(--ink-300); border: 1px solid rgba(255, 255, 255, 0.12); background: radial-gradient(circle at 35% 30%, #3b4458, #141923); }
+  #gource-modal .gm-close:hover { color: var(--ink-100); }
+  @media (max-width: 720px) { #gource-modal { padding: 0; } #gource-modal .gm-card { border-radius: 0; height: 100%; padding: 10px 10px 8px; } }
+  /* Loading: the city stays usable; a chip at the clicked building shows progress. */
+  #gource-modal.pending { background: transparent; pointer-events: none; }
+  #gource-modal.pending .gm-card { opacity: 0; }
+  #gource-modal .gm-loading { display: none; position: fixed; left: var(--gx); top: var(--gy); transform: translate(-50%, calc(-100% - 14px));
+    align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 999px; pointer-events: auto;
+    background: rgba(17, 24, 36, 0.94); border: 1px solid rgba(140, 120, 255, 0.5); font-family: var(--mono); font-size: 12px; color: var(--ink-100);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); animation: gm-pop 0.25s ease-out both; }
+  #gource-modal.pending .gm-loading { display: flex; }
+  #gource-modal .gm-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(140, 120, 255, 0.3); border-top-color: var(--purple); animation: gm-spin 0.8s linear infinite; }
+  #gource-modal .gm-cancel { background: none; border: none; color: var(--ink-500); font-size: 16px; cursor: pointer; line-height: 1; }
+  /* Ready: the set swings out of the clicked building, then the tube powers on (dot, line, picture). */
+  #gource-modal.reveal { animation: gm-dim 0.4s ease-out both; }
+  #gource-modal.reveal .gm-card { transform-origin: var(--ox) var(--oy); animation: gm-set 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.1) both; }
+  #gource-modal.reveal .gm-screen > * { animation: gm-on 0.7s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  #gource-modal.reveal .gm-screen > .gm-crt { animation: gm-on 0.7s 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both, gm-flicker 0.12s 0.9s steps(2) infinite; }
+  /* Closing: the picture collapses to a line, then a dot, and the set fades away. */
+  #gource-modal.off { animation: gm-undim 0.36s ease-in both; }
+  #gource-modal.off .gm-screen > * { animation: gm-offk 0.32s ease-in both; }
+  #gource-modal.off .gm-card { animation: gm-unset 0.36s ease-in both; }
+  @keyframes gm-set { from { transform: scale(0.18); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes gm-on {
+    0% { transform: scale(0.02, 0.004); filter: brightness(8) saturate(0); }
+    30% { transform: scale(1, 0.004); filter: brightness(6) saturate(0); }
+    62% { transform: scale(1, 1.03); filter: brightness(1.8) saturate(0.6); }
+    100% { transform: none; filter: none; }
+  }
+  @keyframes gm-offk {
+    0% { transform: none; filter: none; }
+    55% { transform: scale(1, 0.004); filter: brightness(5); }
+    100% { transform: scale(0, 0.004); filter: brightness(8); opacity: 0; }
+  }
+  @keyframes gm-unset { 0%, 60% { opacity: 1; } 100% { opacity: 0; transform: scale(0.97); } }
+  @keyframes gm-dim { from { background: rgba(6, 10, 18, 0); } to { background: rgba(6, 10, 18, 0.82); } }
+  @keyframes gm-undim { from { background: rgba(6, 10, 18, 0.82); } to { background: rgba(6, 10, 18, 0); } }
+  @keyframes gm-flicker { 50% { opacity: 0.95; } }
+  @keyframes gm-roll { to { top: 110%; } }
+  @keyframes gm-pop { from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)) scale(0.8); } }
+  @keyframes gm-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    #gource-modal .gm-crt, #gource-modal .gm-crt::after { animation: none; }
+    #gource-modal.reveal .gm-card, #gource-modal.reveal .gm-screen > *, #gource-modal.off .gm-screen > * { animation: none; }
+  }
   .panel-section { font-family: var(--mono); font-size: 10px; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.14em; margin: 16px 0 8px; }
   .panel-details { font-family: var(--mono); font-size: 11px; color: var(--ink-300); line-height: 1.8; }
 
