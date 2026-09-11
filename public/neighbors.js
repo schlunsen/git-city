@@ -9,13 +9,15 @@
  * unauthenticated GitHub API budget (60 requests/hour) isn't spent twice.
  */
 
+import { ghFetch } from './gh-api.js'; // GitHub first, Gitilla's cache when the quota is gone
+
 const WEEK = 7 * 864e5;
 
 async function getJSON(url, timeout = 5000) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), timeout);
   try {
-    const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal });
+    const res = await ghFetch(url, { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal });
     return res.ok ? await res.json() : null;
   } catch {
     return null;

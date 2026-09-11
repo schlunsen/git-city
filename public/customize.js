@@ -11,6 +11,8 @@
  * panel never uses innerHTML. Links point at fixed github.com URLs built from
  * a validated login.
  */
+
+import { ghFetch } from './gh-api.js';
 import {
   OPTIONS, LABELS, LIMITS, CONFIG_PATH, PROFILE_README_DOCS, ORG_README_DOCS,
   normalizeCityConfig, serializeCityConfig, serializeBuildingConfig, newFileUrl, editFileUrl, blobUrl,
@@ -437,7 +439,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     if (repoInfo.has(key)) return;
     repoInfo.set(key, { exists: null, branch: 'HEAD' });
     try {
-      const res = await fetch(`https://api.github.com/repos/${repo.split('/').map(encodeURIComponent).join('/')}`,
+      const res = await ghFetch(`https://api.github.com/repos/${repo.split('/').map(encodeURIComponent).join('/')}`,
         { headers: { Accept: 'application/vnd.github+json' }, credentials: 'omit' });
       if (res.status === 404) repoInfo.set(key, { exists: false, branch: 'HEAD' });
       else if (res.ok) {

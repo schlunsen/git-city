@@ -3,12 +3,13 @@
  */
 import { API, DEFAULT_USER, FIXTURES } from './constants.js';
 import { setLoadStatus } from './util.js';
+import { ghFetch } from '../gh-api.js'; // falls back to gitilla.com/api when GitHub says no
 
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
 export async function fetchJSON(url) {
-  const res = await fetch(url, { headers: { 'Accept': 'application/vnd.github+json' } });
+  const res = await ghFetch(url, { headers: { 'Accept': 'application/vnd.github+json' } });
   if (res.status === 403 || res.status === 429) {
     const remaining = res.headers.get('x-ratelimit-remaining');
     throw new Error(remaining === '0'
