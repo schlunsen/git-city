@@ -51,6 +51,10 @@ JOBS = {
     'landmarks': ('16:9', f'Sprite sheet of 4 different cartoon landmark objects in a single row, side view, evenly spaced with clear gaps: a hot air balloon, a small lighthouse, a windmill, a ferris wheel, {STYLE}, {MAG}'),
     # landmarks-4 (the launch pad) is the first sprite of this sheet.
     'rockets': ('16:9', f'Sprite sheet of 3 different cartoon rocket landmark objects in a single row, side view, evenly spaced with clear gaps: a retro red-and-white rocket on a small launch pad with a lattice gantry tower, a chunky teal rocket with round portholes standing on three fins on a concrete pad, a tall slim silver rocket with an orange nose cone beside a small launch tower, {STYLE}, {MAG}'),
+    # Nature, round 2 (trees-5 .. trees-9 = TREE.WILLOW, BIRCH, ACACIA, BAOBAB, APPLE in world.js):
+    'trees2': ('16:9', f'Sprite sheet of 5 different cartoon trees in a single row, side view, evenly spaced with clear gaps: a weeping willow with long drooping green branches, a white birch tree with a slim white trunk marked with black streaks and light green leaves, a flat-topped acacia umbrella tree with a dark brown trunk, a fat baobab tree with a thick grey-brown bottle-shaped trunk and a small green crown, an apple tree with a round green canopy dotted with red apples, foliage with darker green shadow blobs, no ground shadows, {STYLE}, {MAG}'),
+    # ...and bushes-5 .. bushes-9 = BUSH.SUNFLOWERS, CACTUS, REEDS, STUMP, FERN:
+    'plants2': ('16:9', f'Sprite sheet of 5 different small cartoon plants in a single row, side view, evenly spaced with clear gaps: a clump of three tall sunflowers, a round green cactus with a few yellow flowers, a tuft of tall green reeds with brown cattails, a mossy tree stump with small brown mushrooms, a lush green fern, plain plants with no faces, eyes or smiles, no ground shadows, {STYLE}, {MAG}'),
     # Scenery accents, in this order: props-fountain, props-dock, scenery-autumn-tree, scenery-rock-cluster
     # (key.py row ... --names props-fountain props-dock scenery-autumn-tree scenery-rock-cluster).
     # Street furniture already exists in the props sheet (lamp, bench, hydrant, mailbox): reuse it.
