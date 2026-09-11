@@ -1031,9 +1031,9 @@ export function createExplorer(THREE, deps = {}) {
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 5500);
   }
   function armGuard() { Object.assign(guard, { armed: false, t: 0, x0: plane.p.x, z0: plane.p.z }); }
-  function startTravel(gate) {
+  function startTravel(gate, source = 'edge') { // source: 'edge' | 'next' | 'ui'
     if (trip || typeof deps.travel !== 'function' || !gate?.login) return;
-    trip = { gate, mode, phase: 'cover', t0: performance.now() }; // travel in the current mode
+    trip = { gate, mode, source, phase: 'cover', t0: performance.now() }; // travel in the current mode
     warpTitle.textContent = `✈ @${gate.login}’s island`;
     warpSub.textContent = gate.via ? `next island · ${gate.via}` : 'next island';
     warpAv.style.visibility = '';
@@ -1080,8 +1080,8 @@ export function createExplorer(THREE, deps = {}) {
         chase.yaw = chase.pitch = 0; blend = null;
       }
     } else {
-      toast(`Couldn’t reach @${t.gate.login} — ${reason || 'GitHub rate limit'}, try another direction`);
-      if (sim === 'fly') plane.turnBack = 3.2; // bank back toward the island
+      toast(`Couldn’t reach @${t.gate.login} — ${reason || 'GitHub rate limit'}${t.source === 'edge' ? ', try another direction' : ''}`);
+      if (sim === 'fly' && t.source === 'edge') plane.turnBack = 3.2; // bank back toward the island
     }
     if (sim === 'fly') armGuard();
     warp.classList.remove('show');
@@ -1089,7 +1089,9 @@ export function createExplorer(THREE, deps = {}) {
     t.phase = 'reveal'; t.t0 = performance.now() + 150;
   }
   // Effect levels for the current moment: amt = warp strength, white = cloud whiteout.
+  let warpOverride = null; // debug: pin the effect for screenshots
   function warpLevels(now) {
+    if (warpOverride) return warpOverride;
     if (!trip) return null;
     const ss = THREE.MathUtils.smoothstep;
     if (trip.phase === 'load') return { amt: 1, white: 1 };
@@ -1177,7 +1179,7 @@ export function createExplorer(THREE, deps = {}) {
     const g = nextGate();
     if (!g || typeof deps.travel !== 'function') { toast('No neighbouring islands yet — try again in a moment'); return; }
     if (mode === 'fly') { plane.yaw = wrapAngle(-g.bearing); plane.pitch = 0.05; } // point her out to sea, toward that island
-    startTravel(g);
+    startTravel(g, 'next');
   }
   const nextBtns = [];
   function makeNext(cls, html) {
@@ -1187,17 +1189,32 @@ export function createExplorer(THREE, deps = {}) {
     nextBtns.push(b);
     return b;
   }
-  if (button) button.insertAdjacentElement('afterend', makeNext('tb gcx-next', '✈ Next island'));
+  if (button) button.insertAdjacentElement('afterend', makeNext('tb gcx-next', '✈ Next<span class="gcx-lbl-wide"> island</span>'));
   hud.querySelector('.gcx-exit').before(makeNext('gcx-next-hud', '✈<span class="gcx-lbl"> Next island</span>'));
-  let nextT = 0;
-  function updateNextTitle(dt) {
-    nextT -= dt;
-    if (nextT > 0) return;
-    nextT = 0.5;
+  let nextAt = 0;
+  function updateNextTitle() { // wall-clock throttle: slow frames must not keep the button disabled
+    const now = performance.now();
+    if (now < nextAt) return;
+    nextAt = now + 400;
     const g = nextGate(), title = g ? `Go to @${g.login}’s island (N)` : 'Next island (N): neighbours are still loading';
     for (const b of nextBtns) { if (b.title !== title) b.title = title; b.disabled = !g || !!trip; }
   }
 
+  // Any profile change (search box, chips, Next island) travels through the same warp and
+  // comes back in the same mode. The bearing is the neighbour's, else where the camera faces.
+  function travelTo(login, opts = {}) {
+    login = String(login || '').trim().replace(/^@/, '');
+    if (!login || typeof deps.travel !== 'function') return false;
+    if (trip || exiting) return true; // one hop at a time
+    const known = (getWorld()?.gates || []).find((g) => g.login.toLowerCase() === login.toLowerCase());
+    let bearing = opts.bearing ?? known?.bearing;
+    if (bearing == null) { camera.getWorldDirection(_nd); bearing = Math.atan2(_nd.z, _nd.x); }
+    const gate = { login, bearing, via: opts.via ?? known?.via ?? '',
+      avatar: opts.avatar ?? known?.avatar ?? `https://github.com/${encodeURIComponent(login)}.png?size=128` };
+    if (mode === 'fly') { plane.yaw = wrapAngle(-bearing); plane.pitch = 0.05; }
+    startTravel(gate, opts.source || 'ui');
+    return true;
+  }
   function travelCleanup() {
     clearTimeout(toastTimer);
     for (const b of nextBtns) b.remove();
@@ -1288,7 +1305,7 @@ export function createExplorer(THREE, deps = {}) {
     get ownsCamera() { return mode !== 'orbit' || exiting; },
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
     wantsKey(e) { return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'; },
-    update, postRender, dispose, resetColliders, flyToNext,
+    update, postRender, dispose, resetColliders, flyToNext, travelTo,
     groundAt,
     /** Debug / test hooks: collider count, box list, and teleporting the active walker / car. */
     debug: {
@@ -1301,6 +1318,7 @@ export function createExplorer(THREE, deps = {}) {
       fly(x, y, z, yaw = 0, arm = true) { if (sim === 'fly') { plane.p.set(x, y, z); plane.yaw = yaw; plane.pitch = plane.roll = 0; if (arm) guard.armed = true; } },
       trip: () => (trip ? { login: trip.gate.login, phase: trip.phase, mode: trip.mode } : null),
       armed: () => guard.armed,
+      warp(levels) { warpOverride = levels ? { amt: +levels.amt || 0, white: +levels.white || 0 } : null; },
     },
     get state() { return { mode, sim, car: { x: car.p.x, y: car.y, z: car.p.z, speed: car.vf, pitch: car.pitch, roll: car.roll }, plane: { ...plane.p, speed: plane.speed, roll: plane.roll, pitch: plane.pitch }, walker: { ...walker.p } }; },
   };
@@ -1428,6 +1446,7 @@ function injectTravelStyle() {
     padding: 10px 16px; border-radius: 10px; background: rgba(44, 18, 24, 0.94); border: 1px solid rgba(255, 128, 120, 0.4);
     color: #ffe9e6; font: 12px/1.4 var(--mono, ui-monospace, monospace); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); }
   .gcx-next { color: var(--accent, #64dedb); }
+  @media (max-width: 1760px) { .gcx-next .gcx-lbl-wide { display: none; } } /* keep the top bar on one line */
   .gcx-next:disabled, .gcx-next-hud:disabled { opacity: 0.45; cursor: default; }
   .gcx-next-hud { flex: none; font: inherit; border: 0; cursor: pointer; border-radius: 999px; padding: 6px 11px;
     background: rgba(100, 222, 219, 0.14); color: var(--accent, #64dedb); }
