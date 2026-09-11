@@ -1,57 +1,122 @@
-# Git City
+<div align="center">
 
-Turn any GitHub profile into an interactive cartoon city.
+# 🏙️ Git City
 
-Every public repository becomes a building: height and footprint scale with
-stars, the facade colour follows the primary language, and repositories are
-clustered into language districts around a central plaza. Load a profile and
-the last 90 days of public activity play back Gource-style — the developer's
-avatar flies from building to building, beaming pushes, pull requests, issues
-and stars onto the skyline while a timeline clock and activity feed keep score.
+**Turn any GitHub profile into a living cartoon city.**
 
-**Live:** https://schlunsen.github.io/git-city/
+Every repository becomes a building. Stars make it tall, the language paints it,
+and the last 90 days of activity play back as the developer flies across the
+skyline — beaming pushes, pull requests and stars onto the rooftops.
 
-## Features
+[**▶ Open Git City**](https://schlunsen.github.io/git-city/) ·
+[torvalds](https://schlunsen.github.io/git-city/?user=torvalds) ·
+[sindresorhus](https://schlunsen.github.io/git-city/?user=sindresorhus) ·
+[antfu](https://schlunsen.github.io/git-city/?user=antfu) ·
+[gaearon](https://schlunsen.github.io/git-city/?user=gaearon) ·
+[schlunsen](https://schlunsen.github.io/git-city/?user=schlunsen)
 
-- Cel-shaded Three.js scene with ink outlines, painted facades, tiered towers
-  and hip roofs, rooftop decals, and vacant-lot decals (parks, courts, sites)
-- A hand-drawn world around the block: grass island in toon water, painted
-  hills on the horizon, paper-cutout trees, houses, street furniture, hot-air
-  balloons, a lighthouse, a windmill and a ferris wheel
-- Day / night follows your local clock (or pick day, night, or a 60-second
-  cycle); rain and snow; bloom, grade and grain post-processing
-- Gource-style activity playback with scrubbing and speed control, a
-  cinematic tour, and click-to-inspect repository panels
-- Zero build step: vanilla ES modules, Three.js from a CDN via an import map
+[![Deploy](https://github.com/schlunsen/git-city/actions/workflows/pages.yml/badge.svg)](https://github.com/schlunsen/git-city/actions/workflows/pages.yml)
+![Three.js](https://img.shields.io/badge/three.js-r160-000?logo=threedotjs)
+![No build step](https://img.shields.io/badge/build%20step-none-64dedb)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8c78ff)](LICENSE)
+
+<img src="docs/screenshots/hero.jpg" alt="Git City rendering sindresorhus: a dense cel-shaded city of yellow JavaScript, pink CSS and blue TypeScript towers on a grass island" width="100%">
+
+</div>
+
+## What you're looking at
+
+| On GitHub | In the city |
+| --- | --- |
+| 📦 A repository | A building on its own lot |
+| ⭐ Stars | Height and footprint (log scale — a 100k★ tower still leaves room for the rest) |
+| 🎨 Primary language | Facade colour, and the **district** it's zoned into around the central plaza |
+| 🏆 Most-starred repos | Closest to the plaza; 100★+ get a glowing rooftop beacon |
+| 🔥 Public activity (90 days) | Gource-style playback: the avatar flies to each repo and beams it — teal pushes, purple PRs and reviews, blue issues, orange stars and releases |
+| 📅 Daily activity | A heatmap ring of bricks around the plaza |
+
+Small profiles still get a lived-in town: empty lots fill with parks, courts,
+parking and construction sites.
+
+## Gallery
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/night.jpg" alt="Night: windows glow, streetlamps and stars come out"><br><sub><b>Night falls</b> — windows light up one by one, lamps and stars come out. Day/night follows your local clock.</sub></td>
+    <td width="50%"><img src="docs/screenshots/closeup.jpg" alt="Close-up of painted facades, helipads and rooftop gardens"><br><sub><b>Up close</b> — painted facades, tiered towers, helipads, rooftop gardens and solar roofs.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/repo-panel.jpg" alt="Repository panel with a link to watch its history in Gource View"><br><sub><b>Click any building</b> for the repo's stats — then watch its full commit history in <a href="https://schlunsen.github.io/gource-view/">Gource View</a>.</sub></td>
+    <td width="50%"><img src="docs/screenshots/island.jpg" alt="Zoomed out: the city on a grass island with hills, a lighthouse and a ferris wheel"><br><sub><b>Zoom out</b> — the city sits on its own island, with villages, woods, a lighthouse and hot-air balloons.</sub></td>
+  </tr>
+</table>
+
+## Things to try
+
+- **Scrub the timeline** at the bottom, or change the speed (0.5×–4×)
+- Press **T** for a cinematic fly-through, **Space** to play / pause, **Esc** to close panels
+- Toggle **Day / Night / Auto / Cycle**, then make it **rain** or **snow**
+- Click a repo in the explorer on the left to fly the camera to it
+- Turn **Follow** on and the camera drifts after the developer as they work
+
+## How it's built
+
+Plain ES modules and [Three.js](https://threejs.org) from a CDN — no bundler,
+no framework, no build step. The whole app is the [`public/`](public) folder.
+
+- **Toon rendering** — `MeshToonMaterial` on a shared stepped ramp, inverted-hull
+  ink outlines, a hand-written post pass (bloom, day/night grade, vignette, grain)
+  and a banded cel-shaded sky
+- **Facades** are painted per building onto canvases, with a separate emissive
+  map so individual windows light up at night
+- **The world** ([`world.js`](public/world.js)) is paper cutouts: generated,
+  chroma-keyed sprites for trees, houses, props and landmarks, billboarded to face
+  the camera, plus top-down decals for roofs and empty lots
+- **Layout** clusters repositories into language districts on a grid with a
+  rounded boulevard; traffic follows the curves
+- **Timeline** ([`history.js`](public/history.js)) merges GitHub events into
+  paced "steps" the flying actor acts out
 
 ## Running locally
 
 ```sh
-node server.mjs            # http://localhost:8000
-node --test tests/         # unit tests for layout + timeline math
+node server.mjs            # → http://localhost:8000
+node --test tests/         # layout + timeline unit tests
 ```
 
-Any static file server works — the app is just the `public/` directory.
+Any static file server works. Add `?user=<login>` to load a profile, or
+`?demo=1` to use the bundled snapshots only.
 
-## Featured developers and the GitHub rate limit
+## The GitHub rate limit
 
-The app calls the GitHub REST API directly from the browser, which is limited
-to 60 unauthenticated requests per hour per IP. The featured profiles in the
-top bar ship with a snapshot in `public/fixtures/` that a GitHub Actions
-workflow refreshes daily; the app prefers a fresh snapshot, falls back to the
-live API, and falls back to the snapshot again if the API is rate-limited.
-Open the page with `?demo=1` to force snapshot mode.
+The browser talks to the GitHub API directly, and anonymous visitors get
+**60 requests an hour**. So the featured developers ship with snapshots in
+[`public/fixtures/`](public/fixtures), refreshed every day by
+[a GitHub Action](.github/workflows/pages.yml). Git City uses a fresh snapshot
+when it has one, goes live otherwise, and falls back to the snapshot if GitHub
+says no.
 
 ```sh
 GITHUB_TOKEN=$(gh auth token) node scripts/scrape.mjs          # refresh all
-node scripts/scrape.mjs torvalds antfu                          # a subset
+node scripts/scrape.mjs torvalds antfu                          # just a few
 ```
 
-## Artwork
+Snapshots only name repositories the profile owns — activity elsewhere is kept
+for the daily heatmap but anonymised.
 
-The cutout sprites, tiles and backdrop in `public/assets/` were generated
-with an image model, chroma-keyed and split into sprites. They are part of this
-repository and covered by its license.
+## Companion: Gource View
+
+[Gource View](https://github.com/schlunsen/gource-view) replays a single
+repository's entire commit history as a Gource-style animation. The two link to
+each other: open a building here to watch its history there, and click an
+author there to see their city here.
+
+## Credits
+
+The cutout sprites, tiles and backdrop in [`public/assets/`](public/assets) were
+generated with an image model, then chroma-keyed and split by script. They are
+part of this repository and covered by its license. Language colours follow
+GitHub's linguist palette.
 
 ## License
 
