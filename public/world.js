@@ -51,6 +51,9 @@ export const LANDMARK_SITES = {
   radioTower: ['peak', 'wild'],
   observatory: ['peak', 'slopes'],
   balloonPad: ['peak', 'farm0', 'fair2', 'farm1'],
+  lighthouse: ['coast', 'peak'],
+  recordShop: ['fair2', 'fair', 'bigFair'],
+  robotMonument: ['wild', 'slopes'],
 };
 const TREE = { OAK: 0, POPLAR: 1, PINE: 2, ROUND: 3, CHERRY: 4 };
 const BUSH = { ROUND: 0, TULIPS: 1, LEAFY: 2, GRASS: 3, TOPIARY: 4 };
