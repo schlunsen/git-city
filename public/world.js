@@ -1227,7 +1227,7 @@ export function createWorld(THREE, scene, deps) {
     // Landmarks: lighthouse on its headland, windmill on its hill, ferris wheel at the fair.
     const lighthouseCut = cutout(`landmarks-${LANDMARK.LIGHTHOUSE}`, 16, LIGHT.x, groundY(LIGHT.x, LIGHT.z), LIGHT.z, { parent: group, list: bills });
     cutout(`landmarks-${LANDMARK.WINDMILL}`, 15, MILL.x, groundY(MILL.x, MILL.z), MILL.z, { parent: group, list: bills });
-    cutout(`landmarks-${LANDMARK.FERRIS}`, 18, FAIR.x, groundY(FAIR.x, FAIR.z), FAIR.z, { parent: group, list: bills });
+    const ferrisCut = cutout(`landmarks-${LANDMARK.FERRIS}`, 18, FAIR.x, groundY(FAIR.x, FAIR.z), FAIR.z, { parent: group, list: bills }); // until the 3D wheel loads
     for (const p of [LIGHT, MILL, FAIR]) shadowSpots.push({ x: p.x, y: groundY(p.x, p.z) + 0.1, z: p.z, w: 6 });
     if (PAD) {
       cutout(`landmarks-${LANDMARK.ROCKET}`, 17, PAD.x, groundY(PAD.x, PAD.z), PAD.z, { parent: group, list: bills });
@@ -1604,6 +1604,20 @@ export function createWorld(THREE, scene, deps) {
     // ---- 3D attractions (lazy module) ------------------------------------------------
     attractionsMod.then((mod) => {
       if (disposed || !mod?.ATTRACTIONS) return;
+      // The fair's Ferris wheel: the 3D one (it turns) takes over from the cutout, facing the city.
+      if (mod.buildFerrisWheel) {
+        try {
+          const fw = mod.buildFerrisWheel({ THREE, envMat: sharedEnvMat, ink: inkMat, rnd: seededRandom((T.seed ^ fnv('ferrisWheel')) >>> 0) }, {});
+          fw.group.position.set(FAIR.x, heightAt(FAIR.x, FAIR.z) - 0.03, FAIR.z);
+          fw.group.rotation.y = Math.atan2(-FAIR.x, -FAIR.z);
+          fw.group.traverse((o) => { if (o.isMesh && o.material !== inkMat && o.material?.side !== THREE.BackSide) o.castShadow = true; });
+          add(fw.group);
+          animated.push(fw);
+          ferrisCut.visible = false;
+        } catch (err) {
+          console.warn('ferris wheel failed', err);
+        }
+      }
       const pickRnd = seededRandom((T.seed ^ 0xA77) >>> 0);
       const used = new Set(sites.map((s) => s.want).filter(Boolean)); // requested landmarks aren't drawn twice
       for (const s of sites) {

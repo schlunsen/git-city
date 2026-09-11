@@ -22,12 +22,12 @@
  *   landmarks.js   radio tower, observatory, balloon pad
  */
 
-import { buildRollerCoaster, buildCarousel, buildCircusTent, buildDropTower } from './attractions/rides.js';
+import { buildRollerCoaster, buildCarousel, buildCircusTent, buildDropTower, buildFerrisWheel } from './attractions/rides.js';
 import { buildWindTurbines, buildWindmill, buildFarm, buildCampsite } from './attractions/countryside.js';
 import { buildRadioTower, buildObservatory, buildBalloonPad, buildLighthouse, buildRecordShop, buildRobotMonument } from './attractions/landmarks.js';
 
 export {
-  buildRollerCoaster, buildCarousel, buildCircusTent, buildDropTower,
+  buildRollerCoaster, buildCarousel, buildCircusTent, buildDropTower, buildFerrisWheel,
   buildWindTurbines, buildWindmill, buildFarm, buildCampsite,
   buildRadioTower, buildObservatory, buildBalloonPad,
   buildLighthouse, buildRecordShop, buildRobotMonument,
