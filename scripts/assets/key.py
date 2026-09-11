@@ -4,6 +4,7 @@
 usage:
   python3 scripts/assets/key.py row   scripts/assets/raw/rockets.png --name landmarks --start 4 --pick 0
   python3 scripts/assets/key.py row   scripts/assets/raw/trees.png   --name trees            # trees-0.png, trees-1.png, ...
+  python3 scripts/assets/key.py row   scripts/assets/raw/scenery_accents.png --names props-fountain props-dock scenery-autumn-tree scenery-rock-cluster
   python3 scripts/assets/key.py grid  scripts/assets/raw/roofs.png   --name roofs            # 2x2 top-down tiles
   python3 scripts/assets/key.py tile  scripts/assets/raw/grass.png   --name grass            # seamless square
   python3 scripts/assets/key.py strip scripts/assets/raw/hills.png   --name hills            # panorama keyed above the ridge
@@ -87,7 +88,10 @@ def row(raw, a):
     sprites = [s for s in sprites if min(s.size) >= a.min_px]  # stray specks the model sometimes leaves
     print(f'background {bg.astype(int)}: {len(sprites)} sprites' + (f' ({len(specks)} specks dropped)' if specks else ''))
     picks = a.pick if a.pick is not None else range(len(sprites))
-    return [(f'{a.name}-{a.start + n}', fit(sprites[i], a.max_side)) for n, i in enumerate(picks)]
+    names = a.names or [f'{a.name}-{a.start + n}' for n in range(len(picks))]
+    if len(names) != len(picks):
+        raise SystemExit(f'--names gives {len(names)} names for {len(picks)} sprites')
+    return [(names[n], fit(sprites[i], a.max_side)) for n, i in enumerate(picks)]
 
 
 def grid(raw, a, size=512):
@@ -133,13 +137,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('mode', choices=['row', 'grid', 'tile', 'strip'])
     ap.add_argument('raw', type=Path, help='the generated sheet (scripts/assets/raw/<name>.png)')
-    ap.add_argument('--name', required=True, help='output name: <name>-<i>.png for row/grid, <name>.png otherwise')
+    ap.add_argument('--name', help='output name: <name>-<i>.png for row/grid, <name>.png otherwise')
+    ap.add_argument('--names', nargs='+', help='row mode: one file name per sprite written (instead of <name>-<i>)')
     ap.add_argument('--start', type=int, default=0, help='first index to write (append to an existing set)')
     ap.add_argument('--pick', type=int, nargs='+', help='row mode: keep only these sprites (0-based, left to right)')
     ap.add_argument('--max-side', type=int, default=384, help='row mode: longest side in px (clouds use 512)')
     ap.add_argument('--min-px', type=int, default=40, help='row mode: drop sprites smaller than this (specks)')
     ap.add_argument('--out', type=Path, default=OUT, help='output folder (default public/assets)')
     a = ap.parse_args()
+    if not a.name and not (a.mode == 'row' and a.names):
+        ap.error('--name is required (or --names in row mode)')
 
     images = {'row': row, 'grid': grid, 'tile': tile, 'strip': strip}[a.mode](a.raw, a)
     a.out.mkdir(parents=True, exist_ok=True)
