@@ -277,9 +277,10 @@ export function createExplorer(THREE, deps = {}) {
 
   // ---- the toon biplane (local frame: +x forward, y up, +z right) -----------
   let planeObj = null;
+  let livery = { color: null, name: '' }; // city.json plane: fuselage colour + painted name (setLivery)
   function buildPlane() {
     const root = new THREE.Group();
-    const red = toon(0xef5b4c), cream = toon(0xf6efe1), trim = toon(0x2a2f3a), yellow = toon(0xf6c343), wood = toon(0x9a6a4a);
+    const red = toon(livery.color ?? 0xef5b4c), cream = toon(0xf6efe1), trim = toon(0x2a2f3a), yellow = toon(0xf6c343), wood = toon(0x9a6a4a);
     const glass = toon(0x9ad3ea), skin = toon(0xf2c9a0), leather = toon(0x7a5236), teal = toon(0x64dedb);
     const prof = [[0.001, -2.75], [0.14, -2.7], [0.3, -2.2], [0.5, -1.2], [0.64, -0.2], [0.68, 0.7], [0.64, 1.45], [0.6, 1.62], [0.001, 1.62]];
     const fus = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 24).rotateZ(-Math.PI / 2).scale(1, 1.06, 0.94);
@@ -325,9 +326,33 @@ export function createExplorer(THREE, deps = {}) {
     const disc = new THREE.Mesh(new THREE.CircleGeometry(1.15, 32).rotateY(Math.PI / 2), discMat);
     disc.position.x = 2.08; disc.raycast = noRaycast;
     root.add(prop, disc);
+    // The developer's name for her, on both sides of the fuselage (canvas fillText only).
+    let nameTex = null;
+    if (livery.name) {
+      const cv = document.createElement('canvas'); cv.width = 512; cv.height = 96;
+      const g = cv.getContext('2d');
+      const font = (px) => `italic 800 ${px}px "Space Grotesk", ui-sans-serif, system-ui, sans-serif`;
+      let px = 64;
+      g.font = font(px);
+      while (g.measureText(livery.name).width > 480 && px > 18) { px -= 2; g.font = font(px); }
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+      g.lineWidth = Math.max(4, px * 0.18); g.strokeStyle = '#1a2233'; g.strokeText(livery.name, 256, 50);
+      g.fillStyle = '#f6efe1'; g.fillText(livery.name, 256, 50);
+      nameTex = new THREE.CanvasTexture(cv);
+      nameTex.colorSpace = THREE.SRGBColorSpace;
+      const mat = new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      ownedMats.push(mat);
+      for (const side of [-1, 1]) {
+        const decal = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.28), mat);
+        decal.position.set(-0.5, 0.06, side * 0.61);
+        if (side < 0) decal.rotation.y = Math.PI; // reads left to right from either side
+        decal.raycast = noRaycast;
+        root.add(decal);
+      }
+    }
     const blob = new THREE.Mesh(new THREE.PlaneGeometry(8, 6).rotateX(-Math.PI / 2), blobMaterial());
     blob.raycast = noRaycast;
-    return { root, prop, discMat, scarf, blob, navL, navR };
+    return { root, prop, discMat, scarf, blob, navL, navR, nameTex };
   }
 
   // ---- puffs: cartoon smoke balls (contrail, tyre smoke, bonks) -------------
@@ -673,6 +698,22 @@ export function createExplorer(THREE, deps = {}) {
   function removeVehicle(which) {
     if (which === 'drive' && carObj) scene.remove(carObj.root);
     if (which === 'fly' && planeObj) scene.remove(planeObj.root, planeObj.blob);
+  }
+  // city.json plane livery: { color: 0xRRGGBB | null, name: string }. The
+  // biplane is rebuilt (in place if she's flying) only when it changes.
+  function setLivery({ color = null, name = '' } = {}) {
+    color = Number.isInteger(color) ? color : null;
+    name = typeof name === 'string' ? name : '';
+    if (color === livery.color && name === livery.name) return;
+    livery = { color, name };
+    if (!planeObj) return;
+    const flying = !!planeObj.root.parent;
+    if (flying) scene.remove(planeObj.root, planeObj.blob);
+    planeObj.nameTex?.dispose();
+    planeObj.root.traverse((o) => o.geometry?.dispose());
+    planeObj.blob.geometry.dispose();
+    planeObj = null;
+    if (flying) { ensureVehicle('fly'); placePlane(); }
   }
 
   // ---- mode switching --------------------------------------------------------------
@@ -1306,7 +1347,7 @@ export function createExplorer(THREE, deps = {}) {
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
     wantsKey(e) { return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'; },
     update, postRender, dispose, resetColliders, flyToNext, travelTo,
-    groundAt,
+    groundAt, setLivery,
     /** Debug / test hooks: collider count, box list, and teleporting the active walker / car. */
     debug: {
       boxes: () => getBoxes().map((b) => ({ min: b.min.toArray(), max: b.max.toArray() })),
