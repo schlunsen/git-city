@@ -3,7 +3,7 @@
  * building.json "graffiti"). Paints validated text onto a transparent canvas
  * with canvas fillText / strokeText only: an outline, the fill, overspray and
  * a few drips. Deterministic per seed, so a building always wears the same
- * piece. Shared by the 3D walls (app.js) and the Customize preview.
+ * piece. Shared by the 3D walls (city/buildings.js) and the Customize preview.
  */
 
 export const GRAFFITI_W = 512, GRAFFITI_H = 256;
