@@ -24,12 +24,13 @@
 
 import { buildRollerCoaster, buildCarousel, buildCircusTent, buildDropTower } from './attractions/rides.js';
 import { buildWindTurbines, buildWindmill, buildFarm, buildCampsite } from './attractions/countryside.js';
-import { buildRadioTower, buildObservatory, buildBalloonPad } from './attractions/landmarks.js';
+import { buildRadioTower, buildObservatory, buildBalloonPad, buildLighthouse, buildRecordShop, buildRobotMonument } from './attractions/landmarks.js';
 
 export {
   buildRollerCoaster, buildCarousel, buildCircusTent, buildDropTower,
   buildWindTurbines, buildWindmill, buildFarm, buildCampsite,
   buildRadioTower, buildObservatory, buildBalloonPad,
+  buildLighthouse, buildRecordShop, buildRobotMonument,
 };
 
 // ===========================================================================
@@ -54,4 +55,7 @@ export const ATTRACTIONS = [
   { key: 'radioTower', build: buildRadioTower, radius: 5, weight: 1, tags: ['hill', 'wild'] },
   { key: 'observatory', build: buildObservatory, radius: 5.5, weight: 1, tags: ['hill'] },
   { key: 'balloonPad', build: buildBalloonPad, radius: 5.5, weight: 1, tags: ['hill', 'farm', 'fair'] },
+  { key: 'lighthouse', build: buildLighthouse, radius: 5, weight: 1, tags: ['coast', 'hill'] },
+  { key: 'recordShop', build: buildRecordShop, radius: 6, weight: 1, tags: ['fair', 'flat'] },
+  { key: 'robotMonument', build: buildRobotMonument, radius: 5, weight: 1, tags: ['wild', 'hill'] },
 ];

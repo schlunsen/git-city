@@ -14,6 +14,47 @@ scripts/assets/key.py        raw sheet → PNGs       (public/assets/, committed
 public/world.js              PNGs → the island      (SPRITE_COUNTS, enums, placement)
 ```
 
+## The rules, and what breaking them looks like
+
+These come from real mistakes. Read them before generating anything.
+
+![Left: an asset generated with a "transparent background" and cleaned with a white-background remover. Right: the same tree through this pipeline.](screenshots/assets-checkerboard.jpg)
+
+1. **Never ask for a transparent background.**
+   - **Why:** image models can't output transparency. Ask for "transparent", "PNG with alpha" or "isolated on transparent" and they *paint* a grey-and-white checkerboard into the picture.
+   - **What it looks like:** a white-background remover then leaves the grey squares behind, so the object stands in a see-through checkered box on the island (left).
+   - **Do instead:** always use the flat magenta background (`MAG`) and `key.py` (right).
+2. **Side view, never isometric or 3/4.**
+   - **Why:** cutouts are billboards that turn to face the camera.
+   - **What it looks like:** an isometric drawing shows its top from every angle, and a flat object drawn from above (a pier, a fountain basin) looks like a card standing on its edge.
+3. **No painted ground shadows.** The island draws its own blob shadows. A painted shadow doubles up and keys out badly. Add "no ground shadows" to the subject.
+4. **The bottom edge of the image is the ground.**
+   - **Why:** `plant()` and `cutout()` stand the image's bottom edge on the terrain.
+   - **What it looks like:** an object centred in a padded square floats above the ground by the padding.
+   - **Do instead:** `key.py` trims every sprite to its object. Don't re-pad the result.
+5. **One sprite sheet per batch, not one image per object.**
+   - One image of four objects in a row costs the same as one object.
+   - All four share a style, and `key.py` splits them.
+6. **Reuse before you generate.** The `props` sheet already has a lamp post, a bench, a fire hydrant, a mailbox, a food cart and a bus stop (`PROP` in `world.js`). A second hydrant in a different style makes the island look patched together.
+7. **Only `generate.py` → `key.py`.** Don't process images with other scripts or tools; every committed PNG should be reproducible from a `JOBS` entry.
+
+## Adding to the set regularly
+
+The set grows a batch at a time: street furniture, vegetation, waterfront props and ground decals, alongside the landmarks. For each batch:
+
+1. Pick one to four related objects and write **one** sprite-sheet job for them in `JOBS`.
+2. Generate and key it:
+
+   ```sh
+   python3 scripts/assets/generate.py <job>
+   python3 scripts/assets/key.py row scripts/assets/raw/<job>.png --names <name> <name> …
+   ```
+
+3. Open the preview. Then place the sprites in `public/world.js`. The *Scenery accents* block shows the pattern: `plant(name, height, x, z)` with the `coastAt` / `roadDist` / `slopeAt` / `isFree` helpers and its own random stream.
+4. Check them in the browser by day and by night, run `node --test tests/`, and open a PR.
+
+The scenery-accents batch (`props-fountain`, `props-dock`, `scenery-autumn-tree`, `scenery-rock-cluster`: job `scenery_accents`) was made this way.
+
 ## 1. Setup
 
 - **Python 3 with Pillow and numpy.** Run `pip install pillow numpy` if they're missing.
@@ -74,6 +115,7 @@ The API underneath is `POST https://api.atlascloud.ai/api/v1/model/generateImage
 Two gotchas, both handled in `generate.py`:
 - **Set a User-Agent.** The API sits behind Cloudflare, which rejects Python's default `urllib` User-Agent with `HTTP 403 "error code: 1010"`.
 - **`outputs[0]` is a temporary provider URL.** Download it straight away; the script does.
+- **The content filter has false positives.** "Content violates platform security policy and has been blocked" came back for a fountain with a "water jet" and a pier "on stilts". Rewording ("a small spout of water", "on wooden posts") went straight through.
 
 ## 4. Key and split
 
@@ -81,7 +123,10 @@ Two gotchas, both handled in `generate.py`:
 python3 scripts/assets/key.py row  scripts/assets/raw/rockets.png --name landmarks --start 4 --pick 0
 python3 scripts/assets/key.py row  scripts/assets/raw/trees.png   --name trees          # trees-0 … trees-N
 python3 scripts/assets/key.py grid scripts/assets/raw/roofs.png   --name roofs
+python3 scripts/assets/key.py row  scripts/assets/raw/scenery_accents.png --names props-fountain props-dock scenery-autumn-tree scenery-rock-cluster
 ```
+
+`--names` gives each sprite of a row its own file name, in order from left to right.
 
 - **Chroma key.** The model never paints exactly `#FF00FF` (the rocket sheet came back as `rgb(224, 78, 152)`), so the background colour is sampled from the image border. Pixels near it become transparent, and edge pixels are un-mixed from it, so no pink fringe survives.
 - **Splitting.** Sheets are split on empty columns. Sprites are trimmed, scaled to `--max-side` (384 px; clouds use 512) and written as `<name>-<start + i>.png`.

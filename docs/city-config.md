@@ -55,7 +55,7 @@ typo never breaks your city; it just doesn't do anything.
 | `look.tv` | boolean | `true` / `false` | Old-television (CRT) look when your city opens. |
 | `look.fx` | boolean | `true` / `false` | Bloom, colour grade and grain when your city opens. |
 | `look.timezone` | name | an IANA time zone, ≤ 64 characters (`Europe/Copenhagen`, `Asia/Tokyo`, `UTC`) | Your local time: the city's automatic day and night follow it instead of the visitor's clock. |
-| `landmarks` | list of names | ≤ 6 of `rollerCoaster`, `carousel`, `circusTent`, `dropTower`, `windTurbines`, `windmill`, `farm`, `campsite`, `radioTower`, `observatory`, `balloonPad` | Attractions placed first, in your order. The island still tops up to its usual count (which grows with stars and followers). |
+| `landmarks` | list of names | ≤ 6 of `rollerCoaster`, `carousel`, `circusTent`, `dropTower`, `windTurbines`, `windmill`, `farm`, `campsite`, `radioTower`, `observatory`, `balloonPad`, `lighthouse`, `recordShop`, `robotMonument` | Attractions placed first, in your order. The island still tops up to its usual count (which grows with stars and followers). |
 | `neighbours` | list of logins | ≤ 6 GitHub logins | The islands you reach by flying off the map. Yours come first; the rest are filled automatically (who you follow, contributors, featured developers). |
 | `featured` | list of repo names | ≤ 12 of your repositories | Built next to the plaza and advertised first on the country billboards, in this order. |
 | `hide` | list of repo names | ≤ 50 of your repositories | Left out of the city (no building, no billboard). Wins over `featured`. |

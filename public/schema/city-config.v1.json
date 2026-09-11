@@ -112,7 +112,10 @@
           "campsite",
           "radioTower",
           "observatory",
-          "balloonPad"
+          "balloonPad",
+          "lighthouse",
+          "recordShop",
+          "robotMonument"
         ]
       },
       "description": "Attractions placed first (best effort: each needs a free site of the right kind)."
