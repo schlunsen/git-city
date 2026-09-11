@@ -4,8 +4,8 @@
 <meta charset="UTF-8" />
 <!-- Defence in depth (the page renders other developers' city.json): scripts only from here, jsdelivr (three) and
      the import map below (by hash: update it if the map changes); data only from GitHub; the Gource View player
-     is the only frame. 'unsafe-inline' is for styles only (inline <style> and style attributes). See docs/city-config.md. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-kUzUdVBrUyLBrCt7g8JotJaIo+b+nhfx4QNK2LZsCCw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://avatars.githubusercontent.com https://github.com https://raw.githubusercontent.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://camo.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; frame-src https://schlunsen.github.io; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'" />
+     and the Buy Me a Coffee widget are the only frames. 'unsafe-inline' is for styles only (inline <style> and style attributes). See docs/city-config.md. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.buymeacoffee.com 'sha256-kUzUdVBrUyLBrCt7g8JotJaIo+b+nhfx4QNK2LZsCCw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.buymeacoffee.com https://avatars.githubusercontent.com https://github.com https://raw.githubusercontent.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://camo.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com; frame-src https://schlunsen.github.io https://www.buymeacoffee.com https://buymeacoffee.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Git City — code in motion</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
@@ -130,6 +130,8 @@
   }
 }
 </script>
+<!-- Buy Me a Coffee: its floating button, opened too by the sponsor plane (city/banner-plane.js). -->
+<script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="schlunsen" data-description="Support me on Buy me a coffee!" data-message="" data-color="#5F7FFF" data-position="left" data-x_margin="18" data-y_margin="18"></script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
