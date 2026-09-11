@@ -394,6 +394,7 @@ export function createExplorer(THREE, deps = {}) {
   const isTyping = (e) => !!e.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
   function onKeyDown(e) {
     if (isTyping(e) || e.metaKey || e.altKey) return;
+    if (!e.ctrlKey && e.code === 'KeyN') { flyToNext(); e.preventDefault(); return; } // next island
     if (!e.ctrlKey && /^Digit[1-4]$/.test(e.code)) {
       setMode(MODES[Number(e.code.slice(5)) - 1]);
       e.preventDefault();
@@ -546,7 +547,7 @@ export function createExplorer(THREE, deps = {}) {
     walk: () => (locked ? '<b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>Esc</b> free mouse'
       : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · <b>Space</b> jump · <b>click</b> to mouse-look'),
     drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look',
-    fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle',
+    fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle · <b>N</b> next island',
   };
   function syncUI() {
     const on = mode !== 'orbit';
@@ -1001,23 +1002,26 @@ export function createExplorer(THREE, deps = {}) {
     gaugeEl.hidden = !txt;
   }
 
-  // ---- neighbour travel: portal gates at sea morph the world into the next profile ----
-  // deps.world()        -> the world handle: gates, gateFor(x, y, z, mode), arrival(bearing, mode)
+  // ---- neighbour travel: fly off the edge of the island into the next profile -----------
+  // deps.world()        -> the world handle: gates (neighbour bearings), gateFor(x, y, z, 'fly')
+  //                        (a neighbour once the plane is past the edge), arrival(bearing, 'fly')
   // deps.travel(login)  -> Promise<{ ok, login?, reason? }>, settling once the new city is built
+  // The morph is a full-screen shader drawn over the finished frame (postRender): a radial
+  // warp with speed streaks and a teal tint, peaking in a cloud whiteout while the next
+  // island loads, then unwinding over it. Reduced motion gets a plain crossfade.
+  const EDGE_R = 320;                                        // world.gateFor's travel radius
   const getWorld = () => { try { return deps.world?.() || null; } catch { return null; } };
-  let trip = null;                                           // { gate, mode, phase: 'cover' | 'load' | 'reveal', t0 }
-  const guard = { armed: true, t: 0, x0: 0, z0: 0, r0: Infinity }; // no re-trigger right after arriving
-  const COVER_MS = 850, REVEAL_MS = 950;
-  const warp = el('div', 'gcx-warp', `
-    <div class="gcx-cloud c1"></div><div class="gcx-cloud c2"></div><div class="gcx-cloud c3"></div>
-    <div class="gcx-cloud c4"></div><div class="gcx-cloud c5"></div>
-    <div class="gcx-warp-card"><img class="gcx-warp-av" alt="" referrerpolicy="no-referrer">
-      <div class="gcx-warp-title"></div><div class="gcx-warp-sub"></div></div>`);
+  let trip = null;                                           // { gate, phase: 'cover' | 'load' | 'reveal', t0 }
+  let edgeHint = null;                                       // login shown in the "keep flying" hint
+  const guard = { armed: true, t: 0, x0: 0, z0: 0 };         // no instant hop right after arriving
+  const COVER_MS = 1100, REVEAL_MS = 1200;
+  const warp = el('div', 'gcx-warp', `<div class="gcx-warp-card"><img class="gcx-warp-av" alt="" referrerpolicy="no-referrer">
+    <div class="gcx-warp-title"></div><div class="gcx-warp-sub"></div></div>`);
   warp.hidden = true;
   warp.setAttribute('aria-live', 'polite');
-  const toastEl = el('div', 'gcx-toast', ''), gatesEl = el('div', 'gcx-gates', '');
+  const toastEl = el('div', 'gcx-toast', '');
   toastEl.hidden = true; toastEl.setAttribute('role', 'status');
-  document.body.append(warp, toastEl, gatesEl);
+  document.body.append(warp, toastEl);
   const warpAv = warp.querySelector('.gcx-warp-av'), warpTitle = warp.querySelector('.gcx-warp-title'), warpSub = warp.querySelector('.gcx-warp-sub');
   warpAv.addEventListener('error', () => { warpAv.style.visibility = 'hidden'; });
   injectTravelStyle();
@@ -1026,196 +1030,179 @@ export function createExplorer(THREE, deps = {}) {
     toastEl.textContent = msg; toastEl.hidden = false;
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 5500);
   }
-  const _gp = new THREE.Vector3(), _gq = new THREE.Vector3();
-  function playerPos() {
-    if (sim === 'fly') return _gq.copy(plane.p);
-    if (sim === 'drive') return _gq.set(car.p.x, car.y, car.p.z);
-    if (sim === 'walk') return _gq.copy(walker.p);
-    return _gq.copy(camera.position);
-  }
-  function armGuard() {
-    const p = playerPos();
-    Object.assign(guard, { armed: false, t: 0, x0: p.x, z0: p.z, r0: Math.hypot(p.x, p.z) });
-  }
-  // Screen position of a world point; `front` is false behind the camera.
-  function toScreen(x, y, z) {
-    _gp.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
-    const front = _gp.z < -0.5;
-    _gp.applyMatrix4(camera.projectionMatrix);
-    return { x: (_gp.x + 1) / 2 * innerWidth, y: (1 - _gp.y) / 2 * innerHeight, nx: _gp.x, ny: _gp.y, front };
-  }
+  function armGuard() { Object.assign(guard, { armed: false, t: 0, x0: plane.p.x, z0: plane.p.z }); }
   function startTravel(gate) {
     if (trip || typeof deps.travel !== 'function' || !gate?.login) return;
-    const m = mode !== 'orbit' && sim ? sim : 'orbit';
-    trip = { gate, mode: m, phase: 'cover', t0: performance.now() };
-    camera.updateMatrixWorld();
-    const s = toScreen(gate.x, gate.y, gate.z);
-    const on = s.front && s.x > 0 && s.x < innerWidth && s.y > 0 && s.y < innerHeight;
-    warp.style.setProperty('--ix', on ? `${s.x}px` : '50%');
-    warp.style.setProperty('--iy', on ? `${s.y}px` : '50%');
-    warpTitle.textContent = `${m === 'walk' || m === 'drive' ? '⛴ Sailing' : '✈ Flying'} to @${gate.login}’s island…`;
+    trip = { gate, mode, phase: 'cover', t0: performance.now() }; // travel in the current mode
+    warpTitle.textContent = `✈ @${gate.login}’s island`;
     warpSub.textContent = gate.via ? `next island · ${gate.via}` : 'next island';
     warpAv.style.visibility = '';
     warpAv.src = gate.avatar || '';
     warp.hidden = false;
-    void warp.offsetWidth; // restart the iris from a closed circle
-    warp.classList.add('on');
+    warp.classList.remove('show');
     closeMenu();
+    setEdgeHint(null);
   }
   // Advance the trip; true while the world is being swapped (hold the sim still).
   function updateTravel() {
     if (!trip) return false;
-    const now = performance.now();
-    if (trip.phase === 'cover' && now - trip.t0 >= COVER_MS) {
-      trip.phase = 'load';
-      const t = trip;
+    const now = performance.now(), t = trip;
+    if (t.phase === 'cover' && now - t.t0 >= COVER_MS * 0.75) warp.classList.add('show');
+    if (t.phase === 'cover' && now - t.t0 >= COVER_MS) {
+      t.phase = 'load';
       Promise.resolve().then(() => deps.travel(t.gate.login))
         .then((r) => arrive(t, r && r.ok !== false, r?.reason), (e) => arrive(t, false, e?.message));
     }
-    if (trip.phase === 'reveal' && now - trip.t0 >= REVEAL_MS) { warp.hidden = true; trip = null; return false; }
-    return trip.phase === 'load';
+    if (t.phase === 'reveal' && now - t.t0 >= REVEAL_MS) { warp.hidden = true; trip = null; return false; }
+    return t.phase === 'load';
   }
   function arrive(t, ok, reason) {
     if (trip !== t) return;
     if (ok) {
       resetColliders();
-      const a = t.mode !== 'orbit' && sim === t.mode ? getWorld()?.arrival?.(t.gate.bearing + Math.PI, t.mode) : null;
-      if (a) placeAt(a);
+      // Come out on the far side of the new island, heading inland (heading = atan2(dz, dx)):
+      // the plane over the sea with its speed kept, a car / walker on the first dry ground.
+      // Orbit needs nothing: the host's loadCity() frames the new city.
+      const m = t.mode !== 'orbit' && sim === t.mode ? t.mode : null;
+      const a = m ? getWorld()?.arrival?.(t.gate.bearing + Math.PI, m) : null;
+      if (a) {
+        const h = a.heading;
+        if (m === 'fly') {
+          plane.p.set(a.x, a.y, a.z); plane.yaw = wrapAngle(-h); plane.pitch = plane.roll = 0; plane.turnBack = 0;
+          placePlane(); flyCam(1, true);
+        } else if (m === 'drive') {
+          car.p.set(a.x, 0, a.z); car.yaw = wrapAngle(-h); car.v.set(0, 0); car.steer = 0;
+          car.y = groundAt(a.x, a.z); tiltCar(1); placeCar(); driveCam(1, true);
+        } else {
+          walker.p.set(a.x, groundAt(a.x, a.z), a.z); walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h));
+          walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
+        }
+        chase.yaw = chase.pitch = 0; blend = null;
+      }
     } else {
-      toast(`Couldn’t reach @${t.gate.login} — ${reason || 'GitHub rate limit'}, try another gate`);
-      if (sim === t.mode) turnBack();
+      toast(`Couldn’t reach @${t.gate.login} — ${reason || 'GitHub rate limit'}, try another direction`);
+      if (sim === 'fly') plane.turnBack = 3.2; // bank back toward the island
     }
-    if (sim) armGuard();
-    // Hold a beat so the new island has rendered, then open the iris on the view's centre.
-    warp.style.setProperty('--ix', '50%'); warp.style.setProperty('--iy', '50%');
-    t.phase = 'reveal'; t.t0 = performance.now() + 180;
-    setTimeout(() => { if (trip === t) warp.classList.remove('on'); }, 180);
+    if (sim === 'fly') armGuard();
+    warp.classList.remove('show');
+    // A beat at full whiteout so the new island has rendered, then unwind.
+    t.phase = 'reveal'; t.t0 = performance.now() + 150;
   }
-  // Come out of the far side of the new island, facing inland (heading = atan2(dz, dx)).
-  function placeAt(a) {
-    const h = a.heading;
-    if (sim === 'fly') {
-      plane.p.set(a.x, a.y, a.z); plane.yaw = wrapAngle(-h); plane.pitch = plane.roll = 0; plane.turnBack = 0; // speed kept
-      placePlane(); flyCam(1, true);
-    } else if (sim === 'drive') {
-      const keep = Math.min(Math.abs(car.vf), 8);
-      car.p.set(a.x, 0, a.z); car.yaw = wrapAngle(-h); car.v.set(Math.cos(car.yaw) * keep, -Math.sin(car.yaw) * keep);
-      car.steer = 0; car.y = groundAt(a.x, a.z); tiltCar(1); placeCar(); driveCam(1, true);
-    } else if (sim === 'walk') {
-      walker.p.set(a.x, groundAt(a.x, a.z), a.z); walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h));
-      walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
-    }
-    chase.yaw = chase.pitch = 0; blend = null;
+  // Effect levels for the current moment: amt = warp strength, white = cloud whiteout.
+  function warpLevels(now) {
+    if (!trip) return null;
+    const ss = THREE.MathUtils.smoothstep;
+    if (trip.phase === 'load') return { amt: 1, white: 1 };
+    if (trip.phase === 'cover') { const e = (now - trip.t0) / COVER_MS; return { amt: ss(e, 0, 1), white: ss(e, 0.45, 1) }; }
+    const e = Math.max(0, now - trip.t0) / REVEAL_MS;
+    return { amt: 1 - ss(e, 0.15, 1), white: 1 - ss(e, 0, 0.6) };
   }
-  // A failed hop: the plane banks back toward the island, the car / walker is nudged inland.
-  function turnBack() {
-    if (sim === 'fly') { plane.turnBack = 3.2; return; }
-    const p = sim === 'drive' ? car.p : walker.p, r = Math.hypot(p.x, p.z) || 1, ix = -p.x / r, iz = -p.z / r, h = Math.atan2(iz, ix);
-    p.x += ix * 6; p.z += iz * 6;
-    if (sim === 'drive') { car.yaw = wrapAngle(-h); car.v.set(0, 0); car.y = groundAt(p.x, p.z); tiltCar(1); placeCar(); driveCam(1, true); }
-    else { walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h)); walker.v.set(0, 0, 0); walker.p.y = groundAt(p.x, p.z); }
-    blend = null;
+  let warpFx = null;
+  function getWarpFx() {
+    if (warpFx) return warpFx;
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { tMap: { value: null }, uAmt: { value: 0 }, uWhite: { value: 0 }, uTime: { value: 0 }, uRes: { value: size.clone() }, uReduced: { value: reducedMotion ? 1 : 0 } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+      fragmentShader: WARP_FRAG, depthTest: false, depthWrite: false,
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+    quad.frustumCulled = false;
+    const sc = new THREE.Scene();
+    sc.add(quad);
+    warpFx = { mat, quad, sc, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), tex: null, size };
+    return warpFx;
   }
-  function checkGates(dt) {
-    if (trip || !sim || mode === 'orbit' || exiting) return;
-    const W = getWorld(), gs = W?.gates;
-    if (typeof W?.gateFor !== 'function' || !gs?.length) return;
-    const p = playerPos();
-    if (!guard.armed) {
-      guard.t += dt;
-      const rMin = Math.min(...gs.map((g) => Math.hypot(g.x, g.z)));
-      if (guard.t >= 4 && (Math.hypot(p.x, p.z) < Math.min(rMin, guard.r0) - 10 || Math.hypot(p.x - guard.x0, p.z - guard.z0) > 90)) guard.armed = true;
-      else return;
+  // After the host's final render (plain, FX or TV): grab the frame and warp it.
+  function postRender() {
+    const lv = warpLevels(performance.now());
+    if (!lv || (lv.amt < 0.002 && lv.white < 0.002)) return;
+    const fx = getWarpFx();
+    renderer.getDrawingBufferSize(fx.size);
+    if (!fx.tex || fx.tex.image.width !== fx.size.x || fx.tex.image.height !== fx.size.y) {
+      fx.tex?.dispose();
+      fx.tex = new THREE.FramebufferTexture(fx.size.x, fx.size.y);
+      fx.tex.minFilter = fx.tex.magFilter = THREE.LinearFilter;
+      fx.tex.generateMipmaps = false;
     }
-    let g = W.gateFor(p.x, p.y, p.z, sim);
-    if (!g && sim !== 'fly') { // the car's nose / the walker's next step reach the waterline first
-      const ax = sim === 'drive' ? Math.cos(car.yaw) * 1.8 * Math.sign(car.vf || 1) : -Math.sin(walker.yaw) * 0.9;
-      const az = sim === 'drive' ? -Math.sin(car.yaw) * 1.8 * Math.sign(car.vf || 1) : -Math.cos(walker.yaw) * 0.9;
-      g = W.gateFor(p.x + ax, p.y, p.z + az, sim);
-    }
-    if (g) startTravel(g);
+    renderer.setRenderTarget(null);
+    renderer.copyFramebufferToTexture(fx.tex);
+    const u = fx.mat.uniforms;
+    u.tMap.value = fx.tex; u.uAmt.value = lv.amt; u.uWhite.value = lv.white; u.uTime.value = performance.now() / 1000; u.uRes.value.copy(fx.size);
+    const auto = renderer.autoClear;
+    renderer.autoClear = false;
+    renderer.render(fx.sc, fx.cam);
+    renderer.autoClear = auto;
   }
-  // Gate chips: over the gate when it's in view, pinned to the screen edge with an arrow otherwise.
-  const chips = new Map();
-  let chipT = 0, insetTop = 70, insetBottom = 150;
-  function updateGateHud(dt) {
-    const gs = mode !== 'orbit' && !exiting && !trip ? (getWorld()?.gates || []) : [];
-    gatesEl.hidden = !gs.length;
-    const live = new Set(gs.map((g) => g.login));
-    for (const [login, c] of chips) if (!live.has(login)) { c.el.remove(); chips.delete(login); }
-    if (!gs.length) return;
-    chipT -= dt;
-    const text = chipT <= 0;
-    if (text) {
-      chipT = 0.25;
-      const cs = getComputedStyle(document.documentElement);
-      insetTop = (parseFloat(cs.getPropertyValue('--topbar-h')) || 58) + 16;
-      insetBottom = (parseFloat(cs.getPropertyValue('--transport-h')) || 96) + 70;
-    }
-    camera.updateMatrixWorld();
-    const p = playerPos(), W2 = innerWidth / 2, H2 = innerHeight / 2, m = 60;
-    let nearest = null, nd = Infinity;
-    for (const g of gs) {
-      let c = chips.get(g.login);
-      if (!c) {
-        const n = el('div', 'gcx-gate', '<i class="gcx-arr"></i><img alt="" referrerpolicy="no-referrer"><span></span>');
-        n.querySelector('img').src = g.avatar || '';
-        n.querySelector('img').addEventListener('error', (e) => { e.target.style.visibility = 'hidden'; });
-        gatesEl.append(n);
-        c = { el: n, arr: n.querySelector('.gcx-arr'), txt: n.querySelector('span') };
-        chips.set(g.login, c);
-      }
-      const d = Math.hypot(g.x - p.x, g.z - p.z);
-      if (d < nd) { nd = d; nearest = c; }
-      const s = toScreen(g.x, g.y + 10, g.z);
-      let x = s.x, y = s.y, ang = 0;
-      const inView = s.front && x > m && x < innerWidth - m && y > insetTop + 10 && y < innerHeight - insetBottom;
-      if (!inView) {
-        let dx = s.nx * W2, dy = -s.ny * H2;
-        if (!s.front) { dx = -dx; dy = -dy; }
-        if (Math.abs(dx) + Math.abs(dy) < 1e-3) dy = 1;
-        const k = Math.min((W2 - m) / Math.max(Math.abs(dx), 1e-3),
-          (dy < 0 ? H2 - insetTop - 10 : H2 - insetBottom) / Math.max(Math.abs(dy), 1e-3));
-        x = W2 + dx * k; y = H2 + dy * k; ang = Math.atan2(dy, dx);
-      }
-      c.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -50%)`;
-      c.el.classList.toggle('edge', !inView);
-      if (!inView) c.arr.style.transform = `rotate(${ang.toFixed(3)}rad)`;
-      if (text) c.txt.innerHTML = `<b>@${escapeText(g.login)}</b> · ${Math.round(d * TO_M)} m`;
-      c.el.classList.remove('near');
-    }
-    if (nearest && nd < 120) nearest.el.classList.add('near');
+  function setEdgeHint(login) {
+    if (login === edgeHint) return;
+    edgeHint = login;
+    if (mode === 'orbit') return;
+    hintEl.innerHTML = login ? `Keep flying to reach <b>@${escapeText(login)}</b>’s island →` : HINTS[mode]();
   }
   const escapeText = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-  // Orbit view: click a gate's ring to hop there too.
-  let orbitDown = null;
-  function gateAtScreen(cx, cy) {
-    camera.updateMatrixWorld();
-    const f = innerHeight / 2 / Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
-    let best = null, bd = Infinity;
-    for (const g of getWorld()?.gates || []) {
-      const depth = _gp.set(g.x, g.y, g.z).applyMatrix4(camera.matrixWorldInverse).z;
-      if (depth > -1) continue;
-      const s = toScreen(g.x, g.y, g.z), d = Math.hypot(s.x - cx, s.y - cy), rPx = Math.max(16, 5.5 * f / -depth);
-      if (d < rPx && d < bd) { bd = d; best = g; }
+  function checkGates(dt) {
+    if (sim !== 'fly' || mode !== 'fly' || exiting || trip) { setEdgeHint(null); return; }
+    const W = getWorld(), gs = W?.gates || [];
+    const r = Math.hypot(plane.p.x, plane.p.z);
+    if (!guard.armed) {
+      guard.t += dt;
+      if (guard.t >= 4 && (r < EDGE_R - 25 || Math.hypot(plane.p.x - guard.x0, plane.p.z - guard.z0) > 90)) guard.armed = true;
     }
-    return best;
+    // No neighbours yet, cooling down, or no host: the soft bound (330) turns the plane back as before.
+    if (!guard.armed || typeof deps.travel !== 'function' || typeof W?.gateFor !== 'function' || !gs.length) { setEdgeHint(null); return; }
+    const g = r > EDGE_R ? W.gateFor(plane.p.x, plane.p.y, plane.p.z, 'fly') : null;
+    if (g) { startTravel(g); return; }
+    // Nearing the edge: name the island ahead (the neighbour on the closest bearing).
+    let near = null;
+    if (r > EDGE_R - 40) {
+      const b = Math.atan2(plane.p.z, plane.p.x);
+      let bd = Infinity;
+      for (const n of gs) { const d = Math.abs(wrapAngle(n.bearing - b)); if (d < bd) { bd = d; near = n.login; } }
+    }
+    setEdgeHint(near);
   }
-  const onOrbitDown = (e) => { orbitDown = mode === 'orbit' && !exiting && !trip && e.target === canvas && e.button === 0 ? { x: e.clientX, y: e.clientY } : null; };
-  const onOrbitUp = (e) => {
-    const d = orbitDown; orbitDown = null;
-    if (!d || mode !== 'orbit' || trip || e.target !== canvas || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return;
-    const g = gateAtScreen(e.clientX, e.clientY);
-    if (g) startTravel(g);
-  };
-  addEventListener('pointerdown', onOrbitDown, cap);
-  addEventListener('pointerup', onOrbitUp, cap);
+  // "✈ Next island": fly to the neighbour the camera faces, from any mode (button, HUD, N key).
+  const _nd = new THREE.Vector3();
+  function nextGate() {
+    const gs = getWorld()?.gates || [];
+    if (!gs.length) return null;
+    camera.getWorldDirection(_nd);
+    const b = Math.atan2(_nd.z, _nd.x);
+    return gs.reduce((best, g) => (Math.abs(wrapAngle(g.bearing - b)) < Math.abs(wrapAngle(best.bearing - b)) ? g : best));
+  }
+  // Only a plane is seen heading off; orbit / walk / drive morph in place and come back in the same mode.
+  function flyToNext() {
+    if (trip || exiting) return;
+    const g = nextGate();
+    if (!g || typeof deps.travel !== 'function') { toast('No neighbouring islands yet — try again in a moment'); return; }
+    if (mode === 'fly') { plane.yaw = wrapAngle(-g.bearing); plane.pitch = 0.05; } // point her out to sea, toward that island
+    startTravel(g);
+  }
+  const nextBtns = [];
+  function makeNext(cls, html) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = cls; b.innerHTML = html; b.disabled = true;
+    b.addEventListener('click', (e) => { e.stopPropagation(); flyToNext(); b.blur(); });
+    nextBtns.push(b);
+    return b;
+  }
+  if (button) button.insertAdjacentElement('afterend', makeNext('tb gcx-next', '✈ Next island'));
+  hud.querySelector('.gcx-exit').before(makeNext('gcx-next-hud', '✈<span class="gcx-lbl"> Next island</span>'));
+  let nextT = 0;
+  function updateNextTitle(dt) {
+    nextT -= dt;
+    if (nextT > 0) return;
+    nextT = 0.5;
+    const g = nextGate(), title = g ? `Go to @${g.login}’s island (N)` : 'Next island (N): neighbours are still loading';
+    for (const b of nextBtns) { if (b.title !== title) b.title = title; b.disabled = !g || !!trip; }
+  }
+
   function travelCleanup() {
-    removeEventListener('pointerdown', onOrbitDown, cap);
-    removeEventListener('pointerup', onOrbitUp, cap);
     clearTimeout(toastTimer);
-    for (const n of [warp, toastEl, gatesEl]) n.remove();
-    chips.clear();
+    for (const b of nextBtns) b.remove();
+    for (const n of [warp, toastEl]) n.remove();
+    if (warpFx) { warpFx.tex?.dispose(); warpFx.mat.dispose(); warpFx.quad.geometry.dispose(); warpFx = null; }
   }
 
   // ---- public ---------------------------------------------------------------------------
@@ -1223,7 +1210,7 @@ export function createExplorer(THREE, deps = {}) {
     dt = Math.min(Math.max(dt || 0, 0), 0.05);
     updatePuffs(dt);
     const swapping = updateTravel(); // portal trip: hold still while the next island is built
-    if (deps.gateHud) updateGateHud(dt);
+    updateNextTitle(dt);
     if (mode === 'orbit' && !exiting) return false;
     if (swapping) return true;
     if (needUnstick && sim) {
@@ -1270,6 +1257,7 @@ export function createExplorer(THREE, deps = {}) {
   }
   function resetColliders() { boxes = null; needUnstick = !!sim; }
   function dispose() {
+    travelCleanup();
     removeEventListener('keydown', onKeyDown);
     removeEventListener('keyup', onKeyUp);
     removeEventListener('blur', onBlur);
@@ -1300,7 +1288,7 @@ export function createExplorer(THREE, deps = {}) {
     get ownsCamera() { return mode !== 'orbit' || exiting; },
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
     wantsKey(e) { return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'; },
-    update, dispose, resetColliders,
+    update, postRender, dispose, resetColliders, flyToNext,
     groundAt,
     /** Debug / test hooks: collider count, box list, and teleporting the active walker / car. */
     debug: {
@@ -1310,7 +1298,7 @@ export function createExplorer(THREE, deps = {}) {
         else if (sim === 'drive') { car.p.set(x, 0, z); car.yaw = yaw; car.v.set(0, 0); car.y = groundAt(x, z); }
         guard.armed = true;
       },
-      fly(x, y, z, yaw = 0) { if (sim === 'fly') { plane.p.set(x, y, z); plane.yaw = yaw; plane.pitch = plane.roll = 0; guard.armed = true; } },
+      fly(x, y, z, yaw = 0, arm = true) { if (sim === 'fly') { plane.p.set(x, y, z); plane.yaw = yaw; plane.pitch = plane.roll = 0; if (arm) guard.armed = true; } },
       trip: () => (trip ? { login: trip.gate.login, phase: trip.phase, mode: trip.mode } : null),
       armed: () => guard.armed,
     },
@@ -1370,49 +1358,80 @@ function injectStyle() {
   document.head.append(s);
 }
 
-// Travel styles: the teal cloud iris between islands, the failure toast, gate chips.
+// Full-screen travel warp (see postRender): radial zoom blur toward the vanishing
+// point with a chromatic stretch, speed streaks racing outward, a teal tint, and an
+// inked cloud iris that opens into a bright whiteout. uReduced: a plain crossfade.
+const WARP_FRAG = /* glsl */ `
+uniform sampler2D tMap;
+uniform float uAmt, uWhite, uTime, uReduced;
+uniform vec2 uRes;
+varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+float fbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * noise(p); p *= 2.03; a *= 0.5; } return s; }
+void main() {
+  vec2 asp = vec2(uRes.x / uRes.y, 1.0), d = vUv - 0.5, q = d * asp;
+  float r = length(q);
+  vec3 col;
+  if (uReduced > 0.5) {
+    col = texture2D(tMap, vUv).rgb;
+  } else {
+    vec3 acc = vec3(0.0);
+    float k = uAmt * 0.34;
+    for (int i = 0; i < 12; i++) {
+      float t = float(i) / 11.0, s = 1.0 - k * t, ca = uAmt * 0.02 * (0.3 + t);
+      acc.r += texture2D(tMap, 0.5 + d * (s - ca)).r;
+      acc.g += texture2D(tMap, 0.5 + d * s).g;
+      acc.b += texture2D(tMap, 0.5 + d * (s + ca)).b;
+    }
+    col = acc / 12.0;
+    float ang = atan(d.y, d.x), lane = floor(ang * 40.0), h = hash(vec2(lane, 7.0));
+    float dash = smoothstep(0.6, 1.0, fract(r * (1.4 + h * 2.2) - uTime * (1.6 + h * 2.6) + h * 9.0));
+    col += vec3(0.86, 1.0, 1.0) * step(0.7, h) * dash * smoothstep(0.12, 0.75, r) * uAmt;
+    col = mix(col, col * vec3(0.55, 1.0, 0.98) + vec3(0.03, 0.14, 0.14), uAmt * (0.3 + 0.45 * smoothstep(0.1, 0.85, r)));
+  }
+  float cloud = fbm(q * 3.2 + vec2(uTime * 0.25, -uTime * 0.18));
+  vec3 sky = mix(vec3(0.6, 0.92, 0.9), vec3(1.0), smoothstep(0.35, 0.72, cloud));
+  if (uReduced > 0.5) {
+    col = mix(col, sky, uWhite);
+  } else {
+    float edge = uWhite * 1.35 - 0.1 - r + (cloud - 0.5) * 0.28;
+    float m = smoothstep(0.0, 0.06, edge) * smoothstep(0.0, 0.05, uWhite);
+    float rim = (smoothstep(-0.03, 0.0, edge) - smoothstep(0.0, 0.03, edge)) * step(uWhite, 0.985) * smoothstep(0.0, 0.05, uWhite);
+    col = mix(col, sky, m);
+    col = mix(col, vec3(0.04, 0.05, 0.09), rim * 0.85); // inked cloud edge, like the city's outlines
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+// Travel styles: the arrival card over the whiteout and the failure toast.
 function injectTravelStyle() {
   if (document.getElementById('gcx-travel-style')) return;
   const s = document.createElement('style');
   s.id = 'gcx-travel-style';
   s.textContent = `
-  .gcx-warp { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; overflow: hidden; pointer-events: none;
-    background: radial-gradient(ellipse at 50% 42%, #9af3e9 0%, #52cdc6 42%, #1f7a82 100%);
-    clip-path: circle(0px at var(--ix, 50%) var(--iy, 50%)); transition: clip-path 850ms cubic-bezier(0.65, 0, 0.35, 1); }
-  .gcx-warp.on { clip-path: circle(150vmax at var(--ix, 50%) var(--iy, 50%)); pointer-events: auto; }
-  .gcx-warp[hidden], .gcx-toast[hidden], .gcx-gates[hidden] { display: none !important; }
-  .gcx-cloud { position: absolute; left: 0; width: 220px; height: 70px; border-radius: 999px; background: #fff;
-    filter: drop-shadow(4px 0 0 #0a0d16) drop-shadow(-4px 0 0 #0a0d16) drop-shadow(0 4px 0 #0a0d16) drop-shadow(0 -4px 0 #0a0d16);
-    animation: gcx-drift 5s linear infinite; }
-  .gcx-cloud::before, .gcx-cloud::after { content: ""; position: absolute; border-radius: 50%; background: #fff; }
-  .gcx-cloud::before { width: 100px; height: 100px; left: 34px; top: -52px; }
-  .gcx-cloud::after { width: 72px; height: 72px; left: 116px; top: -34px; }
-  .gcx-cloud.c1 { top: 12%; animation-duration: 4.2s; animation-delay: -1s; }
-  .gcx-cloud.c2 { top: 30%; transform: scale(0.7); animation-duration: 5.6s; animation-delay: -3.4s; }
-  .gcx-cloud.c3 { top: 68%; animation-duration: 3.8s; animation-delay: -2.2s; }
-  .gcx-cloud.c4 { top: 84%; animation-duration: 6.2s; animation-delay: -0.4s; }
-  .gcx-cloud.c5 { top: 52%; animation-duration: 4.8s; animation-delay: -4.1s; }
-  @keyframes gcx-drift { from { translate: 115vw 0; } to { translate: -40vw 0; } }
-  .gcx-warp-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 0 20px; text-align: center;
-    animation: gcx-bob 1.8s ease-in-out infinite; }
-  @keyframes gcx-bob { 50% { transform: translateY(-8px); } }
-  .gcx-warp-av { width: 116px; height: 116px; border-radius: 50%; object-fit: cover; background: #2b3a55;
-    border: 6px solid #0a0d16; box-shadow: 0 0 0 6px #f6efe1, 0 16px 34px rgba(8, 37, 36, 0.35); }
-  .gcx-warp-title { font: 700 clamp(20px, 3.4vw, 36px)/1.15 var(--display, system-ui, sans-serif); color: #0a1a24; text-shadow: 0 2px 0 rgba(255, 255, 255, 0.55); }
-  .gcx-warp-sub { font: 600 11px var(--mono, ui-monospace, monospace); letter-spacing: 0.16em; text-transform: uppercase; color: #0d3b3d; }
-  @media (prefers-reduced-motion: reduce) { .gcx-cloud, .gcx-warp-card { animation: none; } .gcx-warp { transition-duration: 1ms; } }
+  .gcx-warp { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; pointer-events: none; }
+  .gcx-warp[hidden], .gcx-toast[hidden] { display: none !important; }
+  .gcx-warp-card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 0 20px; text-align: center;
+    opacity: 0; transform: scale(0.86); transition: opacity 0.35s ease, transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+  .gcx-warp.show .gcx-warp-card { opacity: 1; transform: none; animation: gcx-bob 1.8s ease-in-out 0.5s infinite; }
+  @keyframes gcx-bob { 50% { transform: translateY(-7px); } }
+  .gcx-warp-av { width: 104px; height: 104px; border-radius: 50%; object-fit: cover; background: #2b3a55;
+    border: 6px solid #0a0d16; box-shadow: 0 0 0 6px #f6efe1, 0 14px 30px rgba(8, 37, 36, 0.3); }
+  .gcx-warp-title { font: 700 clamp(20px, 3vw, 32px)/1.15 var(--display, system-ui, sans-serif); color: #0a1a24; }
+  .gcx-warp-sub { font: 600 11px var(--mono, ui-monospace, monospace); letter-spacing: 0.16em; text-transform: uppercase; color: #1d5a5b; }
+  @media (prefers-reduced-motion: reduce) { .gcx-warp-card { transition: opacity 0.3s; transform: none; } .gcx-warp.show .gcx-warp-card { animation: none; } }
   .gcx-toast { position: fixed; left: 50%; top: calc(var(--topbar-h, 58px) + 16px); transform: translateX(-50%); z-index: 70; max-width: calc(100vw - 24px);
     padding: 10px 16px; border-radius: 10px; background: rgba(44, 18, 24, 0.94); border: 1px solid rgba(255, 128, 120, 0.4);
     color: #ffe9e6; font: 12px/1.4 var(--mono, ui-monospace, monospace); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); }
-  .gcx-gates { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
-  .gcx-gate { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; white-space: nowrap;
-    border-radius: 999px; background: rgba(17, 24, 36, 0.74); border: 1px solid rgba(100, 222, 219, 0.3); color: var(--ink-300, #c2cad8);
-    font: 11px var(--mono, ui-monospace, monospace); opacity: 0.72; transition: opacity 0.2s; }
-  .gcx-gate img { width: 20px; height: 20px; border-radius: 50%; background: #2b3a55; }
-  .gcx-gate b { color: var(--ink-100, #f1f4f9); font-weight: 600; }
-  .gcx-gate.near { opacity: 1; border-color: var(--accent, #64dedb); box-shadow: 0 0 0 3px rgba(100, 222, 219, 0.22); }
-  .gcx-arr { display: none; width: 0; height: 0; margin-left: 5px; border-left: 8px solid var(--accent, #64dedb);
-    border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
-  .gcx-gate.edge .gcx-arr { display: block; }`;
+  .gcx-next { color: var(--accent, #64dedb); }
+  .gcx-next:disabled, .gcx-next-hud:disabled { opacity: 0.45; cursor: default; }
+  .gcx-next-hud { flex: none; font: inherit; border: 0; cursor: pointer; border-radius: 999px; padding: 6px 11px;
+    background: rgba(100, 222, 219, 0.14); color: var(--accent, #64dedb); }
+  .gcx-next-hud:hover:not(:disabled) { background: rgba(100, 222, 219, 0.24); }
+  @media (max-width: 900px), (max-height: 500px) { .gcx-next-hud .gcx-lbl { display: none; } .gcx-next-hud { padding: 6px 9px; } }`;
   document.head.append(s);
 }
