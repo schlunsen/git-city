@@ -421,15 +421,15 @@ export function buildDust(THREE, scene, { count = 420, extent = 150, height = 70
 
 /* ==========================================================================
  * 5. OLD-TELEVISION PASS  (lo-fi on purpose)
- * Renders the scene at a fraction of the canvas resolution (cheap, and the
- * soft pixels sell the look), then composites with barrel curvature, RGB
- * fringing, scanlines on the low-res rows, an aperture mask, a slow rolling
- * bar, grain and a heavy vignette. No bloom — far cheaper than the FX pass.
+ * Renders the scene without MSAA at up to 1.5x device pixels, then composites
+ * with barrel curvature, light RGB fringing, fixed 3px scanlines, a soft
+ * aperture mask, a slow rolling bar, grain and a vignette. No bloom — far
+ * cheaper than the FX pass, and sharp enough to read the city.
  * ========================================================================== */
 const CRT_FRAG = /* glsl */`
   precision highp float;
   uniform sampler2D tScene;
-  uniform vec2  uLowRes;     // render-target size in pixels (scanline rows)
+  uniform float uLines;      // scanline count (one per ~3 CSS pixels)
   uniform float uTime;
   uniform float uMotion;     // 0 when the viewer prefers reduced motion
   varying vec2  vUv;
@@ -448,7 +448,7 @@ const CRT_FRAG = /* glsl */`
 
     // RGB fringing that breathes a little, stronger toward the edges.
     float edge = length(vUv - 0.5);
-    float ab = (0.0012 + 0.0025 * edge) * (1.0 + 0.35 * sin(uTime * 0.9) * uMotion);
+    float ab = (0.0004 + 0.0010 * edge) * (1.0 + 0.3 * sin(uTime * 0.9) * uMotion);
     // A faint horizontal jitter line now and then, like a tired tube.
     float jitter = uMotion * step(0.995, hash(vec2(floor(uTime * 12.0), 3.0))) * 0.004 * sin(uv.y * 90.0 + uTime * 40.0);
     vec2 j = vec2(jitter, 0.0);
@@ -458,15 +458,15 @@ const CRT_FRAG = /* glsl */`
     col.b = texture2D(tScene, uv + j - vec2(ab, 0.0)).b;
 
     // Scanlines on the low-res rows, and a phosphor aperture mask on screen pixels.
-    float scan = 0.72 + 0.28 * pow(abs(sin(uv.y * uLowRes.y * 3.14159265)), 0.9);
+    float scan = 0.8 + 0.2 * abs(sin(uv.y * uLines * 3.14159265));
     float m = mod(gl_FragCoord.x, 3.0);
-    vec3 mask = vec3(m < 1.0 ? 1.0 : 0.82, (m >= 1.0 && m < 2.0) ? 1.0 : 0.82, m >= 2.0 ? 1.0 : 0.82);
-    col *= scan * mask * 1.18;
+    vec3 mask = vec3(m < 1.0 ? 1.0 : 0.9, (m >= 1.0 && m < 2.0) ? 1.0 : 0.9, m >= 2.0 ? 1.0 : 0.9);
+    col *= scan * mask * 1.14;
 
     // Slow rolling bright bar + mains flicker + grain.
     col *= 1.0 + 0.05 * uMotion * smoothstep(0.0, 0.08, 0.08 - abs(fract(uv.y * 0.6 - uTime * 0.07) - 0.5));
     col *= 1.0 - 0.02 * uMotion * sin(uTime * 55.0);
-    col += (hash(gl_FragCoord.xy + floor(uTime * 24.0)) - 0.5) * 0.05;
+    col += (hash(gl_FragCoord.xy + floor(uTime * 24.0)) - 0.5) * 0.035;
 
     // Warm the whites a touch, lift the blacks like an old tube, and vignette hard.
     col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, 1.12) * vec3(1.03, 1.0, 0.95) + 0.015;
@@ -479,14 +479,14 @@ const CRT_FRAG = /* glsl */`
   }
 `;
 
-export function createCrtPass(THREE, renderer, scene, camera, { scale = 0.5, motion = true } = {}) {
+export function createCrtPass(THREE, renderer, scene, camera, { scale = Math.min(window.devicePixelRatio || 1, 1.5), motion = true } = {}) {
   const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: true });
   const mat = new THREE.ShaderMaterial({
     vertexShader: POST_VERT,
     fragmentShader: CRT_FRAG,
     uniforms: {
       tScene: { value: rt.texture },
-      uLowRes: { value: new THREE.Vector2(1, 1) },
+      uLines: { value: 300 },
       uTime: { value: 0 },
       uMotion: { value: motion ? 1 : 0 },
     },
@@ -496,9 +496,8 @@ export function createCrtPass(THREE, renderer, scene, camera, { scale = 0.5, mot
   const quadCam = new THREE.Camera();
   quadScene.add(quad);
   function resize(w, h) {
-    // Deliberately in CSS pixels, not device pixels: chunky and cheap.
     rt.setSize(Math.max(160, Math.floor(w * scale)), Math.max(100, Math.floor(h * scale)));
-    mat.uniforms.uLowRes.value.set(rt.width, rt.height);
+    mat.uniforms.uLines.value = Math.max(80, Math.floor(h / 3)); // fixed ~3px pitch at any resolution
   }
   resize(window.innerWidth, window.innerHeight);
   function render(time) {
