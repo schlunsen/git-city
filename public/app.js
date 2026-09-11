@@ -103,7 +103,7 @@ function onResize() {
 }
 
 // ---------------------------------------------------------------------------
-// Static environment (ground, streets, plaza)
+// City footprint (per profile)
 // ---------------------------------------------------------------------------
 // Pick the footprint for a profile: deterministic per login (and account
 // year), big enough for every repo shown. ?city=round previews a shape.
@@ -172,8 +172,6 @@ function buildCity(repos, user) {
   buildCars(user);
   return rankRepos(repos).sort((a, b) => b.stargazers_count - a.stargazers_count); // what's built, tallest first
 }
-
-// ---- enhancement motion (all guarded, cheap) -----------------------------
 
 // ---------------------------------------------------------------------------
 // Day / night cycle
@@ -356,12 +354,8 @@ function closePanel() {
 }
 
 // ---------------------------------------------------------------------------
-// HUD wiring
+// HUD: timeline clock + transport, menus, FX / TV / day-night settings, wiring
 // ---------------------------------------------------------------------------
-// ---------------------------------------------------------------------------
-// HUD: profile explorer, timeline clock, activity feed, transport
-// ---------------------------------------------------------------------------
-
 function focusRepo(fullName) {
   const b = buildingByName.get(fullName);
   if (!b) return;
@@ -674,10 +668,6 @@ function animate(timestamp) {
   else renderer.render(scene, camera);
   explorer?.postRender?.(); // explore.js: full-screen island-travel warp over whichever frame was drawn
 }
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // City config: the developer's <login>/<login>/.git-city/city.json. city-config.js
