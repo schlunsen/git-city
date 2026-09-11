@@ -9,6 +9,8 @@
  * modules work in any module context without a bare "three" specifier.
  */
 
+import { ghFetch } from './gh-api.js'; // GitHub first, Gitilla's cache when the quota is gone
+
 /* ==========================================================================
  * 1. CONTRIBUTION-HEATMAP RING
  * 365 days of green voxel bricks rising from the ground around the plaza.
@@ -22,7 +24,7 @@ export async function fetchEvents(login, { perPage = 100, pages = 3, org = false
     for (let page = 1; page <= pages; page++) {
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 6000);
-      const res = await fetch(
+      const res = await ghFetch(
         org ? `https://api.github.com/orgs/${encodeURIComponent(login)}/events?per_page=${perPage}&page=${page}`
           : `https://api.github.com/users/${encodeURIComponent(login)}/events/public?per_page=${perPage}&page=${page}`,
         { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal }
