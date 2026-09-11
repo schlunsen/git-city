@@ -28,8 +28,8 @@
  */
 
 // How many sprites each sheet was split into (see tools/ — assets are static).
-export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 6, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
-export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5 };
+export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
+export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5, BUS_SHELTER: 6, TRASH_BIN: 7, NEWS_STAND: 8, BIKE_RACK: 9 };
 export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROCKET: 4 };
 // Attraction sites buildLand() reserves before the terrain: the ground each
 // kind offers (attractions.js tags + footprint radius). farm0..farm3 are the
@@ -1128,11 +1128,11 @@ export function createWorld(THREE, scene, deps) {
     });
     along(7.5, 40, (x, z) => { if (roadDist(x, z) > 2) plant(tree(), 5 + rnd() * 3.5, x, z); });
     // Street furniture on the sidewalk band just outside the boulevard.
-    const furniture = [PROP.BENCH, PROP.HYDRANT, PROP.MAILBOX, PROP.BUS_STOP, PROP.BENCH, PROP.CART];
+    const furniture = [PROP.BENCH, PROP.HYDRANT, PROP.MAILBOX, PROP.BUS_STOP, PROP.TRASH_BIN, PROP.NEWS_STAND, PROP.BIKE_RACK, PROP.CART, PROP.BUS_SHELTER];
     along(-2.4, 30, (x, z, i) => {
       const kind = furniture[i % furniture.length];
-      const h = kind === PROP.CART ? 2.6 : kind === PROP.BUS_STOP || kind === PROP.LAMP ? 3.2 : 1.3;
-      plant(`props-${kind}`, h, x, z, 0.02, kind !== PROP.BUS_STOP);
+      const h = kind === PROP.CART ? 2.6 : kind === PROP.BUS_STOP || kind === PROP.BUS_SHELTER ? 3.2 : kind === PROP.NEWS_STAND ? 2.2 : 1.3;
+      plant(`props-${kind}`, h, x, z, 0.02, kind !== PROP.BUS_STOP && kind !== PROP.BUS_SHELTER);
     });
     // Lamps line the first stretch of each road out of town, then the odd bush.
     for (const r of roads.slice(0, nv + 1)) {
@@ -1158,7 +1158,7 @@ export function createWorld(THREE, scene, deps) {
         const d = 8.5 + rnd() * 6;
         plant(pickOf('houses', [0, 1, 2, 3, 4, 5]), 5 + rnd() * 2.2, v.x + Math.cos(a) * d, v.z + Math.sin(a) * d);
       }
-      [PROP.LAMP, PROP.BENCH, PROP.LAMP, PROP.MAILBOX, PROP.CART].forEach((kind, i) => {
+      [PROP.LAMP, PROP.BENCH, PROP.LAMP, PROP.MAILBOX, PROP.TRASH_BIN, PROP.BIKE_RACK, PROP.CART].forEach((kind, i) => {
         const a = v.gaps[0] + 0.7 + i * 1.2;
         const h = kind === PROP.LAMP ? 3.2 : kind === PROP.CART ? 2.6 : 1.3;
         plant(`props-${kind}`, h, v.x + Math.cos(a) * 5.2, v.z + Math.sin(a) * 5.2, undefined, kind !== PROP.LAMP);

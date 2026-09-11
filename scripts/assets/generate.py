@@ -59,6 +59,7 @@ JOBS = {
     # (key.py row ... --names props-fountain props-dock scenery-autumn-tree scenery-rock-cluster).
     # Street furniture already exists in the props sheet (lamp, bench, hydrant, mailbox): reuse it.
     'scenery_accents': ('16:9', f'Sprite sheet of 4 different cartoon outdoor objects in a single row, side view, evenly spaced with clear gaps: a round grey stone fountain with a wide basin and a small spout of water on top, a short wooden pier on wooden posts with a mooring post, an autumn tree with a full round canopy of orange and red leaves on a brown trunk, a cluster of three mossy grey boulders of different sizes, no ground shadows, {STYLE}, {MAG}'),
+    'street_furniture': ('16:9', f'Sprite sheet of 4 different cartoon city street-furniture objects in a single row, side view, evenly spaced with clear gaps: a small glass-and-steel bus shelter with a flat roof and a bench inside, a green metal trash bin with a swing lid, a red newspaper stand kiosk with a small window, a silver metal bike rack shaped like a rounded rectangle, {STYLE}, {MAG}'),
 }
 
 
