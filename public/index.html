@@ -272,7 +272,13 @@
   #gource-modal .gm-close { width: 28px; height: 28px; flex: none; border-radius: 50%; cursor: pointer; line-height: 1; font-size: 15px;
     color: var(--ink-300); border: 1px solid rgba(255, 255, 255, 0.12); background: radial-gradient(circle at 35% 30%, #3b4458, #141923); }
   #gource-modal .gm-close:hover { color: var(--ink-100); }
-  @media (max-width: 720px) { #gource-modal { padding: 0; } #gource-modal .gm-card { border-radius: 0; height: 100%; padding: 10px 10px 8px; } }
+  @media (max-width: 720px) {
+    #gource-modal { padding: 0; }
+    #gource-modal .gm-card { border-radius: 0; height: 100%; padding: 10px 10px calc(8px + env(safe-area-inset-bottom)); }
+    #gource-modal .gm-close { width: 40px; height: 40px; font-size: 18px; } /* a real tap target */
+    #gource-modal .gm-ext { display: none; }
+    #gource-modal .gm-loading { font-size: 13px; padding: 10px 12px 10px 16px; }
+  }
   /* Loading: the city stays usable; a chip at the clicked building shows progress. */
   #gource-modal.pending { background: transparent; pointer-events: none; }
   #gource-modal.pending .gm-card { opacity: 0; }
