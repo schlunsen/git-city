@@ -2051,6 +2051,9 @@ function showcaseCard(leg) {
   });
   const upcoming = tour.stops?.[leg.stop % (tour.stops?.length || 1)];
   if (upcoming) readmeExcerpt(upcoming.repo);
+  // Repo-level .git-city/building.json: load it for this stop and the next, so
+  // graffiti, roofs and neon are up before the camera arrives.
+  if (typeof ensureBuildingConfig === 'function') { ensureBuildingConfig(repo); if (upcoming) ensureBuildingConfig(upcoming); }
   el.classList.add('show');
   if (!sameRepo) { el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip'); } // CRT channel change
 }
@@ -3516,6 +3519,9 @@ function fetchBuildingFor(repo) {
   if (!key || cur !== undefined) return cur instanceof Promise ? cur.then(() => false) : Promise.resolve(false);
   const where = `${repo.full_name}/.git-city/building.json`;
   const p = fetchBuildingConfig(repo.full_name).then((res) => {
+    // A timeout or network error isn't an answer (a busy first frame can starve a 3 s fetch):
+    // forget it, so a retry, a click or the tour asks again. 404s and real files are kept.
+    if (!res.found && res.error) { buildingFiles.delete(key); return false; }
     let cfg = null;
     if (res.found && !res.error) {
       const { config, warnings } = normalizeBuildingConfig(res.raw);
@@ -3537,10 +3543,15 @@ function loadBuildingConfigs(visible, version) {
   for (const n of [...(cfgNow()?.featured || []), ...pinnedRepos]) { const r = byName.get(String(n).toLowerCase()); if (r) picks.add(r); }
   for (const r of [...byName.values()].sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, BUILDING_PREFETCH)) picks.add(r);
   const list = [...picks].slice(0, BUILDING_PREFETCH_MAX);
-  Promise.all(list.map(fetchBuildingFor)).then((set) => {
-    const hits = list.filter((r, i) => set[i]);
-    if (hits.length && version === cityVersion) refreshBuildings(hits);
+  const pass = (repos, retry) => Promise.all(repos.map(fetchBuildingFor)).then((set) => {
+    if (version !== cityVersion) return;
+    const hits = repos.filter((r, i) => set[i]);
+    if (hits.length) refreshBuildings(hits);
+    // Requests that timed out or failed (not 404s) get one more try once the city has settled.
+    const again = repos.filter((r) => !buildingFiles.has(String(r.full_name).toLowerCase()));
+    if (retry && again.length) setTimeout(() => { if (version === cityVersion) pass(again, false); }, 4000);
   });
+  pass(list, true);
 }
 // A clicked building, or the tour's next stop: fetch its file if nobody has yet.
 // Takes a repo or a building entry ({ repo, mesh }); cached, so calling it per stop is cheap.
