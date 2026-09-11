@@ -16,7 +16,7 @@ skyline — beaming pushes, pull requests and stars onto the rooftops.
 [schlunsen](https://schlunsen.github.io/git-city/?user=schlunsen)
 
 [![Deploy](https://github.com/schlunsen/git-city/actions/workflows/pages.yml/badge.svg)](https://github.com/schlunsen/git-city/actions/workflows/pages.yml)
-![Three.js](https://img.shields.io/badge/three.js-r160-000?logo=threedotjs)
+![Three.js](https://img.shields.io/badge/three.js-r186-000?logo=threedotjs)
 ![No build step](https://img.shields.io/badge/build%20step-none-64dedb)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8c78ff)](LICENSE)
 
