@@ -1,15 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-
-const source = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-// Exercise the actual browser layout without requiring WebGL or network access.
-const layout = source.slice(source.indexOf('const BLOCK ='), source.indexOf('// A canvas-textured'));
-const context = vm.createContext({ LANG_COLORS: {}, FALLBACK_COLOR: 0 });
-vm.runInContext(layout + `;globalThis.layout = {
-  assignDistricts, worldForCell, makeCityLayout, chooseCityShape, CITY_SHAPE_NAMES, SIDEWALK, LOT_HALF, LOT_CLEAR, CELL };`, context);
-const { assignDistricts, worldForCell, makeCityLayout, chooseCityShape, CITY_SHAPE_NAMES, SIDEWALK, LOT_HALF, LOT_CLEAR, CELL } = context.layout;
+// The browser's own layout module: pure math, so no WebGL or network is needed.
+import {
+  assignDistricts, worldForCell, makeCityLayout, chooseCityShape, CITY_SHAPE_NAMES, SIDEWALK, LOT_HALF, LOT_CLEAR, CELL,
+} from '../public/city/layout.js';
 
 const reposFor = (languages, n = 100) =>
   Array.from({ length: n }, (_, i) => ({ name: `repo-${i}`, language: languages[i % languages.length], stargazers_count: n - i }));

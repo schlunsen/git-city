@@ -8,6 +8,7 @@ import {
 } from '../public/city-config.js';
 import { BIOMES, LANDMARK_SITES, SITE_KINDS } from '../public/world.js';
 import { ATTRACTIONS } from '../public/attractions.js';
+import { CITY_SHAPE_NAMES } from '../public/city/layout.js';
 
 const REPOS = ['git-city', 'gource-view', 'dotfiles', 'Hefty', 'constructor'].map((name) => ({ name }));
 const norm = (raw, ctx = {}) => normalizeCityConfig(raw, { repos: REPOS, login: 'schlunsen', ...ctx });
@@ -294,12 +295,10 @@ test('publish URLs go to GitHub\'s own editor', () => {
   assert.equal(configUrl('antfu'), 'https://raw.githubusercontent.com/antfu/antfu/HEAD/.git-city/city.json');
 });
 
-test('the vocabulary matches the code it names (world.js, app.js, attractions.js)', () => {
+test('the vocabulary matches the code it names (world.js, city/layout.js, attractions.js)', () => {
   assert.deepEqual([...OPTIONS.biome].sort(), Object.keys(BIOMES).sort());
   assert.deepEqual([...OPTIONS.landmark].sort(), ATTRACTIONS.map((a) => a.key).sort());
-  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
-  const shapes = JSON.parse(app.match(/const CITY_SHAPE_NAMES = (\[[^\]]*\])/)[1].replace(/'/g, '"'));
-  assert.deepEqual([...OPTIONS.shape], shapes);
+  assert.deepEqual([...OPTIONS.shape], CITY_SHAPE_NAMES);
 });
 
 test('every landmark has island sites that can hold it (world.js LANDMARK_SITES vs attractions.js)', () => {

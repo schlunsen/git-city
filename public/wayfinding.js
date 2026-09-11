@@ -20,7 +20,7 @@
 // canvas, drawn only while it shows. Nothing here is pickable.
 //
 // opts: { parent, buildings, streets, cell?, plazaRadius?, envMat?, ink? }
-//   buildings — app.js entries { mesh, bodies, repo, h, roofMat }, most-starred first
+//   buildings — city/buildings.js entries { mesh, bodies, repo, h, roofMat }, most-starred first
 //   streets   — street centrelines { x0, z0, x1, z1, vertical } (layout.streets),
 //               in the same frame as the building groups (parent = their parent).
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ const MONO = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
 const DISPLAY = '"Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
 const BLADE_H = 0.32;             // world height of a street-name blade
 const POST_TOP = 2.0;             // blades sit above head height, under the shop fascias' reach
-const ROAD_HALF = 1.6;            // inner streets are 3.2 wide (app.js buildBlock)
+const ROAD_HALF = 1.6;            // inner streets are 3.2 wide (city/block.js buildBlock)
 const noRaycast = () => {};
 
 let postMat = null;               // street-sign green, created once through envMat

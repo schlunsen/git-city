@@ -114,12 +114,19 @@ no framework, no build step. The whole app is the [`public/`](public) folder.
   rounded boulevard; traffic follows the curves
 - **Timeline** ([`history.js`](public/history.js)) merges GitHub events into
   paced "steps" the flying actor acts out
+- **Code layout** — [`app.js`](public/app.js) is the orchestrator: it loads a
+  profile and runs the HUD, the activity timeline, input, day/night and the render
+  loop. The city itself is built by small modules in [`public/city/`](public/city)
+  (scene, layout math, block, plaza, buildings, facades, traffic, townsfolk, the
+  showcase tour, the Gource TV, …); the island is `world.js`, the explore modes
+  `explore.js` (bomb run: `game.js`), and the rides live in
+  [`public/attractions/`](public/attractions)
 
 ## Running locally
 
 ```sh
 node server.mjs            # → http://localhost:8000
-node --test tests/         # layout + timeline unit tests
+node --test tests/         # unit tests: layout, timeline, configs, game rules, README excerpts
 ```
 
 Any static file server works. Add `?user=<login>` to load a profile, or
