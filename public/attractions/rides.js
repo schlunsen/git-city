@@ -517,3 +517,85 @@ export function buildDropTower(kit, opts = {}) {
   update(0, 0);
   return { group: finish(T, group, [car]), update, radius: 4 };
 }
+
+// ===========================================================================
+// FERRIS WHEEL — the fair's big wheel: twin rims and spokes on a white
+// A-frame, turning slowly, with a dozen gondolas that stay level and rim
+// bulbs that chase at night. Placed by world.js at the fair (not a city.json
+// landmark: every island already has one).
+// ===========================================================================
+export function buildFerrisWheel(kit, opts = {}) {
+  const T = tools(kit);
+  const { THREE, rnd } = T;
+  const group = new THREE.Group();
+  group.name = 'ferrisWheel';
+  const RW = 7.6, HUB = 9.4, N = 12, DEPTH = 0.9;
+  const white = T.mat(0xf6f1e4), steel = T.mat(0x9aa3b2), accent = T.mat(opts.color ?? T.pick([0xef6f6c, 0x64dedb, 0x8c78ff]));
+
+  // Base and two A-frames (front and back), leaning in to the axle.
+  T.inked(group, T.box(9.2, 0.7, 4.2), T.mat(0xd8cdb8), 0, -0.1, 0, 0.18);
+  for (const z of [-1.35, 1.35]) {
+    for (const x0 of [-4.3, 4.3]) {
+      const len = Math.hypot(x0, HUB);
+      const leg = T.inked(group, T.box(0.38, len, 0.38), white, x0 / 2, HUB / 2, z, 0.12);
+      leg.rotation.z = Math.atan2(x0, HUB);
+    }
+    T.inked(group, T.box(5.4, 0.26, 0.26), white, 0, 3.6, z, 0.1); // cross brace
+  }
+  const axle = T.add(group, T.cyl(0.26, 0.26, 3.2, 10), steel, 0, HUB, 0);
+  axle.rotation.x = Math.PI / 2;
+
+  // The wheel turns about its axle (local z).
+  const wheel = new THREE.Group();
+  wheel.position.y = HUB;
+  group.add(wheel);
+  const rimG = new THREE.TorusGeometry(RW, 0.15, 6, 56);
+  for (const z of [-DEPTH, DEPTH]) T.inked(wheel, rimG, white, 0, 0, z, 0.1);
+  T.inked(wheel, new THREE.TorusGeometry(RW * 0.45, 0.1, 6, 36), white, 0, 0, DEPTH, 0.08);
+  const hub = T.inked(wheel, T.cyl(0.7, 0.7, DEPTH * 2 + 0.4, 14), accent, 0, 0, 0, 0.12);
+  hub.rotation.x = Math.PI / 2;
+  const spokeG = T.box(0.1, RW, 0.1), barG = T.box(0.09, 0.09, DEPTH * 2);
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+    for (const z of [-DEPTH, DEPTH]) {
+      const sp = T.add(wheel, spokeG, steel, (c * RW) / 2, (s * RW) / 2, z);
+      sp.rotation.z = a - Math.PI / 2;
+    }
+    T.add(wheel, barG, steel, c * RW, s * RW, 0);
+  }
+  // Rim bulbs: two interleaved sets, so the chase costs two uniforms.
+  const bulbA = T.glow(0xffe39a, 1.2), bulbB = T.glow(0xfff6e0, 0.4), bulbG = T.ball(0.13, 6, 4);
+  for (let i = 0; i < N * 3; i++) {
+    const a = (i / (N * 3)) * Math.PI * 2;
+    T.add(wheel, bulbG, i % 2 ? bulbA : bulbB, Math.cos(a) * RW, Math.sin(a) * RW, DEPTH + 0.12).castShadow = false;
+  }
+
+  // Gondolas hang from the rim and counter-rotate, so they stay level.
+  const colours = [0xef6f6c, 0x64dedb, 0xf4c542, 0x8c78ff, 0x58c99b, 0xf39a4b];
+  const cabG = T.box(0.95, 0.85, 1.3), roofG = T.box(1.15, 0.16, 1.5), rodG = T.box(0.06, 0.75, 0.06), bandG = T.box(0.97, 0.3, 1.32);
+  const band = T.mat(0xf6f1e4);
+  const gondolas = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2 + Math.PI / N;
+    const g = new THREE.Group();
+    g.position.set(Math.cos(a) * RW, Math.sin(a) * RW, 0);
+    wheel.add(g);
+    const cm = T.mat(colours[i % colours.length]);
+    T.add(g, rodG, steel, 0, -0.38, 0);
+    T.inked(g, roofG, cm, 0, -0.78, 0, 0.08);
+    T.inked(g, cabG, cm, 0, -1.28, 0, 0.1);
+    T.add(g, bandG, band, 0, -1.12, 0); // window band
+    gondolas.push(g);
+  }
+
+  const speed = 0.11 + rnd() * 0.03; // about one turn a minute
+  wheel.rotation.z = rnd() * Math.PI * 2;
+  function update(dt, t) {
+    wheel.rotation.z += speed * dt;
+    for (const g of gondolas) g.rotation.z = -wheel.rotation.z;
+    chase(bulbA, bulbB, Math.sin(t * 4) > 0, T.night());
+  }
+  update(0, 0);
+  return { group: finish(T, group, [wheel]), update, radius: 5 };
+}
+
