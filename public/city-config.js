@@ -55,6 +55,7 @@ export const LABELS = Object.freeze({
     rollerCoaster: 'Roller coaster', carousel: 'Carousel', circusTent: 'Circus tent', dropTower: 'Drop tower',
     windTurbines: 'Wind turbines', windmill: 'Windmill', farm: 'Farm', campsite: 'Campsite', radioTower: 'Radio tower',
     observatory: 'Observatory', balloonPad: 'Balloon pad',
+    lighthouse: 'Lighthouse', recordShop: 'Record shop', robotMonument: 'Robot monument',
   },
   time: { auto: 'Auto (viewer\'s clock)', day: 'Day', sunset: 'Sunset', night: 'Night', cycle: '60 s cycle' },
   weather: { clear: 'Clear', rain: 'Rain', snow: 'Snow' },
