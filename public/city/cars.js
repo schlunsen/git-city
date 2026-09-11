@@ -18,6 +18,7 @@ const INNER_RING = 2.5 * CELL; // street loop at x, z = ±22.5, just outside the
 export let carKit = null;   // shared geometries + materials, built on first use
 let carLanes = [];   // { path, dir, length, cars[] }
 const _tan1 = new THREE.Vector2(), _tan2 = new THREE.Vector2(), _carPt = new THREE.Vector2();
+const MAX_SHOVE = 6; // however hard you hit them, they stay out of the sea
 
 // Side profile (x = length, y = height) with rounded corners, extruded across
 // the width and centred on z.
@@ -176,6 +177,9 @@ export function buildCars(user) {
       d.u = (k + 0.15 + rnd() * 0.5) / spec.kinds.length;
       d.speed = spec.speed * (kind === 'bus' ? 0.8 : 0.88 + rnd() * 0.24);
       d.v = d.speed; d.roll = 0; d.yaw = null;
+      // Knocked aside by the player's car (drive mode), then eased back into the lane.
+      d.shove = new THREE.Vector2(); d.shoveV = new THREE.Vector2(); d.spin = 0; d.spinV = 0;
+      d.hop = 0; d.hopV = 0; d.tilt = 0; d.tiltV = 0; // a knock throws them up and over
       lane.cars.push(car);
       carGroup.add(car);
     });
@@ -210,9 +214,52 @@ export function updateCars(dt) {
       // Cartoon suspension: the body leans out of the turn a touch.
       const lean = dt > 0 ? THREE.MathUtils.clamp(dyaw / dt * 0.045, -0.09, 0.09) : 0;
       d.roll += (lean - d.roll) * Math.min(1, dt * 6);
-      car.position.set(_carPt.x, 0.09, _carPt.y);
-      car.rotation.y = yaw;
-      d.body.rotation.x = d.roll;
+      // A shove from the player: slide out of the lane, spin, bounce, then recover.
+      d.shove.addScaledVector(d.shoveV, dt);
+      const settle = Math.exp(-2.6 * dt);
+      d.shoveV.multiplyScalar(settle);
+      d.shove.multiplyScalar(Math.exp(-0.7 * dt));
+      d.spin += d.spinV * dt; d.spinV *= Math.exp(-1.1 * dt); d.spin *= Math.exp(-0.8 * dt);
+      const far = d.shove.length();
+      if (far > MAX_SHOVE) d.shove.multiplyScalar(MAX_SHOVE / far);
+      d.hopV -= 26 * dt;                     // gravity
+      d.hop += d.hopV * dt;
+      if (d.hop <= 0) { d.hop = 0; d.hopV = d.hopV < -2.4 ? -d.hopV * 0.32 : 0; } // and a bounce on landing
+      d.tilt += d.tiltV * dt; d.tiltV *= Math.exp(-3 * dt); d.tilt *= Math.exp(-2.4 * dt);
+      car.position.set(_carPt.x + d.shove.x, 0.09 + d.hop, _carPt.y + d.shove.y);
+      car.rotation.y = yaw + d.spin;
+      d.body.rotation.x = d.roll + d.tilt * 0.5;
+      d.body.rotation.z = d.tilt;
     }
   }
+}
+
+// Drive mode: the player's car is the heavy one. Anything it runs into is
+// knocked aside and slewed round, while the player barely checks. Returns the
+// (small) reaction to apply to the player, or null if nothing was hit.
+export function bumpTrafficCars(px, pz, vx, vz, radius = 2.2) {
+  let rx = 0, rz = 0, power = 0, ix = 0, iz = 0, hits = 0;
+  for (const lane of carLanes) {
+    for (const car of lane.cars) {
+      const d = car.userData;
+      const dx = car.position.x - px, dz = car.position.z - pz;
+      const dist = Math.hypot(dx, dz), reach = radius + (d.len || 2.6) * 0.42;
+      if (dist > reach || dist < 1e-4) continue;
+      const nx = dx / dist, nz = dz / dist;
+      const closing = Math.max(0, vx * nx + vz * nz); // only what we drive into
+      const punch = 4.2 + closing * 3.1;
+      d.shoveV.x += nx * punch;
+      d.shoveV.y += nz * punch;
+      d.spinV += (nx * vz - nz * vx) * 0.26 + (Math.random() - 0.5) * (1.4 + closing * 0.5); // slewed round
+      d.hopV = Math.max(d.hopV, 2.2 + closing * 0.6);          // up onto two wheels and off the road
+      d.tiltV += (Math.random() - 0.5) * (2.6 + closing * 0.5);
+      d.v *= 0.45;                                             // knocked out of its stride
+      d.shove.x += nx * (reach - dist) * 0.6; // never leave them inside us
+      d.shove.y += nz * (reach - dist) * 0.6;
+      rx -= nx * closing * 0.1; rz -= nz * closing * 0.1;
+      if (closing > power) { power = closing; ix = car.position.x; iz = car.position.z; }
+      hits++;
+    }
+  }
+  return hits ? { x: rx, z: rz, power, hits, ix, iz } : null;
 }
