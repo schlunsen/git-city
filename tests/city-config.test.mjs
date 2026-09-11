@@ -1,0 +1,312 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  normalizeCityConfig, parseCityConfigText, fetchCityConfig, serializeCityConfig, isEmptyConfig, cleanText,
+  newFileUrl, editFileUrl, configUrl, OPTIONS, LIMITS, MAX_BYTES,
+} from '../public/city-config.js';
+import { BIOMES } from '../public/world.js';
+import { ATTRACTIONS } from '../public/attractions.js';
+
+const REPOS = ['git-city', 'gource-view', 'dotfiles', 'Hefty', 'constructor'].map((name) => ({ name }));
+const norm = (raw, ctx = {}) => normalizeCityConfig(raw, { repos: REPOS, login: 'schlunsen', ...ctx });
+const plain = (o) => JSON.parse(JSON.stringify(o));
+
+const EXAMPLE = {
+  version: 1,
+  island: { name: 'Schlunsen Isle', biome: 'tropical', shape: 'round' },
+  welcome: 'Welcome to the island of broken builds',
+  look: { accent: '#8c78ff', time: 'sunset', weather: 'snow', tv: false, fx: true },
+  landmarks: ['rollerCoaster', 'observatory', 'campsite'],
+  neighbours: ['gaearon', 'antfu', 'sindresorhus'],
+  featured: ['git-city', 'gource-view'],
+  hide: ['dotfiles'],
+  repos: {
+    'git-city': { style: 'tower', color: '#64dedb', sign: 'you are here' },
+    'gource-view': { billboard: 'Watch your repo grow' },
+  },
+  player: { music: 'cipher', volume: 20 },
+  plane: { color: '#e4574f', name: 'Spirit of Rebase' },
+};
+
+test('valid config: every v1 field survives unchanged, no warnings', () => {
+  const { config, warnings } = norm(EXAMPLE);
+  assert.deepEqual(warnings, []);
+  assert.deepEqual(plain(config), EXAMPLE);
+  assert.equal(Object.getPrototypeOf(config.repos), null);
+});
+
+test('the input is never mutated', () => {
+  const raw = structuredClone(EXAMPLE);
+  raw.welcome = '  lots   of\n space ';
+  const before = JSON.stringify(raw);
+  norm(raw);
+  assert.equal(JSON.stringify(raw), before);
+});
+
+test('unknown keys are dropped, with a hint for likely typos', () => {
+  const { config, warnings } = norm({ version: 1, $schema: 'https://example.com/x.json', neighbors: ['antfu'], script: 'alert(1)', island: { name: 'X', onload: 'x' }, repos: { 'git-city': { color: '#000000', href: 'javascript:alert(1)' } } });
+  assert.equal(config.script, undefined);
+  assert.equal(config.neighbors, undefined);
+  assert.equal(config.$schema, undefined, '$schema is an editor hint, never kept or loaded');
+  assert.deepEqual(plain(config.island), { name: 'X' });
+  assert.deepEqual(plain(config.repos), { 'git-city': { color: '#000000' } });
+  assert.ok(warnings.some((w) => w.includes('"neighbors"') && w.includes('did you mean "neighbours"')));
+  assert.ok(warnings.some((w) => w.includes('"script"')));
+  assert.ok(warnings.some((w) => w.includes('island') && w.includes('"onload"')));
+  assert.ok(!warnings.some((w) => w.includes('$schema')));
+});
+
+test('colours must be #rrggbb and come out lower-case', () => {
+  for (const bad of ['#fff', 'red', '#12345g', '#1234567', 'rgb(0,0,0)', '8c78ff', 123, null, ['#ffffff'], ' #ffffff', 'url(https://x)']) {
+    const { config, warnings } = norm({ look: { accent: bad }, plane: { color: bad } });
+    assert.equal(config.look.accent, undefined, String(bad));
+    assert.equal(config.plane.color, undefined, String(bad));
+    assert.equal(warnings.length, 2, String(bad));
+  }
+  assert.equal(norm({ look: { accent: '#8C78FF' } }).config.look.accent, '#8c78ff');
+});
+
+test('named options come from the fixed lists', () => {
+  const { config, warnings } = norm({ island: { biome: 'lava', shape: 'ROUND' }, look: { time: 'noon', weather: 'hail' }, player: { music: 'https://evil.example/x.mp3' }, repos: { 'git-city': { style: 'castle' } } });
+  assert.deepEqual(plain(config.island), {});
+  assert.deepEqual(plain(config.look), {});
+  assert.deepEqual(plain(config.player), {});
+  assert.deepEqual(plain(config.repos), {});
+  assert.equal(warnings.length, 6);
+  assert.equal(norm({ player: { music: 'none' } }).config.player.music, 'none');
+  assert.deepEqual(plain(norm({ repos: { 'git-city': { style: 'auto' } } }).config.repos), {}, 'auto is the default, not stored');
+});
+
+test('text is trimmed, control / bidi characters stripped and capped by code points', () => {
+  const { config, warnings } = norm({
+    welcome: `  Hi\tthere\n\n${'\u202e'}evil${'\u0000'}\u0007 👩\u200d💻 `,
+    island: { name: 'x'.repeat(200) },
+    plane: { name: '🚀'.repeat(30) },
+    repos: { 'git-city': { sign: '  ', billboard: 'b'.repeat(500) } },
+  });
+  assert.equal(config.welcome, 'Hi there evil 👩\u200d💻');
+  assert.equal(config.island.name, 'x'.repeat(LIMITS.name));
+  assert.equal(Array.from(config.plane.name).length, LIMITS.planeName);
+  assert.equal(config.plane.name, '🚀'.repeat(LIMITS.planeName), 'surrogate pairs are never split');
+  assert.equal(config.repos['git-city'].sign, undefined, 'blank text is no text');
+  assert.equal(config.repos['git-city'].billboard.length, LIMITS.text);
+  assert.ok(warnings.some((w) => w.startsWith('island.name: shortened')));
+  assert.equal(cleanText('a\u2066b\u2069c\ufeffd\u200be', 50), 'abcde');
+  assert.equal(cleanText('<img src=x onerror=alert(1)>', 120), '<img src=x onerror=alert(1)>', 'markup is kept as text: it only ever reaches textContent / fillText');
+});
+
+test('neighbours follow GitHub login rules, are de-duplicated and never include yourself', () => {
+  const { config, warnings } = norm({ neighbours: ['-abc', 'abc-', 'a--b', 'x'.repeat(40), 'has space', '../etc', 'a_b', 'ok-name', 'OK-name', 'x'.repeat(39), 'Schlunsen', 42, null, 'gaearon'] });
+  assert.deepEqual(config.neighbours, ['ok-name', 'x'.repeat(39), 'gaearon']);
+  assert.ok(warnings.some((w) => w.includes('already here')));
+  assert.ok(warnings.filter((w) => w.includes('not a GitHub login')).length >= 8);
+});
+
+test('oversized arrays and maps are capped', () => {
+  const logins = Array.from({ length: 10 }, (_, i) => `user${i}`);
+  const many = Array.from({ length: 150 }, (_, i) => ({ name: `r${i}` }));
+  const { config, warnings } = normalizeCityConfig({
+    neighbours: logins,
+    landmarks: [...OPTIONS.landmark],
+    featured: many.slice(0, 20).map((r) => r.name),
+    hide: many.slice(40, 100).map((r) => r.name),
+    repos: Object.fromEntries(many.map((r) => [r.name, { color: '#123456' }])),
+  }, { repos: many });
+  assert.equal(config.neighbours.length, LIMITS.neighbours);
+  assert.equal(config.landmarks.length, LIMITS.landmarks);
+  assert.equal(config.featured.length, LIMITS.featured);
+  assert.equal(config.hide.length, LIMITS.hide);
+  assert.equal(Object.keys(config.repos).length, LIMITS.repos);
+  for (const k of ['neighbours', 'landmarks', 'featured', 'hide', 'repos']) assert.ok(warnings.some((w) => w.startsWith(k) && w.includes('only the first')), k);
+});
+
+test('repository names are matched against the profile, case-insensitively', () => {
+  const { config, warnings } = norm({ featured: ['GIT-CITY', 'not-mine', 'hefty', 'dotfiles'], hide: ['dotfiles', 'nope', '../../x'], repos: { 'Gource-View': { sign: 'hi' }, ghost: { sign: 'boo' } } });
+  assert.deepEqual(config.featured, ['git-city', 'Hefty']);
+  assert.deepEqual(config.hide, ['dotfiles']);
+  assert.deepEqual(plain(config.repos), { 'gource-view': { sign: 'hi' } });
+  assert.ok(warnings.some((w) => w.includes('"not-mine"')));
+  assert.ok(warnings.some((w) => w.includes('hide wins')));
+  assert.ok(warnings.some((w) => w.includes('"../../x"') && w.includes('not a repository name')));
+  // Without a repo list (e.g. before the profile loads) only the name syntax is checked.
+  assert.deepEqual(normalizeCityConfig({ featured: ['anything', 'a b'] }).config.featured, ['anything']);
+});
+
+test('wrong types are dropped with a warning, never thrown', () => {
+  const { config, warnings } = norm({
+    version: '1', island: 'Tropical', welcome: 42, look: [], landmarks: 'rollerCoaster', neighbours: { a: 1 },
+    featured: null, hide: 7, repos: ['git-city'], player: { music: 3, volume: '20' }, plane: true,
+  });
+  assert.ok(config);
+  assert.ok(isEmptyConfig(config));
+  assert.ok(warnings.length >= 11);
+  assert.ok(warnings.some((w) => w.startsWith('version')));
+});
+
+test('look.tv / look.fx are strict booleans; false is kept (it is a choice)', () => {
+  assert.deepEqual(plain(norm({ look: { tv: true, fx: false } }).config.look), { tv: true, fx: false });
+  for (const bad of ['true', 1, 0, null, 'on', [], {}]) {
+    const { config, warnings } = norm({ look: { tv: bad, fx: bad } });
+    assert.deepEqual(plain(config.look), {}, JSON.stringify(bad));
+    assert.equal(warnings.length, 2, JSON.stringify(bad));
+    assert.ok(warnings[0].includes('true or false'));
+  }
+  const schema = JSON.parse(readFileSync(new URL('../public/schema/city-config.v1.json', import.meta.url), 'utf8'));
+  assert.equal(schema.properties.look.properties.tv.type, 'boolean');
+  assert.equal(schema.properties.look.properties.fx.type, 'boolean');
+});
+
+test('numbers are clamped and rounded', () => {
+  assert.equal(norm({ player: { volume: 150 } }).config.player.volume, 100);
+  assert.equal(norm({ player: { volume: -5 } }).config.player.volume, 0);
+  assert.equal(norm({ player: { volume: 20.6 } }).config.player.volume, 21);
+  assert.equal(norm({ player: { volume: 1e308 } }).config.player.volume, 100);
+});
+
+test('prototype pollution: __proto__ / constructor keys never leak', () => {
+  const raw = JSON.parse(`{
+    "__proto__": { "polluted": 1, "welcome": "from proto" },
+    "constructor": { "prototype": { "polluted": 1 } },
+    "island": { "__proto__": { "name": "proto isle" }, "name": "Real" },
+    "look": { "constructor": "#ffffff" },
+    "repos": { "__proto__": { "color": "#ffffff" }, "constructor": { "color": "#000000" }, "prototype": { "sign": "x" } },
+    "player": { "__proto__": { "volume": 1 } }
+  }`);
+  const { config } = norm(raw);
+  assert.equal(({}).polluted, undefined);
+  assert.equal(Object.prototype.polluted, undefined);
+  assert.equal(config.polluted, undefined);
+  assert.equal(config.welcome, undefined);
+  assert.ok(!Object.prototype.hasOwnProperty.call(config, '__proto__'));
+  assert.ok(!Object.prototype.hasOwnProperty.call(config, 'constructor'));
+  assert.equal(Object.getPrototypeOf(config), Object.prototype);
+  assert.deepEqual(plain(config.island), { name: 'Real' });
+  assert.equal(Object.getPrototypeOf(config.island), Object.prototype);
+  assert.deepEqual(plain(config.look), {});
+  assert.deepEqual(plain(config.player), {});
+  // A real repo called "constructor" is fine: the map has no prototype to hit.
+  assert.equal(Object.getPrototypeOf(config.repos), null);
+  assert.deepEqual(Object.keys(config.repos), ['constructor']);
+  assert.equal(config.repos.constructor.color, '#000000');
+  assert.equal(config.repos.__proto__, undefined);
+  // And with no repo list, the names still can't reach a prototype.
+  const loose = normalizeCityConfig(raw).config;
+  assert.equal(Object.getPrototypeOf(loose.repos), null);
+  assert.equal(({}).color, undefined);
+});
+
+test('non-object roots mean no config', () => {
+  for (const root of [null, undefined, [], [EXAMPLE], 'city', 42, true, 0]) {
+    const { config, warnings } = normalizeCityConfig(root);
+    assert.equal(config, null, JSON.stringify(root));
+    assert.equal(warnings.length, 1);
+  }
+});
+
+test('parseCityConfigText: size is checked before parsing, errors are strings', () => {
+  assert.deepEqual(parseCityConfigText('{"version":1}'), { raw: { version: 1 }, error: null });
+  assert.deepEqual(parseCityConfigText('\ufeff{"version":1}').raw, { version: 1 }, 'a BOM is tolerated');
+  assert.match(parseCityConfigText('{"version":1,}').error, /not valid JSON/);
+  assert.match(parseCityConfigText('').error, /not valid JSON/);
+  assert.match(parseCityConfigText(' '.repeat(MAX_BYTES + 1)).error, /larger than 32 KB/);
+  assert.match(parseCityConfigText(null).error, /could not be read/);
+  // Deep nesting can't hurt the walker: it only reads fixed keys.
+  const deep = `{"island":${'['.repeat(5000)}${']'.repeat(5000)}}`;
+  const parsed = parseCityConfigText(deep);
+  if (!parsed.error) assert.ok(normalizeCityConfig(parsed.raw).config);
+});
+
+const response = (body, { status = 200, headers = {} } = {}) => new Response(body, { status, headers });
+test('fetchCityConfig: 404 is "no config", JSON is parsed, failures are reported, never thrown', async () => {
+  const calls = [];
+  const ok = await fetchCityConfig('schlunsen', { fetchImpl: async (url, init) => { calls.push([url, init]); return response(JSON.stringify(EXAMPLE)); } });
+  assert.deepEqual(ok, { found: true, raw: EXAMPLE, error: null });
+  assert.equal(calls[0][0], 'https://raw.githubusercontent.com/schlunsen/schlunsen/HEAD/.git-city/city.json');
+  assert.equal(calls[0][1].credentials, 'omit');
+
+  assert.deepEqual(await fetchCityConfig('schlunsen', { fetchImpl: async () => response('404: Not Found', { status: 404 }) }), { found: false, raw: null, error: null });
+  assert.match((await fetchCityConfig('schlunsen', { fetchImpl: async () => response('oops', { status: 500 }) })).error, /HTTP 500/);
+  const broken = await fetchCityConfig('schlunsen', { fetchImpl: async () => response('{ nope') });
+  assert.equal(broken.found, true);
+  assert.match(broken.error, /not valid JSON/);
+  const big = await fetchCityConfig('schlunsen', { fetchImpl: async () => response('x'.repeat(MAX_BYTES + 10)) });
+  assert.match(big.error, /larger than 32 KB/);
+  const lying = await fetchCityConfig('schlunsen', { fetchImpl: async () => response('{}', { headers: { 'content-length': String(10 * MAX_BYTES) } }) });
+  assert.match(lying.error, /larger than 32 KB/);
+  const thrown = await fetchCityConfig('schlunsen', { fetchImpl: async () => { throw new TypeError('Failed to fetch'); } });
+  assert.match(thrown.error, /Failed to fetch/);
+});
+
+test('fetchCityConfig: times out, honours an abort signal and refuses bad logins without a request', async () => {
+  const hang = (url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+  const t0 = Date.now();
+  const slow = await fetchCityConfig('schlunsen', { fetchImpl: hang, timeout: 50 });
+  assert.match(slow.error, /timed out/);
+  assert.ok(Date.now() - t0 < 1000);
+  const ctrl = new AbortController();
+  const p = fetchCityConfig('schlunsen', { fetchImpl: hang, signal: ctrl.signal, timeout: 5000 });
+  ctrl.abort();
+  assert.doesNotMatch((await p).error, /timed out/);
+  let called = false;
+  const none = await fetchCityConfig('../../etc/passwd', { fetchImpl: async () => { called = true; return response('{}'); } });
+  assert.deepEqual(none, { found: false, raw: null, error: null });
+  assert.equal(called, false);
+});
+
+test('serializeCityConfig round-trips through the validator', () => {
+  const { config } = norm(EXAMPLE);
+  const text = serializeCityConfig(config);
+  const again = norm(parseCityConfigText(text).raw);
+  assert.deepEqual(again.warnings, []);
+  assert.deepEqual(plain(again.config), plain(config));
+  assert.equal(JSON.parse(serializeCityConfig(norm({}).config, { schema: false })).version, 1);
+  assert.deepEqual(Object.keys(JSON.parse(serializeCityConfig(norm({ welcome: 'hi' }).config))), ['$schema', 'version', 'welcome']);
+});
+
+test('publish URLs go to GitHub\'s own editor', () => {
+  const json = serializeCityConfig(norm(EXAMPLE).config);
+  const url = new URL(newFileUrl('schlunsen', json, 'main'));
+  assert.equal(url.origin + url.pathname, 'https://github.com/schlunsen/schlunsen/new/main');
+  assert.equal(url.searchParams.get('filename'), '.git-city/city.json');
+  assert.equal(url.searchParams.get('value'), json);
+  assert.equal(editFileUrl('schlunsen', 'main'), 'https://github.com/schlunsen/schlunsen/edit/main/.git-city/city.json');
+  assert.equal(editFileUrl('schlunsen'), 'https://github.com/schlunsen/schlunsen/edit/HEAD/.git-city/city.json');
+  assert.equal(newFileUrl('a', '{}', 'release/v1').split('?')[0], 'https://github.com/a/a/new/release/v1');
+  assert.equal(configUrl('antfu'), 'https://raw.githubusercontent.com/antfu/antfu/HEAD/.git-city/city.json');
+});
+
+test('the vocabulary matches the code it names (world.js, app.js, attractions.js)', () => {
+  assert.deepEqual([...OPTIONS.biome].sort(), Object.keys(BIOMES).sort());
+  assert.deepEqual([...OPTIONS.landmark].sort(), ATTRACTIONS.map((a) => a.key).sort());
+  const app = readFileSync(new URL('../public/app.js', import.meta.url), 'utf8');
+  const shapes = JSON.parse(app.match(/const CITY_SHAPE_NAMES = (\[[^\]]*\])/)[1].replace(/'/g, '"'));
+  assert.deepEqual([...OPTIONS.shape], shapes);
+});
+
+test('the JSON Schema agrees with the validator', () => {
+  const schema = JSON.parse(readFileSync(new URL('../public/schema/city-config.v1.json', import.meta.url), 'utf8'));
+  const P = schema.properties;
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(Object.keys(P).sort(), Object.keys(EXAMPLE).concat('$schema').sort());
+  assert.deepEqual(P.island.properties.biome.enum, [...OPTIONS.biome]);
+  assert.deepEqual(P.island.properties.shape.enum, [...OPTIONS.shape]);
+  assert.deepEqual(P.landmarks.items.enum, [...OPTIONS.landmark]);
+  assert.deepEqual(P.look.properties.time.enum, [...OPTIONS.time]);
+  assert.deepEqual(P.look.properties.weather.enum, [...OPTIONS.weather]);
+  assert.deepEqual(P.repos.additionalProperties.properties.style.enum, [...OPTIONS.style]);
+  assert.deepEqual(P.player.properties.music.enum, [...OPTIONS.music]);
+  assert.equal(P.island.properties.name.maxLength, LIMITS.name);
+  assert.equal(P.welcome.maxLength, LIMITS.text);
+  assert.equal(P.repos.additionalProperties.properties.sign.maxLength, LIMITS.sign);
+  assert.equal(P.repos.additionalProperties.properties.billboard.maxLength, LIMITS.text);
+  assert.equal(P.plane.properties.name.maxLength, LIMITS.planeName);
+  for (const k of ['neighbours', 'featured', 'hide', 'landmarks']) assert.equal(P[k].maxItems, LIMITS[k], k);
+  assert.equal(P.repos.maxProperties, LIMITS.repos);
+  assert.deepEqual([P.player.properties.volume.minimum, P.player.properties.volume.maximum], LIMITS.volume);
+  const re = (d) => new RegExp(schema.$defs[d].pattern);
+  for (const s of ['#8c78ff', '#8C78FF', '#fff', 'red']) assert.equal(re('color').test(s), /^#[0-9a-f]{6}$/i.test(s), s);
+  for (const s of ['ok-name', '-a', 'a-', 'a--b', 'x'.repeat(39), 'x'.repeat(40)]) {
+    assert.equal(re('login').test(s), normalizeCityConfig({ neighbours: [s] }).config.neighbours.length === 1, s);
+  }
+});

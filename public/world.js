@@ -31,6 +31,27 @@
 export const SPRITE_COUNTS = { clouds: 4, trees: 5, bushes: 5, props: 6, houses: 6, landmarks: 4, lots: 4, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5 };
 export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3 };
+// Attraction sites buildLand() reserves before the terrain: the ground each
+// kind offers (attractions.js tags + footprint radius). farm0..farm3 are the
+// fields by each village, fair2 a second fair lot.
+export const SITE_KINDS = {
+  bigFair: { tag: 'fair', r: 19 }, fair: { tag: 'fair', r: 11 }, farm: { tag: 'farm', r: 11 },
+  peak: { tag: 'hill', r: 7 }, coast: { tag: 'coast', r: 7 }, slopes: { tag: 'hill', r: 16 }, wild: { tag: 'wild', r: 8 },
+};
+// city.json "landmarks": the sites that can hold each attraction, best first.
+export const LANDMARK_SITES = {
+  rollerCoaster: ['bigFair'],
+  carousel: ['fair', 'fair2', 'bigFair'],
+  circusTent: ['fair', 'fair2', 'bigFair'],
+  dropTower: ['fair2', 'fair', 'bigFair'],
+  windTurbines: ['slopes'],
+  windmill: ['farm0', 'farm1', 'farm2', 'farm3', 'peak'],
+  farm: ['farm0', 'farm1', 'farm2', 'farm3'],
+  campsite: ['coast', 'wild'],
+  radioTower: ['peak', 'wild'],
+  observatory: ['peak', 'slopes'],
+  balloonPad: ['peak', 'farm0', 'fair2', 'farm1'],
+};
 const TREE = { OAK: 0, POPLAR: 1, PINE: 2, ROUND: 3, CHERRY: 4 };
 const BUSH = { ROUND: 0, TULIPS: 1, LEAFY: 2, GRASS: 3, TOPIARY: 4 };
 
@@ -159,6 +180,19 @@ function makeNoise(seed) {
     }
     return s / norm;
   };
+}
+
+// Greedy word wrap into at most `maxLines` lines of ~`width` characters; the
+// last line ends in an ellipsis when the text doesn't fit.
+function wrapWords(text, width, maxLines) {
+  const out = [''];
+  for (const word of String(text).split(' ')) {
+    const next = `${out[out.length - 1]} ${word}`.trim();
+    if (next.length <= width) out[out.length - 1] = next;
+    else if (out.length === maxLines) { out[out.length - 1] += '…'; break; }
+    else out.push(word);
+  }
+  return out;
 }
 
 function distToPolyline(x, z, pts) {
@@ -716,17 +750,34 @@ export function createWorld(THREE, scene, deps) {
       }
       return null;
     }
-    const wishes = [];
-    if (T.fame >= 3) wishes.push(() => reserve('fair', 19, FAIR, 30, 46));
-    wishes.push(() => reserve('fair', 11, FAIR, 16, 28));
-    wishes.push(() => reserve('farm', 11, VILLAGES[0], 30, 44));
-    wishes.push(() => reserve('hill', 7, HIGH, 0, 8, { flat: false }));
-    wishes.push(() => reserve('fair', 11, FAIR, 16, 30));
-    wishes.push(() => reserve('coast', 7, LIGHT, 10, 30, { coast: true }));
-    wishes.push(() => reserve('hill', 16, HIGH, 24, 50, { flat: false })); // room for a wind farm on the slopes
-    wishes.push(() => reserve('wild', 8, HIGH, 26, 60));
-    for (let i = 1; i < nv; i++) wishes.push(() => reserve('farm', 11, VILLAGES[i], 30, 44));
-    wishes.slice(0, T.attractions).forEach((w) => w());
+    const placeOf = {
+      bigFair: [FAIR, 30, 46], fair: [FAIR, 16, 28], farm0: [VILLAGES[0], 30, 44], peak: [HIGH, 0, 8, { flat: false }],
+      fair2: [FAIR, 16, 30], coast: [LIGHT, 10, 30, { coast: true }],
+      slopes: [HIGH, 24, 50, { flat: false }], // room for a wind farm on the slopes
+      wild: [HIGH, 26, 60],
+    };
+    for (let i = 1; i < nv; i++) placeOf[`farm${i}`] = [VILLAGES[i], 30, 44];
+    const wish = (k) => { const { tag, r } = SITE_KINDS[k.replace(/\d+$/, '')]; const [near, dmin, dmax, o] = placeOf[k]; return reserve(tag, r, near, dmin, dmax, o); };
+    const order = [...(T.fame >= 3 ? ['bigFair'] : []), 'fair', 'farm0', 'peak', 'fair2', 'coast', 'slopes', 'wild'];
+    for (let i = 1; i < nv; i++) order.push(`farm${i}`);
+    const wanted = T.landmarks || [];
+    if (!wanted.length) order.slice(0, T.attractions).forEach(wish);
+    else {
+      // city.json landmarks first, each on the first free site that can hold it
+      // (best effort), then the usual picks up to the fame-based count.
+      const taken = new Set();
+      for (const key of wanted) {
+        const k = (LANDMARK_SITES[key] || []).find((c) => placeOf[c] && !taken.has(c));
+        if (!k) continue;
+        taken.add(k);
+        const site = wish(k);
+        if (site) site.want = key;
+      }
+      for (const k of order) {
+        if (taken.size >= Math.max(T.attractions, wanted.length)) break;
+        if (!taken.has(k)) { taken.add(k); wish(k); }
+      }
+    }
 
     // ---- height -------------------------------------------------------------
     const beachW = 0.06 * B.beach;
@@ -962,20 +1013,32 @@ export function createWorld(THREE, scene, deps) {
       glows[0].push(x, y0 + lift + h + 0.5, z); // a little lamp over the board at night
     }
     {
+      // city.json (validated by city-config.js) can name the island, add a
+      // welcome message, feature / hide repos and write billboard copy. The
+      // text is free-form and only ever painted with fillText.
+      const cfg = P.config || null;
       const who = P.user?.login || T.login;
       const whose = /s$/i.test(who) ? `${who}'` : `${who}'s`;
-      const repos = (P.repos || []).filter((r) => !r.fork);
+      const title = cfg?.island?.name || `${whose} city`;
+      const hidden = new Set((cfg?.hide || []).map((n) => n.toLowerCase()));
+      const repos = (P.repos || []).filter((r) => !r.fork && !hidden.has(String(r.name).toLowerCase()));
       const stars = repos.reduce((sum, r) => sum + (r.stargazers_count || 0), 0);
-      const welcome = signTexture([
+      const message = cfg?.welcome ? wrapWords(cfg.welcome, 30, 4) : null;
+      const welcomeLines = [
         { text: 'WELCOME TO', size: 34, color: '#2f7f6b' },
-        { text: `${whose} city`, size: 64 },
-        { text: `${B.label}${T.topLang ? ` · ${T.topLang}` : ''} · ★ ${fmt(stars)}`, size: 30, weight: 700, color: '#5a4a3a' },
-      ]);
+        { text: title, size: 64 },
+        ...(message
+          ? message.map((text) => ({ text, size: 28, weight: 700, color: '#5a4a3a' }))
+          : [{ text: `${B.label}${T.topLang ? ` · ${T.topLang}` : ''} · ★ ${fmt(stars)}`, size: 30, weight: 700, color: '#5a4a3a' }]),
+      ];
+      // A longer message makes a taller board; front and back share its height.
+      const boardH = Math.max(256, Math.ceil(welcomeLines.reduce((sum, l) => sum + l.size * 1.22, 0) + 60));
+      const welcome = signTexture(welcomeLines, 512, boardH);
       const farewell = signTexture([
         { text: 'YOU ARE LEAVING', size: 34, color: '#b0473a' },
-        { text: `${whose} city`, size: 58 },
+        { text: title, size: 58 },
         { text: 'drive safe · come back soon', size: 28, weight: 700, color: '#5a4a3a' },
-      ]);
+      ], 512, boardH);
       // Welcome boards a little way out of town; the back reads "you are leaving".
       const welcomed = [];
       for (const r of roads.slice(0, nv + 1)) {
@@ -984,10 +1047,13 @@ export function createWorld(THREE, scene, deps) {
         const x = p.x - (tz / L) * (r.w / 2 + 2.4), z = p.z + (tx / L) * (r.w / 2 + 2.4);
         if (heightAt(x, z) < -0.3 || welcomed.some((q) => Math.hypot(q.x - x, q.z - z) < 9)) continue; // roads sharing an exit share a board
         welcomed.push({ x, z });
-        signboard(x, z, Math.atan2(tx, tz), 4.6, 2.3, 1.6, welcome, farewell);
+        signboard(x, z, Math.atan2(tx, tz), 4.6, 2.3 * boardH / 256, 1.6, welcome, farewell);
       }
-      // Billboards out in the country advertise the top repos, one per road.
-      const top = [...repos].sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0));
+      // Billboards out in the country advertise the top repos, one per road
+      // (city.json "featured" first, in its order).
+      const featured = (cfg?.featured || []).map((n) => n.toLowerCase());
+      const rank = (r) => { const i = featured.indexOf(String(r.name).toLowerCase()); return i < 0 ? Infinity : i; };
+      const top = [...repos].sort((a, b) => (rank(a) - rank(b)) || ((b.stargazers_count || 0) - (a.stargazers_count || 0)));
       roads.forEach((r, k) => {
         const repo = top[k];
         if (!repo || r.pts.length < 30) return;
@@ -999,17 +1065,9 @@ export function createWorld(THREE, scene, deps) {
           { text: repo.name, size: 62 },
           { text: `★ ${fmt(repo.stargazers_count || 0)}${repo.language ? ` · ${repo.language}` : ''}`, size: 34, weight: 700, color: '#2f7f6b' },
         ];
-        const desc = (repo.description || '').replace(/\s+/g, ' ').trim();
-        if (desc) {
-          const wl = [''];
-          for (const word of desc.split(' ')) {
-            const next = `${wl[wl.length - 1]} ${word}`.trim();
-            if (next.length <= 38) wl[wl.length - 1] = next;
-            else if (wl.length === 2) { wl[1] += '…'; break; }
-            else wl.push(word);
-          }
-          for (const l of wl) lines.push({ text: l, size: 26, weight: 600, color: '#4a4a4a' });
-        }
+        const custom = cfg?.repos?.[repo.name]?.billboard; // city.json repos[name].billboard replaces the description
+        const desc = (custom || repo.description || '').replace(/\s+/g, ' ').trim();
+        if (desc) for (const l of wrapWords(desc, 38, custom ? 3 : 2)) lines.push({ text: l, size: 26, weight: 600, color: '#4a4a4a' });
         const tex = signTexture(lines, 768, 384, '#fffaf0');
         signboard(x, z, Math.atan2(-tx, -tz) + side * 0.5, 8.5, 4.25, 2.6, tex, tex);
       });
@@ -1433,17 +1491,21 @@ export function createWorld(THREE, scene, deps) {
     attractionsMod.then((mod) => {
       if (disposed || !mod?.ATTRACTIONS) return;
       const pickRnd = seededRandom((T.seed ^ 0xA77) >>> 0);
-      const used = new Set();
+      const used = new Set(sites.map((s) => s.want).filter(Boolean)); // requested landmarks aren't drawn twice
       for (const s of sites) {
-        const fits = mod.ATTRACTIONS.filter((a) => (a.tags || []).includes(s.tag) && a.radius <= s.r + 1.5);
-        let pool = s.r > 15 ? fits.filter((a) => a.radius > 12) : fits;
-        if (!pool.length) pool = fits;
-        const fresh = pool.filter((a) => !used.has(a.key));
-        if (fresh.length) pool = fresh;
-        if (!pool.length) continue;
-        const total = pool.reduce((t, a) => t + (a.weight ?? 1), 0);
-        let k = pickRnd() * total, choice = pool[pool.length - 1];
-        for (const a of pool) { k -= a.weight ?? 1; if (k <= 0) { choice = a; break; } }
+        let choice = s.want ? mod.ATTRACTIONS.find((a) => a.key === s.want) : null; // reserved for a city.json landmark
+        if (!choice) {
+          const fits = mod.ATTRACTIONS.filter((a) => (a.tags || []).includes(s.tag) && a.radius <= s.r + 1.5);
+          let pool = s.r > 15 ? fits.filter((a) => a.radius > 12) : fits;
+          if (!pool.length) pool = fits;
+          const fresh = pool.filter((a) => !used.has(a.key));
+          if (fresh.length) pool = fresh;
+          if (!pool.length) continue;
+          const total = pool.reduce((t, a) => t + (a.weight ?? 1), 0);
+          let k = pickRnd() * total;
+          choice = pool[pool.length - 1];
+          for (const a of pool) { k -= a.weight ?? 1; if (k <= 0) { choice = a; break; } }
+        }
         used.add(choice.key);
         try {
           const obj = choice.build({ THREE, envMat: sharedEnvMat, ink: inkMat, rnd: seededRandom((T.seed ^ fnv(choice.key)) >>> 0) }, {});
@@ -1622,11 +1684,19 @@ export function createWorld(THREE, scene, deps) {
   };
 
   let land = null;
+  // profile.config: a normalised city.json (city-config.js) or null.
   function setProfile(profile, city = squareCity) {
     const T = worldTraits(profile);
+    const cfg = profile?.config || null;
+    const isBiome = (b) => typeof b === 'string' && Object.prototype.hasOwnProperty.call(BIOMES, b);
+    if (isBiome(cfg?.island?.biome)) T.biome = cfg.island.biome; // the developer's choice
     const q = new URLSearchParams(globalThis.location?.search || '');
-    if (BIOMES[q.get('biome')]) T.biome = q.get('biome'); // ?biome=alpine to preview a biome
-    if (land && land.city === city && land.traits.login === T.login && land.traits.biome === T.biome && land.traits.attractions === T.attractions) return land.traits;
+    if (isBiome(q.get('biome'))) T.biome = q.get('biome'); // ?biome=alpine to preview a biome
+    T.landmarks = (cfg?.landmarks || []).filter((k) => Object.prototype.hasOwnProperty.call(LANDMARK_SITES, k));
+    // Only what the island itself shows: a volume change in the Customize preview doesn't rebuild it.
+    T.configKey = cfg ? JSON.stringify([cfg.island?.name, cfg.welcome, T.landmarks, cfg.featured, cfg.hide,
+      Object.keys(cfg.repos || {}).map((n) => [n, cfg.repos[n].billboard])]) : '';
+    if (land && land.city === city && land.traits.login === T.login && land.traits.biome === T.biome && land.traits.attractions === T.attractions && land.traits.configKey === T.configKey) return land.traits;
     if (land) land.dispose();
     land = buildLand(T, city, profile);
     land.city = city;

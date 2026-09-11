@@ -79,7 +79,7 @@ let windowPulse = [];      // { mat, phase, base } for "office party" windows
 let currentLogin = DEFAULT_USER;
 let cityVersion = 0;
 let districtBaseplates = null;
-let tour = { active: false, t: 0, duration: 28 };
+let tour = { active: false, t: 0, legs: null, leg: 0, card: null }; // showcase flight (see updateTour)
 let weatherMode = 'clear'; // 'clear' | 'rain' | 'snow'
 
 // ---- Timeline / actor state (Gource-style playback) ------------------------
@@ -668,6 +668,7 @@ function initScene() {
   controls.addEventListener('start', () => {
     endTour();
     camGoal = null;
+    cine = null;
     controls.autoRotate = false;
     if (idleTimer) clearTimeout(idleTimer);
   });
@@ -1786,35 +1787,116 @@ function setWeather(mode, btn) {
   }
 }
 
-// Cinematic fly-through: scripted camera path, skippable.
+// Showcase flight — the default way into a city. The camera flies from
+// building to building (most-starred first), circles each one while a name
+// card shows, and every few stops swoops out over the island. It loops until
+// you take the controls (drag, scroll, click), and T / Tour toggles it.
+const prefersReducedMotion = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const _tp = new THREE.Vector3(), _tl = new THREE.Vector3();
+const smootherstep = (u) => u * u * u * (u * (u * 6 - 15) + 10);
+// A leg is { dur, pos(u, out), look(u, out), repo? } with u running 0..1.
+function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 1.4, loop = false } = {}) {
+  const cx = b.mesh.position.x, cz = b.mesh.position.z, h = b.h || 8;
+  const r = Math.max(20, h * 0.8 + 16);
+  // Stay above the neighbouring rooftops so a dense city never clips the camera.
+  let roof = 0;
+  for (const o of buildingMeshes) if (o !== b && Math.hypot(o.mesh.position.x - cx, o.mesh.position.z - cz) < r + 8) roof = Math.max(roof, o.h || 0);
+  const y = Math.max(10, h * 0.6 + 6, roof + 6);
+  const out = Math.hypot(cx, cz) > 1 ? Math.atan2(cz, cx) : fallbackBearing; // start on the side facing out of town
+  const a0 = out - sweep / 2;
+  return {
+    dur, loop, repo: b.repo,
+    pos: (u, o) => o.set(cx + Math.cos(a0 + sweep * u) * r, y + (loop ? 0 : Math.sin(u * Math.PI) * 2), cz + Math.sin(a0 + sweep * u) * r),
+    look: (u, o) => o.set(cx, h * 0.55, cz),
+  };
+}
+function flyLeg(fromPos, fromLook, toPos, toLook, dur) {
+  const p0 = fromPos.clone(), p2 = toPos.clone(), l0 = fromLook.clone(), l2 = toLook.clone();
+  const p1 = p0.clone().lerp(p2, 0.5);
+  p1.y = Math.max(p0.y, p2.y) + 16; // arc up and over the rooftops
+  return {
+    dur,
+    pos: (u, o) => {
+      const e = smootherstep(u), a = 1 - e;
+      return o.set(a * a * p0.x + 2 * a * e * p1.x + e * e * p2.x, a * a * p0.y + 2 * a * e * p1.y + e * e * p2.y, a * a * p0.z + 2 * a * e * p1.z + e * e * p2.z);
+    },
+    look: (u, o) => o.copy(l0).lerp(l2, smootherstep(u)),
+  };
+}
+function overviewLeg(bearing) {
+  const look = new THREE.Vector3(0, 4, 0);
+  return { dur: 7, pos: (u, o) => o.set(Math.cos(bearing + u * 0.6) * 150, 72, Math.sin(bearing + u * 0.6) * 150), look: (u, o) => o.copy(look) };
+}
+function buildShowcase() {
+  const stops = [...buildingMeshes].sort((a, b) => (b.repo.stargazers_count || 0) - (a.repo.stargazers_count || 0)).slice(0, 8);
+  if (!stops.length) return null;
+  const legs = [];
+  let pos = camera.position.clone(), look = controls.target.clone();
+  let bearing = Math.atan2(camera.position.z, camera.position.x);
+  const push = (leg) => {
+    const fly = flyLeg(pos, look, leg.pos(0, new THREE.Vector3()), leg.look(0, new THREE.Vector3()), legs.length ? 3.6 : 3);
+    if (leg.repo) Object.assign(fly, { repo: leg.repo, stop: leg.stop, of: leg.of, next: true }); // announce the next repo on the way
+    legs.push(fly);
+    legs.push(leg);
+    pos = leg.pos(1, new THREE.Vector3()); look = leg.look(1, new THREE.Vector3());
+  };
+  stops.forEach((b, i) => {
+    push(Object.assign(orbitLeg(b, bearing), { stop: i + 1, of: stops.length }));
+    if (i % 3 === 2) { bearing += 2.1; push(overviewLeg(bearing)); }
+  });
+  return legs;
+}
 function updateTour(dt) {
+  if (!tour.legs) { tour.legs = buildShowcase(); tour.leg = 0; }
+  if (!tour.legs) { endTour(); return; }
   tour.t += dt;
-  const k = Math.min(1, tour.t / tour.duration);
-  const e = k * k * (3 - 2 * k); // smoothstep
-  // Keyframes: start high overview -> dive to plaza -> rise along a tower -> sweep boulevard at dusk
-  const key = [
-    { p: new THREE.Vector3(60, 48, 60), look: new THREE.Vector3(0, 6, 0) },
-    { p: new THREE.Vector3(6, 6, 14),   look: new THREE.Vector3(0, 8, 0) },
-    { p: new THREE.Vector3(18, 26, 10), look: new THREE.Vector3(6, 20, 6) },
-    { p: new THREE.Vector3(40, 12, 30), look: new THREE.Vector3(0, 4, 0) },
-  ];
-  const seg = e * (key.length - 1);
-  const i = Math.min(key.length - 2, Math.floor(seg));
-  const f = seg - i;
-  const p = key[i].p.clone().lerp(key[i+1].p, f);
-  const look = key[i].look.clone().lerp(key[i+1].look, f);
-  camera.position.copy(p);
-  controls.target.copy(look);
-  if (k >= 1) endTour();
+  let leg = tour.legs[tour.leg];
+  while (leg && tour.t >= leg.dur) { tour.t -= leg.dur; leg = tour.legs[++tour.leg]; }
+  if (!leg) { tour.legs = null; tour.t = 0; return; } // loop: the next frame plans a new round from here
+  const u = tour.t / leg.dur;
+  camera.position.copy(leg.pos(u, _tp));
+  controls.target.copy(leg.look(u, _tl));
+  showcaseCard(leg.repo ? leg : null);
+}
+// A small TV set for the showcase: which repo the camera is heading to or
+// circling, what it is, and how popular. It flickers like a CRT on each change.
+function showcaseCard(leg) {
+  let el = document.getElementById('showcase-card');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'showcase-card';
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = `<div class="sc-screen"><div class="sc-kicker"></div><div class="sc-name"></div>
+        <div class="sc-desc"></div><div class="sc-meta"></div></div>
+      <div class="sc-chin"><span class="sc-led"></span><span class="sc-stop"></span><span class="sc-hint">click a building to watch its history</span></div>`;
+    document.body.appendChild(el);
+  }
+  const repo = leg?.repo || null, key = repo ? `${repo.full_name || repo.name}|${leg.next ? 'next' : 'here'}` : null;
+  if (tour.card === key) return;
+  const sameRepo = repo && tour.card && tour.card.split('|')[0] === (repo.full_name || repo.name);
+  tour.card = key;
+  if (!repo) { el.classList.remove('show'); return; }
+  el.querySelector('.sc-kicker').textContent = leg.next ? 'Next stop' : 'Now circling';
+  el.querySelector('.sc-name').textContent = repo.name;
+  el.querySelector('.sc-desc').textContent = repo.description || 'No description yet.';
+  const days = repo.pushed_at ? Math.max(0, Math.round((Date.now() - Date.parse(repo.pushed_at)) / 86400000)) : null;
+  const meta = [`★ ${fmtNum(repo.stargazers_count || 0)}`, `⑂ ${fmtNum(repo.forks_count || 0)}`, repo.language,
+    days == null ? '' : days === 0 ? 'updated today' : `updated ${days}d ago`].filter(Boolean);
+  el.querySelector('.sc-meta').replaceChildren(...meta.map((t) => Object.assign(document.createElement('span'), { textContent: t })));
+  el.querySelector('.sc-stop').textContent = leg.stop ? `${leg.stop} / ${leg.of}` : '';
+  el.style.setProperty('--sc-lang', langHex(repo.language));
+  el.classList.add('show');
+  if (!sameRepo) { el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip'); } // CRT channel change
 }
 function startTour() {
-  tour.active = true; tour.t = 0;
+  tour.active = true; tour.t = 0; tour.leg = 0; tour.legs = null;
   controls.autoRotate = false;
-  if (document.getElementById('tour-btn')) document.getElementById('tour-btn').classList.add('on');
+  document.getElementById('tour-btn')?.classList.add('on');
 }
 function endTour() {
-  tour.active = false;
-  if (document.getElementById('tour-btn')) document.getElementById('tour-btn').classList.remove('on');
+  tour.active = false; tour.legs = null;
+  showcaseCard(null);
+  document.getElementById('tour-btn')?.classList.remove('on');
 }
 
 // ---------------------------------------------------------------------------
@@ -2449,8 +2531,9 @@ function onPointerUp(e) {
   if (hits.length > 0) {
     // Clicking a building plays its history straight away; the repo panel
     // opens behind the player so the details are there when you close it.
-    const repo = hits[0].object.userData.building.repo;
+    const building = hits[0].object.userData.building, repo = building.repo;
     openPanel(repo);
+    flyToBuilding(building);
     if (repo.full_name) openGource(repo, { x: e.clientX, y: e.clientY });
   } else closePanel();
 }
@@ -2489,7 +2572,10 @@ function openPanel(repo) {
   panel.classList.add('open');
 }
 function closePanel() {
-  document.getElementById('panel').classList.remove('open');
+  const panel = document.getElementById('panel');
+  const wasOpen = panel.classList.contains('open');
+  panel.classList.remove('open');
+  if (wasOpen) returnToOrbit();
 }
 
 // Gource View in a lightbox: the repo's whole commit history replayed as a
@@ -2499,8 +2585,8 @@ function closePanel() {
 // history has loaded, instead of the full app UI; embed=1 hides its scrubber
 // and has it tell this page when the video opens / closes (postMessage).
 function gourceUrl(repo, { video = true } = {}) {
-  // music/volume: the embedded player plays "cipher", quietly.
-  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=cipher&volume=15' : ''}`;
+  // music=none: the embedded player plays without music.
+  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=none' : ''}`;
 }
 // The player loads hidden: a small chip shows progress at the clicked
 // building, and once Gource View's video is ready the player morphs out of that
@@ -2510,6 +2596,7 @@ function gourceUrl(repo, { video = true } = {}) {
 const GOURCE_ORIGIN = new URL(GOURCE_VIEW).origin;
 let gourceTimer = 0;
 let gourceRepoName = '';
+let gourceNotBefore = 0; // opened from a building click: let the fly-in land first
 // While the TV covers the screen the city stops rendering, so the GPU (and a
 // phone's battery) goes to the video. It resumes as the set powers off.
 let gourceCovering = false;
@@ -2540,6 +2627,7 @@ function openGource(repo, from = null) {
   box.style.setProperty('--gy', `${at.y}px`);
   box.querySelector('.gm-title').textContent = `${repo.full_name} · commit history`;
   gourceRepoName = repo.name;
+  gourceNotBefore = from ? performance.now() + 2600 : 0;
   box.querySelector('.gm-ltext').textContent = `Replaying ${repo.name}…`;
   box.querySelector('.gm-ext').href = url;
   const frame = document.createElement('iframe');
@@ -2565,6 +2653,10 @@ function revealGource() {
   const box = document.getElementById('gource-modal');
   if (!box?.classList.contains('pending')) return;
   clearTimeout(gourceTimer);
+  // Opened from a building click: power on only once the fly-in has landed
+  // (flight time is frame time, so slow devices take longer than the nominal 2.6 s).
+  const flying = gourceNotBefore && cine && cine.leg === 0 && cine.legs.length > 1;
+  if (flying || gourceNotBefore - performance.now() > 0) { gourceTimer = setTimeout(revealGource, 150); return; }
   const card = box.querySelector('.gm-card').getBoundingClientRect();
   const gx = parseFloat(box.style.getPropertyValue('--gx')), gy = parseFloat(box.style.getPropertyValue('--gy'));
   box.style.setProperty('--ox', `${gx - card.left}px`);
@@ -2660,23 +2752,55 @@ function renderTopCard(title, rows, dot) {
       <b class="tnum">${escapeHtml(r.value)}</b></div>`).join('');
 }
 
+// Clicking a building (or a repo in the lists) flies the camera to it; closing
+// the repo panel (✕, Esc, or a click on empty ground) flies back to where you
+// were orbiting and resumes the orbit.
+let orbitReturn = null;
+// A short camera script (same legs as the showcase): { legs, leg, t, onDone }.
+let cine = null;
+function updateCine(dt) {
+  cine.t += dt;
+  let leg = cine.legs[cine.leg];
+  while (leg && cine.t >= leg.dur) {
+    cine.t -= leg.dur;
+    if (leg.loop) break; // the last leg circles until something else takes over
+    leg = cine.legs[++cine.leg];
+  }
+  if (!leg) { const done = cine.onDone; cine = null; done?.(); return; }
+  const u = Math.min(1, cine.t / leg.dur);
+  camera.position.copy(leg.pos(u, _tp));
+  controls.target.copy(leg.look(u, _tl));
+}
+function flyToBuilding(b) {
+  if (explorer?.ownsCamera) return; // walk / drive / fly own the camera
+  endTour();
+  if (!orbitReturn) orbitReturn = { target: controls.target.clone(), position: camera.position.clone(), autoRotate: controls.autoRotate };
+  controls.autoRotate = false;
+  camGoal = null;
+  // Arc up over the rooftops into a framing orbit, then circle slowly while its panel is open.
+  const circle = orbitLeg(b, Math.atan2(camera.position.z, camera.position.x), { dur: 40, sweep: Math.PI * 2, loop: true });
+  cine = { legs: [flyLeg(camera.position, controls.target, circle.pos(0, new THREE.Vector3()), circle.look(0, new THREE.Vector3()), 2.6), circle], leg: 0, t: 0 };
+}
+function returnToOrbit() {
+  if (!orbitReturn || explorer?.ownsCamera) { orbitReturn = null; cine = null; return; }
+  const back = orbitReturn, resume = back.autoRotate || flyover;
+  orbitReturn = null;
+  camGoal = null;
+  cine = { legs: [flyLeg(camera.position, controls.target, back.position, back.target, 2.6)], leg: 0, t: 0,
+    onDone: () => { controls.autoRotate = resume; } };
+}
 function focusRepo(fullName) {
   const b = buildingByName.get(fullName);
   if (!b) return;
-  endTour();
   openPanel(b.repo);
-  const target = new THREE.Vector3(b.mesh.position.x, b.h * 0.55, b.mesh.position.z);
-  const dir = camera.position.clone().sub(controls.target).setY(0).normalize();
-  if (dir.lengthSq() < 0.01) dir.set(1, 0, 1).normalize();
-  dir.y = 0.6; dir.normalize();
-  const position = target.clone().add(dir.multiplyScalar(Math.max(34, b.h * 1.8)));
-  camGoal = { target, position };
+  flyToBuilding(b);
 }
 
 function updateClock(step, index) {
   if (!step) {
     $('clk-day').textContent = '—'; $('clk-mon').textContent = '—'; $('clk-year').textContent = '';
-    $('clk-sub').textContent = timeline?.steps.length ? 'press play to replay 90 days' : 'no public activity in the last 90 days';
+    const days = timeline?.days || activity.days;
+    $('clk-sub').textContent = timeline?.steps.length ? `press play to replay the last ${days} days` : `no public activity in the last ${days} days`;
     $('play-date').textContent = '—';
     return;
   }
@@ -2709,7 +2833,7 @@ function renderActivityStrip() {
   const hist = timeline?.hist || [];
   const max = Math.max(1, ...hist);
   $('activity').innerHTML = hist.map(v => `<span style="height:${Math.max(7, (v / max) * 100).toFixed(0)}%"></span>`).join('');
-  const from = dateParts(Date.now() - 89 * 86400000);
+  const from = dateParts(Date.now() - Math.max(0, hist.length - 1) * 86400000);
   $('activity-range').textContent = `${from.month} ${from.day} → today · ${timeline?.events.length || 0} events`;
 }
 
@@ -2740,6 +2864,7 @@ function updateTransport() {
 
 function setPlaying(on) {
   if (!timeline || !timeline.steps.length) on = false;
+  if (on) endTour(); // playback takes the camera (Follow) from the showcase
   if (on && play.t >= timeline.duration) { play.t = 0; play.lastIndex = -1; clearFeed(); }
   play.playing = on;
   if (on) { camGoal = null; controls.autoRotate = flyover; }
@@ -2759,11 +2884,22 @@ function setSpeed(speed) {
   document.querySelectorAll('.sp').forEach(b => b.classList.toggle('on', Number(b.dataset.speed) === speed));
 }
 
+// The activity playback covers the last 7 days by default (widened to 30 / 90
+// when that week was quiet); the 7d / 30d / 90d chips pick a range by hand.
+const ACTIVITY_RANGES = [7, 30, 90];
+let activity = { days: 7, picked: false, events: [], repos: [] };
+function eventsWithin(events, days) {
+  const from = Date.now() - days * 86400000;
+  return events.filter(e => Date.parse(e.created_at) >= from);
+}
 function setupTimeline(events, repos) {
+  activity.events = events; activity.repos = repos;
+  if (!activity.picked) activity.days = ACTIVITY_RANGES.find(d => eventsWithin(events, d).length >= 3) || 90;
+  const days = activity.days, inRange = eventsWithin(events, days);
   const names = buildingMeshes.map(b => b.repo.full_name).filter(Boolean);
-  const built = buildTimeline(events, names);
+  const built = buildTimeline(inRange, names);
   const { steps, duration } = paceTimeline(built.steps);
-  timeline = { steps, duration, events, hist: dailyHistogram(events, 90), first: built.first, last: built.last };
+  timeline = { steps, duration, events: inRange, days, hist: dailyHistogram(inRange, days), first: built.first, last: built.last };
   play.t = 0; play.lastIndex = -1; play.playing = false;
   clearFeed();
   renderActivityStrip();
@@ -2771,7 +2907,9 @@ function setupTimeline(events, repos) {
   $('play-btn').disabled = steps.length === 0;
   $('scrub').disabled = steps.length === 0;
   updateTransport();
-  $('hud-status').innerHTML = `${repos.length} repos · <span class="live">${steps.length} event${steps.length === 1 ? '' : 's'} · 90 days</span>`;
+  $('hud-status').innerHTML = `${repos.length} repos · <span class="live">${steps.length} event${steps.length === 1 ? '' : 's'} · ${days} days</span>`;
+  $('activity-title').textContent = `Public activity · last ${days} days`;
+  document.querySelectorAll('.rg').forEach(b => b.classList.toggle('on', Number(b.dataset.days) === days));
   const active = activityByRepo(steps);
   if (active.length) {
     renderTopCard('Most active', active.slice(0, 5).map(([name, n]) => ({
@@ -2854,6 +2992,10 @@ function wireUI() {
     followBtn.classList.toggle('on', follow);
   });
   $('tour-btn').addEventListener('click', () => { tour.active ? endTour() : startTour(); });
+  document.querySelectorAll('.rg').forEach(b => b.addEventListener('click', () => {
+    activity.days = Number(b.dataset.days); activity.picked = true;
+    if (activity.events.length || activity.repos.length) setupTimeline(activity.events, activity.repos);
+  }));
   const wxBtn = $('weather-btn');
   wxBtn.addEventListener('click', () => {
     const order = { clear: 'rain', rain: 'snow', snow: 'clear' };
@@ -2960,14 +3102,19 @@ function animate(timestamp) {
   const exploring = explorer ? explorer.update(dt, clock.getElapsed()) : false;
   // Cinematic fly-through (drives the camera; OrbitControls paused while active)
   if (tour.active && !exploring) updateTour(dt);
+  else if (cine && !exploring) updateCine(dt); // click-a-building flight in / out
+  const scripted = tour.active || !!cine;
 
   if (exploring) { /* explore.js placed the camera this frame */ }
-  else if (!tour.active) {
+  else if (!scripted) {
     if (camGoal) {
       const k = 1 - Math.exp(-dt * 3);
       controls.target.lerp(camGoal.target, k);
       camera.position.lerp(camGoal.position, k);
-      if (camera.position.distanceTo(camGoal.position) < 0.3) camGoal = null;
+      if (camera.position.distanceTo(camGoal.position) < 0.3) {
+        if (camGoal.resumeOrbit) controls.autoRotate = true; // back from a building: keep orbiting
+        camGoal = null;
+      }
     } else if (follow && play.playing && actor) {
       // The orbit target drifts toward wherever the actor is working.
       const k = 1 - Math.exp(-dt * 1.4);
@@ -2975,7 +3122,12 @@ function animate(timestamp) {
     }
     controls.update();
   } else camera.lookAt(controls.target);
-  districtSigns?.group.children.forEach(sign => sign.quaternion.copy(camera.quaternion));
+  districtSigns?.group.children.forEach(sign => {
+    sign.quaternion.copy(camera.quaternion);
+    // Fade the big district labels out up close (showcase flight, explore modes).
+    const fade = THREE.MathUtils.smoothstep(sign.getWorldPosition(_v2).distanceTo(camera.position), 18, 46);
+    sign.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = fade; o.visible = fade > 0.02; } });
+  });
   // TV wins over FX (it has its own grade); otherwise FX or a plain render.
   if (tvOn && crtPass) crtPass.render(clock.getElapsed());
   else if (fxOn && postPass) postPass.render(clock.getElapsed(), dayFactor);
@@ -3028,6 +3180,8 @@ function disposeObject(obj) {
 function resetCamera() {
   endTour();
   camGoal = null;
+  orbitReturn = null;
+  cine = null;
   controls.target.set(0, 10, 0);
   const extent = Math.max(24, ...buildingMeshes.map(b => Math.max(Math.abs(b.mesh.position.x), Math.abs(b.mesh.position.z)) + 6));
   const distance = Math.min(350, Math.max(120, extent * 3.0) / Math.min(1, camera.aspect));
@@ -3093,12 +3247,15 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     resetCamera();
     loading.classList.add('hidden');
     onBuilt?.(user.login); // explore.js portal travel: the new island is ready
+    // Open on the showcase flight around the buildings (the activity playback is one press of ▶ away).
+    if (!prefersReducedMotion() && new URLSearchParams(location.search).get('tour') !== '0') {
+      setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !tour.active) startTour(); }, 1200);
+    }
     // The activity timeline arrives second so the city never waits on it.
     const events = sample ? sample.events : await fetchEvents(user.login);
     if (version !== cityVersion) return;
     buildRingFromEvents(events);
     setupTimeline(events, visibleRepos);
-    play.autoplayTimer = setTimeout(() => { if (version === cityVersion) setPlaying(true); }, 900);
   } catch (e) {
     if (version !== cityVersion) return;
     loading.classList.add('hidden');
@@ -3161,7 +3318,7 @@ function main() {
   document.getElementById('search-input').value = startUser;
   animate();
   loadCity(startUser);
-  window.__city = { scene, world, camera, controls, explorer }; // debug handle
+  window.__city = { scene, world, camera, controls, explorer, debug: { get orbitReturn() { return orbitReturn; }, get camGoal() { return camGoal; }, get tour() { return tour.active; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
 }
 
 main();
