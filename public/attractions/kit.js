@@ -57,7 +57,7 @@ export function tools(kit) {
     return m;
   };
   // Inverted-hull ink: a BackSide child scaled so it grows ~t world units
-  // overall (matches app.js outlineBox on boxes). Returns the body mesh.
+  // overall (matches city/toon.js outlineBox on boxes). Returns the body mesh.
   const hull = (m, t = 0.22) => {
     const g = m.geometry;
     if (!g.boundingBox) g.computeBoundingBox();

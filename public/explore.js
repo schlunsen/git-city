@@ -50,7 +50,7 @@ export function createExplorer(THREE, deps = {}) {
   const heightAt = deps.heightAt || (() => 0);
   const colliders = deps.colliders || (() => []);
   const dayFactor = deps.dayFactor || (() => 1);
-  // City layout (defaults mirror app.js: paved slab, boulevard ring, plaza).
+  // City layout (defaults mirror city/layout.js: paved slab, boulevard ring, plaza).
   const SLAB = { half: deps.slabHalf ?? 56.5, r: deps.slabRadius ?? 15, y: 0.09 };
   const RING = { half: deps.ringHalf ?? 49.5, corner: deps.ringCorner ?? 8 };
   const CELL = deps.cell ?? 9;
@@ -65,7 +65,7 @@ export function createExplorer(THREE, deps = {}) {
   const _e = new THREE.Euler(), _ray = new THREE.Ray(), _hit = new THREE.Vector3(), _c = new THREE.Vector3();
 
   // ---- ground ---------------------------------------------------------------
-  // Live city footprint (app.js cityLayout): dist(x, z) < 0 inside the boulevard
+  // Live city footprint (city/block.js cityLayout): dist(x, z) < 0 inside the boulevard
   // centreline, the slab edge SIDEWALK beyond it; contour(offset) / streets give
   // spawn points. Without one we fall back to the classic rounded square.
   const SIDEWALK = SLAB.half - RING.half;

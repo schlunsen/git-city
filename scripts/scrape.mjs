@@ -15,7 +15,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-// Keep in sync with DEFAULT_DEVELOPERS in public/app.js and the example links in index.html.
+// Keep in sync with DEFAULT_DEVELOPERS in public/city/constants.js and the example links in index.html.
 export const DEFAULT_DEVELOPERS = ['torvalds', 'gaearon', 'sindresorhus', 'tj', 'antfu', 'schlunsen'];
 
 const API = 'https://api.github.com';
