@@ -27,7 +27,7 @@ import { createExplorer } from './explore.js'; // walk / drive / fly explore mod
 import { fetchNeighbors } from './neighbors.js';
 import { buildRepoSigns } from './repo-signs.js'; // repo names on every building (fascia + tower crowns)
 import { buildWayfinding } from './wayfinding.js'; // repo-named street signs + the explore-mode name tag
-import { fetchCityConfig, normalizeCityConfig, fetchBuildingConfig, normalizeBuildingConfig, mergeBuildingConfig } from './city-config.js'; // city.json / building.json (validated, data only)
+import { fetchCityConfig, configRepo, normalizeCityConfig, fetchBuildingConfig, normalizeBuildingConfig, mergeBuildingConfig } from './city-config.js'; // city.json / building.json (validated, data only)
 import { createCustomizer, showToast } from './customize.js'; // Customize panel: live preview + publish via GitHub's editor
 import { API, DEFAULT_USER, FIXTURES, MAX_BUILDINGS, DAY_CYCLE_SECONDS, LANG_COLORS, FALLBACK_COLOR } from './city/constants.js';
 import { $, escapeHtml, fmtNum, fmtBytes, setLoadStatus, disposeObject, readPref, writePref, hexNum, prefersReducedMotion } from './city/util.js';
@@ -688,6 +688,8 @@ function animate(timestamp) {
 // its text reaches the page through fillText / textContent.
 // ---------------------------------------------------------------------------
 const cfgNow = () => cityConfig?.config || null;
+// GitHub organizations get their own events, neighbours (public members) and city.json home (<org>/.github).
+const isOrg = (user) => user?.type === 'Organization';
 // Repos in city order: hidden ones out, featured ones first (in their order), then by stars.
 function rankRepos(repos) {
   const c = cfgNow();
@@ -814,7 +816,7 @@ const CONFIG_WAIT_MS = 4000;
 async function readCityConfig(pending, user, repos, version = cityVersion) {
   const res = await Promise.race([pending, new Promise((r) => setTimeout(r, CONFIG_WAIT_MS, null))]); // fetchCityConfig never throws
   if (res) { settleCityConfig(res, user, repos); return; }
-  cityConfig = { login: user.login, found: false, error: null, warnings: [], published: null, config: null };
+  cityConfig = { login: user.login, repo: null, found: false, error: null, warnings: [], published: null, config: null };
   pending.then((late) => {
     if (version !== cityVersion || customizer?.isOpen || customizer?.previewing) return;
     settleCityConfig(late, user, repos);
@@ -827,8 +829,8 @@ function settleCityConfig(res, user, repos) {
     ({ config, warnings } = normalizeCityConfig(res.raw, { repos, login: user.login }));
     if (!config) error = warnings[0];
   }
-  cityConfig = { login: user.login, found: res.found, error, warnings: config ? warnings : [], published: config, config };
-  const where = `${user.login}/${user.login}/.git-city/city.json`;
+  cityConfig = { login: user.login, repo: res.repo || null, found: res.found, error, warnings: config ? warnings : [], published: config, config };
+  const where = `${res.repo || `${user.login}/${user.login}`}/.git-city/city.json`;
   if (res.found && error) {
     console.warn(`[git-city] ${where} ignored: ${error}`);
     showToast(`city.json ignored: ${error}`, { tone: 'bad' });
@@ -848,7 +850,7 @@ function applyProfile(user, repos, version = cityVersion) {
   world.setProfile({ user, repos, config: worldConfig() }, cityLayout.city);
   // Neighbour portal gates at sea (neighbors.js): the developer's picks first, topped up automatically;
   // fire-and-forget, dropped if another city loaded meanwhile.
-  fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES), pinned: cfg?.neighbours || [] })
+  fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES), pinned: cfg?.neighbours || [], org: isOrg(user) })
     .then((list) => { if (version === cityVersion) world.setNeighbors(user.login, list); }).catch(() => {});
   const visible = buildCity(repos, user);
   explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
@@ -877,7 +879,7 @@ function applyCityLook(cfg) {
   plazaFx?.setAccent(look.accent ? hexNum(look.accent) : null);
   explorer?.setLivery?.({ color: cfg?.plane?.color ? hexNum(cfg.plane.color) : null, name: cfg?.plane?.name || '' });
   const eyebrow = document.querySelector('#profile-head > .eyebrow');
-  if (eyebrow) eyebrow.textContent = cfg?.island?.name || 'Profile explorer';
+  if (eyebrow) eyebrow.textContent = cfg?.island?.name || (isOrg(profileNow?.user) ? 'Organization explorer' : 'Profile explorer');
 }
 // Customize: a raw draft goes through the validator and the build exactly like a fetched file.
 function rebuildForConfig() {
@@ -977,7 +979,7 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
       setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !tour.active) startTour(); }, 10000); // a look around first
     }
     // The activity timeline arrives second so the city never waits on it.
-    const events = sample ? sample.events : await fetchEvents(user.login);
+    const events = sample ? sample.events : await fetchEvents(user.login, { org: isOrg(user) });
     if (version !== cityVersion) return;
     if (devTz.offset == null) {
       detectDevOffset(user.login, events).then((o) => {
@@ -1066,7 +1068,8 @@ function main() {
   // Customize panel (customize.js): drafts preview through the same path as a fetched city.json.
   customizer = createCustomizer({
     context: () => (cityConfig && profileNow ? {
-      login: profileNow.user.login, repos: profileNow.repos, found: cityConfig.found, error: cityConfig.error,
+      login: profileNow.user.login, org: isOrg(profileNow.user), repos: profileNow.repos, found: cityConfig.found, error: cityConfig.error,
+      configRepo: cityConfig.repo || configRepo(profileNow.user.login, { org: isOrg(profileNow.user) }), // where city.json lives (or should)
       warnings: cityConfig.warnings, published: cityConfig.published,
     } : null),
     preview: previewCityConfig,

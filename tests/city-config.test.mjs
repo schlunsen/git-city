@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   normalizeCityConfig, parseCityConfigText, fetchCityConfig, serializeCityConfig, isEmptyConfig, cleanText,
-  newFileUrl, editFileUrl, configUrl, OPTIONS, LIMITS, MAX_BYTES,
+  newFileUrl, editFileUrl, configUrl, configRepo, OPTIONS, LIMITS, MAX_BYTES,
   normalizeBuildingConfig, mergeBuildingConfig, fetchBuildingConfig, serializeBuildingConfig, BUILDING_KEYS, BUILDING_MAX_BYTES,
 } from '../public/city-config.js';
 import { BIOMES, LANDMARK_SITES, SITE_KINDS } from '../public/world.js';
@@ -240,7 +240,7 @@ const response = (body, { status = 200, headers = {} } = {}) => new Response(bod
 test('fetchCityConfig: 404 is "no config", JSON is parsed, failures are reported, never thrown', async () => {
   const calls = [];
   const ok = await fetchCityConfig('schlunsen', { fetchImpl: async (url, init) => { calls.push([url, init]); return response(JSON.stringify(EXAMPLE)); } });
-  assert.deepEqual(ok, { found: true, raw: EXAMPLE, error: null });
+  assert.deepEqual(ok, { found: true, raw: EXAMPLE, error: null, repo: 'schlunsen/schlunsen' });
   assert.equal(calls[0][0], 'https://raw.githubusercontent.com/schlunsen/schlunsen/HEAD/.git-city/city.json');
   assert.equal(calls[0][1].credentials, 'omit');
 
@@ -480,3 +480,25 @@ test('the building JSON Schema agrees with the validator and with city-config.v1
   assert.equal(bld.additionalProperties, false);
   assert.deepEqual(bld.$defs.color, city.$defs.color);
 });
+
+test('organizations: city.json falls back to the .github repository, and publishes there', async () => {
+  const urls = [];
+  const res = await fetchCityConfig('Lunar-Rails', { fetchImpl: async (url) => {
+    urls.push(url);
+    return url.includes('/.github/') ? response(JSON.stringify(EXAMPLE)) : response('404: Not Found', { status: 404 });
+  } });
+  assert.equal(res.found, true);
+  assert.equal(res.repo, 'Lunar-Rails/.github');
+  assert.deepEqual(urls, [configUrl('Lunar-Rails'), configUrl('Lunar-Rails', { org: true })]);
+  assert.equal(configUrl('Lunar-Rails', { org: true }), 'https://raw.githubusercontent.com/Lunar-Rails/.github/HEAD/.git-city/city.json');
+  assert.equal(configRepo('Lunar-Rails', { org: true }), 'Lunar-Rails/.github');
+  assert.equal(configRepo('schlunsen'), 'schlunsen/schlunsen');
+  assert.equal(newFileUrl('Lunar-Rails/.github', '{}', 'main').split('?')[0], 'https://github.com/Lunar-Rails/.github/new/main');
+  assert.equal(editFileUrl('Lunar-Rails/.github', 'main'), 'https://github.com/Lunar-Rails/.github/edit/main/.git-city/city.json');
+  // A developer's profile repository still answers in one request.
+  const one = [];
+  const mine = await fetchCityConfig('schlunsen', { fetchImpl: async (url) => { one.push(url); return response(JSON.stringify(EXAMPLE)); } });
+  assert.equal(mine.repo, 'schlunsen/schlunsen');
+  assert.equal(one.length, 1);
+});
+

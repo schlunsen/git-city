@@ -33,7 +33,7 @@ async function get(url) {
 }
 
 const pick = (obj, keys) => Object.fromEntries(keys.map(k => [k, obj?.[k]]).filter(([, v]) => v !== undefined));
-const trimUser = u => pick(u, ['login', 'name', 'avatar_url', 'html_url', 'bio', 'followers', 'following', 'public_repos', 'created_at']);
+const trimUser = u => pick(u, ['login', 'type', 'name', 'avatar_url', 'html_url', 'bio', 'followers', 'following', 'public_repos', 'created_at']);
 const trimRepo = r => ({
   ...pick(r, ['name', 'full_name', 'description', 'html_url', 'language', 'stargazers_count', 'forks_count',
     'watchers_count', 'size', 'fork', 'archived', 'default_branch', 'created_at', 'pushed_at']),
@@ -59,12 +59,12 @@ async function pinned(login) {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: 'query($login:String!){user(login:$login){pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{name owner{login}}}}}}',
+        query: 'query($login:String!){repositoryOwner(login:$login){... on ProfileOwner{pinnedItems(first:6,types:REPOSITORY){nodes{... on Repository{name owner{login}}}}}}}',
         variables: { login },
       }),
     });
     if (!res.ok) return [];
-    const nodes = (await res.json())?.data?.user?.pinnedItems?.nodes || [];
+    const nodes = (await res.json())?.data?.repositoryOwner?.pinnedItems?.nodes || [];
     return nodes.filter(n => n?.owner?.login?.toLowerCase() === login.toLowerCase()).map(n => n.name);
   } catch { return []; }
 }
@@ -87,7 +87,9 @@ export async function scrape(login) {
   const repos = await get(`${API}/users/${encodeURIComponent(login)}/repos?per_page=100&sort=updated`);
   const events = [];
   for (let page = 1; page <= 3; page++) {
-    const batch = await get(`${API}/users/${encodeURIComponent(login)}/events/public?per_page=100&page=${page}`);
+    const batch = await get(user.type === 'Organization' // an organization's events have their own endpoint
+      ? `${API}/orgs/${encodeURIComponent(login)}/events?per_page=100&page=${page}`
+      : `${API}/users/${encodeURIComponent(login)}/events/public?per_page=100&page=${page}`);
     events.push(...batch);
     if (batch.length < 100) break;
   }

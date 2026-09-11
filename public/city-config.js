@@ -437,8 +437,14 @@ export function parseCityConfigText(text, { maxBytes = MAX_BYTES, name = 'city.j
   }
 }
 
-export function configUrl(login) {
-  return `https://raw.githubusercontent.com/${login}/${login}/HEAD/${CONFIG_PATH}`;
+// Where a city.json lives: a user's profile repository (<login>/<login>), or an
+// organization's .github repository (<org>/.github), the one that holds its profile README.
+export function configRepo(login, { org = false } = {}) {
+  return org ? `${login}/.github` : `${login}/${login}`;
+}
+const repoOf = (who) => (String(who).includes('/') ? String(who) : `${who}/${who}`); // "owner/repo", or a login
+export function configUrl(login, opts) {
+  return `https://raw.githubusercontent.com/${configRepo(login, opts)}/HEAD/${CONFIG_PATH}`;
 }
 export function buildingUrl(owner, repo) {
   return `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/${BUILDING_PATH}`;
@@ -501,7 +507,13 @@ async function fetchConfigFile(url, { signal, timeout, fetchImpl, maxBytes, name
  */
 export async function fetchCityConfig(login, { signal, timeout = FETCH_TIMEOUT_MS, fetchImpl = globalThis.fetch } = {}) {
   if (typeof login !== 'string' || !LOGIN_RE.test(login)) return { found: false, raw: null, error: null };
-  return fetchConfigFile(configUrl(login), { signal, timeout, fetchImpl, maxBytes: MAX_BYTES, name: 'city.json' });
+  // The profile repository first, then the .github repository (where organizations keep theirs).
+  // `repo` says which one answered; a 404 in both is "no config".
+  for (const org of [false, true]) {
+    const res = await fetchConfigFile(configUrl(login, { org }), { signal, timeout, fetchImpl, maxBytes: MAX_BYTES, name: 'city.json' });
+    if (res.found || res.error) return { ...res, repo: configRepo(login, { org }) };
+  }
+  return { found: false, raw: null, error: null };
 }
 
 /**
@@ -518,16 +530,18 @@ export async function fetchBuildingConfig(fullName, { signal, timeout = BUILDING
 
 // ---- publishing through GitHub's own editor (no tokens, no OAuth) ----------
 export const PROFILE_README_DOCS = 'https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme';
+// An organization keeps its city.json in .github, and GitHub documents that repository separately.
+export const ORG_README_DOCS = 'https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/customizing-your-organizations-profile';
 const branchPath = (b) => String(b || 'HEAD').split('/').map(encodeURIComponent).join('/');
 /** GitHub's "create new file" page, pre-filled with the JSON. */
-export function newFileUrl(login, json, branch = 'HEAD') {
-  return `https://github.com/${login}/${login}/new/${branchPath(branch)}?filename=${encodeURIComponent(CONFIG_PATH)}&value=${encodeURIComponent(json)}`;
+export function newFileUrl(repo, json, branch = 'HEAD') { // repo: "owner/name" (a bare login means <login>/<login>)
+  return `https://github.com/${repoOf(repo)}/new/${branchPath(branch)}?filename=${encodeURIComponent(CONFIG_PATH)}&value=${encodeURIComponent(json)}`;
 }
 /** GitHub's editor for the existing file (edit URLs can't be pre-filled). */
-export function editFileUrl(login, branch = 'HEAD') {
-  return `https://github.com/${login}/${login}/edit/${branchPath(branch)}/${CONFIG_PATH}`;
+export function editFileUrl(repo, branch = 'HEAD') {
+  return `https://github.com/${repoOf(repo)}/edit/${branchPath(branch)}/${CONFIG_PATH}`;
 }
 /** Where the published file lives on GitHub. */
-export function blobUrl(login, branch = 'HEAD') {
-  return `https://github.com/${login}/${login}/blob/${branchPath(branch)}/${CONFIG_PATH}`;
+export function blobUrl(repo, branch = 'HEAD') {
+  return `https://github.com/${repoOf(repo)}/blob/${branchPath(branch)}/${CONFIG_PATH}`;
 }
