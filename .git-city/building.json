@@ -1,5 +1,12 @@
 {
   "$schema": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
   "version": 1,
+  "style": "stepped",
+  "color": "#64dedb",
+  "roof": "helipad",
+  "neon": "#64dedb",
+  "flag": "🏙️",
+  "sign": "you are here",
+  "billboard": "Turn any GitHub profile into a living cartoon city",
   "graffiti": { "text": "code in motion", "color": "#ff5ab4", "style": "bubble" }
 }

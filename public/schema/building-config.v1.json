@@ -11,7 +11,8 @@
       "description": "Editor hint only; Git City never loads it."
     },
     "version": {
-      "const": 1
+      "const": 1,
+      "description": "Always 1 for this schema."
     },
     "style": {
       "enum": [
@@ -47,17 +48,20 @@
         "text": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 60
+          "maxLength": 60,
+          "description": "The words: free-form, up to 60 characters."
         },
         "color": {
-          "$ref": "#/$defs/color"
+          "$ref": "#/$defs/color",
+          "description": "Paint colour (default depends on the style)."
         },
         "style": {
           "enum": [
             "tag",
             "bubble",
             "stencil"
-          ]
+          ],
+          "description": "A quick marker tag, fat bubble letters, or a stencil. Default: tag."
         }
       },
       "description": "Spray-painted on the ground-floor walls."
@@ -127,17 +131,20 @@
             "text": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 60
+              "maxLength": 60,
+              "description": "The words: free-form, up to 60 characters."
             },
             "color": {
-              "$ref": "#/$defs/color"
+              "$ref": "#/$defs/color",
+              "description": "Paint colour (default depends on the style)."
             },
             "style": {
               "enum": [
                 "tag",
                 "bubble",
                 "stencil"
-              ]
+              ],
+              "description": "A quick marker tag, fat bubble letters, or a stencil. Default: tag."
             }
           },
           "description": "Spray-painted on the ground-floor walls."

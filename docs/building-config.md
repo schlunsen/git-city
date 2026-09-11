@@ -10,7 +10,8 @@ itself:
 ```
 
 Commit it to the default branch. It shows up in the owner's city within about
-5 minutes.
+5 minutes. (There's also a web version of this guide:
+[How to customize](https://schlunsen.github.io/git-city/customize.html#repo).)
 
 ## Example
 

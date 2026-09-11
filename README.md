@@ -82,10 +82,20 @@ soundtrack and your plane's livery.
 Or open your city, press **Customize**, preview your changes live on the
 island, and **Publish**: it opens GitHub's own editor with the file filled in
 (no tokens, no OAuth). The file is data only, strictly validated, and never
-makes Git City load anything. See **[docs/city-config.md](docs/city-config.md)**
-for every field, the limits, caching (about 5 minutes) and troubleshooting,
-and [the JSON Schema](public/schema/city-config.v1.json) for editor
-autocompletion.
+makes Git City load anything.
+
+Maintainers can style a single repository's building too (graffiti, roof,
+neon windows, a flag, colour, silhouette) with `.git-city/building.json` in
+the repository itself; the owner's `city.json` wins, field by field.
+
+- **[How to customize](https://schlunsen.github.io/git-city/customize.html)**:
+  the step-by-step guide for both levels, with copyable examples
+- [docs/city-config.md](docs/city-config.md): every field, the limits, caching
+  (about 5 minutes), security and troubleshooting
+- [docs/building-config.md](docs/building-config.md): the per-repository file
+- JSON Schemas for editor autocompletion:
+  [city-config.v1.json](public/schema/city-config.v1.json),
+  [building-config.v1.json](public/schema/building-config.v1.json)
 
 ## How it's built
 
