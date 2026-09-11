@@ -231,7 +231,7 @@ const BILLBOARD_VERTEX = /* glsl */`
 `;
 
 export function createWorld(THREE, scene, deps) {
-  const { envMat, seededRandom, DISTRICT, CELL, slabHalf, slabRadius, base = './assets/' } = deps;
+  const { envMat, seededRandom, DISTRICT, CELL, slabHalf, slabRadius, streetW = 3.2, base = './assets/' } = deps;
   const rnd = seededRandom(0xC17E); // persistent scenery only (clouds, balloons)
   const loader = new THREE.TextureLoader();
   const tints = [];      // { mat, night, day } — recoloured by setDay
@@ -1831,7 +1831,7 @@ export function createWorld(THREE, scene, deps) {
     for (const c of cells) {
       const r = seededRandom(c.seed);
       if (r() > 0.6) continue; // leave some lots plain so the district stays airy
-      const d = decal(`lots-${Math.floor(r() * SPRITE_COUNTS.lots)}`, CELL - 3.2 - 0.6);
+      const d = decal(`lots-${Math.floor(r() * SPRITE_COUNTS.lots)}`, CELL - streetW - 0.6); // an empty lot between its streets
       d.position.set(c.x, 0.035, c.z);
       d.rotation.y = Math.floor(r() * 4) * Math.PI / 2;
       lotGroup.add(d);

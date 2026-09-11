@@ -28,8 +28,11 @@ export const PLAZA_R = CELL * 1.7;         // central town square, kept clear of
 // concentric. A cell is active when a full-size building clears the boulevard.
 // ---------------------------------------------------------------------------
 export const SIDEWALK = SLAB_HALF - RING_R; // boulevard centreline -> slab edge (7)
-export const LOT_HALF = 3;                  // largest building half-footprint (starsToFootprint tops out at 6)
-export const LOT_CLEAR = 1.4;               // footprint corners stay this far inside the boulevard centreline
+export const STREET_W = 4;                  // inner streets, centred on the cell boundaries (a lot is CELL - STREET_W = 5)
+export const BOULEVARD_HALF = 1.6;          // paved half-width of the boulevard ring; its ink curb runs 0.4 further
+export const LANE_OFFSET = 0.85;            // boulevard car lanes either side of its centreline
+export const LOT_HALF = 2.05;               // largest building half-footprint (starsToFootprint tops out at 4.1)
+export const LOT_CLEAR = BOULEVARD_HALF + 0.75; // footprint corners this far inside the centreline: roofs clear the boulevard's curb
 const SHAPE_TAU = Math.PI * 2;
 function sdRoundBox(x, z, hx, hz, r) {
   const qx = Math.abs(x) - hx + r, qz = Math.abs(z) - hz + r;
@@ -134,7 +137,7 @@ function buildCityLayout(shape, n, seed) {
     const { x, z } = worldForCell(gx, gz);
     const plaza = Math.hypot(Math.max(0, Math.abs(x) - 3.2), Math.max(0, Math.abs(z) - 3.2)) <= CELL * 1.7;
     const active = fits(x, z, LOT_HALF, LOT_CLEAR);
-    cells.push({ gx, gz, x, z, plaza, active, inside: plaza || active, lot: !plaza && (active || fits(x, z, 2.6, 2.2)) });
+    cells.push({ gx, gz, x, z, plaza, active, inside: plaza || active, lot: !plaza && (active || fits(x, z, 2.2, BOULEVARD_HALF + 0.6)) });
   }
   const byKey = new Map(cells.map(c => [`${c.gx},${c.gz}`, c]));
   const L = { shape, n, seed, cols, rows, hx, hz, cells, dist, contour, reach, rMax, cellAt: (gx, gz) => byKey.get(`${gx},${gz}`) };
@@ -247,7 +250,7 @@ export function starsToHeight(stars) {
 }
 export function starsToFootprint(stars) {
   const t = Math.min(1, Math.log10(stars + 1) / 6);
-  return 3.6 + t * 2.4; // 3.6..6.0 world units, keeps blocks from touching
+  return 3.2 + t * 0.9; // 3.2..4.1 world units: with its roof overhang every building stays on its 5-unit lot, clear of the street
 }
 
 // The layout's building cells (active, off the plaza), ranked by ring distance

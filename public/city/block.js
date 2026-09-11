@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cityGroup } from './scene.js';
 import { envMat, noRaycast } from './toon.js';
-import { SIDEWALK, PLAZA_R, makeCityLayout } from './layout.js';
+import { SIDEWALK, PLAZA_R, STREET_W, BOULEVARD_HALF, makeCityLayout } from './layout.js';
 import { buildPlaza } from './plaza.js';
 import { buildStreetlamps } from './townlife.js';
 import { disposeObject } from './util.js';
@@ -118,18 +118,18 @@ function buildBlock(L) {
   add(slab(SIDEWALK + 0.6).scale(1, 0.5 / 0.6, 1), M.ink, -0.58);
   // The boulevard follows the outline, inked with its own curb; inner streets
   // run under its edges so every junction is covered.
-  add(contourBand(L, -2.0, 2.0), M.ink, 0.07);
-  add(contourBand(L, -1.6, 1.6), M.street, 0.085);
+  add(contourBand(L, -BOULEVARD_HALF - 0.4, BOULEVARD_HALF + 0.4), M.ink, 0.07);
+  add(contourBand(L, -BOULEVARD_HALF, BOULEVARD_HALF), M.street, 0.085);
   const streets = [], dashes = [];
   const dash = (x, y, z, tx, tz) => dashes.push(new THREE.BoxGeometry(0.5, 0.06, 2.2).rotateY(Math.atan2(tx, tz)).translate(x, y, z));
   for (const s of L.streets) {
     const len = Math.hypot(s.x1 - s.x0, s.z1 - s.z0);
-    streets.push(new THREE.BoxGeometry(s.vertical ? 3.2 : len, 0.08, s.vertical ? len : 3.2).translate((s.x0 + s.x1) / 2, 0.04, (s.z0 + s.z1) / 2));
+    streets.push(new THREE.BoxGeometry(s.vertical ? STREET_W : len, 0.08, s.vertical ? len : STREET_W).translate((s.x0 + s.x1) / 2, 0.04, (s.z0 + s.z1) / 2));
     // Lane dashes on the grid's 4.5-unit rhythm, clear of the plaza and the boulevard.
     const t0 = s.vertical ? s.z0 : s.x0, t1 = s.vertical ? s.z1 : s.x1, p = s.vertical ? s.x0 : s.z0;
     for (let t = Math.ceil((t0 - 2.25) / 4.5) * 4.5 + 2.25; t < t1; t += 4.5) {
       const x = s.vertical ? p : t, z = s.vertical ? t : p;
-      if (Math.hypot(x, z) < PLAZA_R || L.dist(x, z) > -2) continue;
+      if (Math.hypot(x, z) < PLAZA_R || L.dist(x, z) > -BOULEVARD_HALF - 0.4) continue;
       dash(x, 0.09, z, s.vertical ? 0 : 1, s.vertical ? 1 : 0);
     }
   }

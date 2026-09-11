@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { scene, clock } from './scene.js';
 import { toonMat, getOutlineMat, noRaycast, TAU, box, hullOf, mergeParts, annulusGeo, envMat, seededRandom, makeGlowTexture } from './toon.js';
-import { PLAZA_R, makeCityLayout } from './layout.js';
+import { PLAZA_R, BOULEVARD_HALF, makeCityLayout } from './layout.js';
 import { PLAZA_Y, POOL, plazaBenchSpots } from './plaza.js';
 import { disposeObject } from './util.js';
 
@@ -41,7 +41,7 @@ export function buildStreetlamps(L = makeCityLayout('square')) { // L: the footp
     for (let i = 0; i <= 8; i++) {
       const x = x0 + (i / 8) * (x1 - x0);
       if (Math.hypot(x, z) < PLAZA_R + 1.5) continue; // the plaza has its own lanterns
-      if (Math.abs(L.dist(x, z)) < 2.4) continue;    // never on the boulevard
+      if (Math.abs(L.dist(x, z)) < BOULEVARD_HALF + 0.8) continue; // never on the boulevard or its curb
       const g = new THREE.Group();
       const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.y = 1.6;
       const head = new THREE.Mesh(headGeo, headMat.clone()); head.position.y = 3.3;
