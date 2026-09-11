@@ -91,6 +91,7 @@ let play = { playing: false, t: 0, speed: 1, lastIndex: -1, autoplayTimer: null 
 let flyover = true;          // slow idle orbit
 let follow = true;           // orbit target drifts toward the actor while playing
 let camGoal = null;          // { target, position } glide for focusRepo
+let swallowTap = false;      // set when a tap only dismissed the compact menu
 let bursts = [];             // transient particle bursts at beamed buildings
 const buildingByName = new Map();
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3();
@@ -406,7 +407,9 @@ function roundRect(ctx, x, y, w, h, r) {
 function initScene() {
   const canvas = document.getElementById('scene');
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Phones: cap the pixel ratio (and the shadow map below) — the toon look doesn't need retina fill.
+  const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, coarse ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -461,7 +464,7 @@ function initScene() {
   sun = new THREE.DirectionalLight(0xfff1d6, 1.3);
   sun.position.set(60, 90, 40);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
   const d = 70;
   sun.shadow.camera.left = -d; sun.shadow.camera.right = d;
   sun.shadow.camera.top = d; sun.shadow.camera.bottom = -d;
@@ -1563,6 +1566,7 @@ function onPointerDown(e) {
   onPointerDown._sx = e.clientX; onPointerDown._sy = e.clientY;
 }
 function onPointerUp(e) {
+  if (swallowTap) { swallowTap = false; onPointerDown._sx = null; return; }
   if (onPointerDown._sx == null || e.button !== 0) return;
   const dx = e.clientX - onPointerDown._sx, dy = e.clientY - onPointerDown._sy;
   onPointerDown._sx = null;
@@ -1577,6 +1581,7 @@ function onPointerUp(e) {
 }
 
 function openPanel(repo) {
+  if (isCompact()) { setMenu(false); setProfile(false); }
   const panel = document.getElementById('panel');
   const colorHex = LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR;
   document.getElementById('panel-title').textContent = repo.name;
@@ -1775,6 +1780,19 @@ function setupTimeline(events, repos) {
   }
 }
 
+// Phones, small tablets and landscape phones share the compact layout.
+const compactMQ = window.matchMedia('(max-width: 900px), (max-height: 500px)');
+function isCompact() { return compactMQ.matches; }
+function setMenu(open) {
+  document.body.classList.toggle('menu-open', open);
+  $('menu-btn').setAttribute('aria-expanded', String(open));
+}
+function setProfile(open) {
+  $('explorer').classList.toggle('open', open);
+  const t = $('profile-toggle');
+  t.setAttribute('aria-expanded', String(open));
+  t.setAttribute('aria-label', open ? 'Hide profile details' : 'Show profile details');
+}
 function readPref(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function writePref(key, value) { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } }
 function setFx(on) {
@@ -1850,16 +1868,37 @@ function wireUI() {
   // Transport
   $('play-btn').addEventListener('click', () => setPlaying(!play.playing));
   $('scrub').addEventListener('input', (e) => seekTo(Number(e.target.value) / 1000));
-  document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.speed))));
+  const SPEED_STEPS = [0.5, 1, 2, 4];
+  document.querySelectorAll('.sp').forEach(b => b.addEventListener('click', () => {
+    // Compact layouts show only the active speed; tapping it cycles.
+    const s = Number(b.dataset.speed);
+    setSpeed(isCompact() && s === play.speed ? SPEED_STEPS[(SPEED_STEPS.indexOf(s) + 1) % SPEED_STEPS.length] : s);
+  }));
   $('explorer').addEventListener('click', (e) => {
     const row = e.target.closest('[data-repo]');
-    if (row && row.dataset.repo) focusRepo(row.dataset.repo);
+    if (row && row.dataset.repo) { focusRepo(row.dataset.repo); if (isCompact()) setProfile(false); }
   });
+  // Compact layout: menu dropdown, profile peek card, and bar-height CSS vars.
+  $('menu-btn').addEventListener('click', (e) => { e.stopPropagation(); setMenu(!document.body.classList.contains('menu-open')); });
+  document.addEventListener('pointerdown', (e) => {
+    if (document.body.classList.contains('menu-open') && !e.target.closest?.('#menu, #menu-btn')) {
+      setMenu(false);
+      swallowTap = true; // the tap that dismisses the menu must not also open a building
+    }
+  });
+  document.querySelectorAll('#examples a[data-user]').forEach(a => a.addEventListener('click', () => setMenu(false)));
+  $('profile-head').addEventListener('click', () => { if (isCompact()) setProfile(!$('explorer').classList.contains('open')); });
+  const syncBars = () => {
+    document.documentElement.style.setProperty('--topbar-h', $('topbar').offsetHeight + 'px');
+    document.documentElement.style.setProperty('--transport-h', $('transport').offsetHeight + 'px');
+  };
+  if (window.ResizeObserver) { const ro = new ResizeObserver(syncBars); ro.observe($('topbar')); ro.observe($('transport')); }
+  syncBars();
   window.addEventListener('keydown', (e) => {
     if (e.target.closest?.('input, textarea, [contenteditable=true]')) return;
     if (e.key === 't' || e.key === 'T') { tour.active ? endTour() : startTour(); }
     else if (e.key === ' ') { e.preventDefault(); setPlaying(!play.playing); }
-    else if (e.key === 'Escape') { endTour(); closePanel(); }
+    else if (e.key === 'Escape') { endTour(); closePanel(); setMenu(false); setProfile(false); }
     else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn); }
   });
   $('panel-close').addEventListener('click', closePanel);
