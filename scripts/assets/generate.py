@@ -51,6 +51,10 @@ JOBS = {
     'landmarks': ('16:9', f'Sprite sheet of 4 different cartoon landmark objects in a single row, side view, evenly spaced with clear gaps: a hot air balloon, a small lighthouse, a windmill, a ferris wheel, {STYLE}, {MAG}'),
     # landmarks-4 (the launch pad) is the first sprite of this sheet.
     'rockets': ('16:9', f'Sprite sheet of 3 different cartoon rocket landmark objects in a single row, side view, evenly spaced with clear gaps: a retro red-and-white rocket on a small launch pad with a lattice gantry tower, a chunky teal rocket with round portholes standing on three fins on a concrete pad, a tall slim silver rocket with an orange nose cone beside a small launch tower, {STYLE}, {MAG}'),
+    # Scenery accents, in this order: props-fountain, props-dock, scenery-autumn-tree, scenery-rock-cluster
+    # (key.py row ... --names props-fountain props-dock scenery-autumn-tree scenery-rock-cluster).
+    # Street furniture already exists in the props sheet (lamp, bench, hydrant, mailbox): reuse it.
+    'scenery_accents': ('16:9', f'Sprite sheet of 4 different cartoon outdoor objects in a single row, side view, evenly spaced with clear gaps: a round grey stone fountain with a wide basin and a small spout of water on top, a short wooden pier on wooden posts with a mooring post, an autumn tree with a full round canopy of orange and red leaves on a brown trunk, a cluster of three mossy grey boulders of different sizes, no ground shadows, {STYLE}, {MAG}'),
 }
 
 

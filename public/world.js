@@ -51,6 +51,9 @@ export const LANDMARK_SITES = {
   radioTower: ['peak', 'wild'],
   observatory: ['peak', 'slopes'],
   balloonPad: ['peak', 'farm0', 'fair2', 'farm1'],
+  lighthouse: ['coast', 'peak'],
+  recordShop: ['fair2', 'fair', 'bigFair'],
+  robotMonument: ['wild', 'slopes'],
 };
 const TREE = { OAK: 0, POPLAR: 1, PINE: 2, ROUND: 3, CHERRY: 4 };
 const BUSH = { ROUND: 0, TULIPS: 1, LEAFY: 2, GRASS: 3, TOPIARY: 4 };
@@ -1215,7 +1218,7 @@ export function createWorld(THREE, scene, deps) {
     }
 
     // Landmarks: lighthouse on its headland, windmill on its hill, ferris wheel at the fair.
-    cutout(`landmarks-${LANDMARK.LIGHTHOUSE}`, 16, LIGHT.x, groundY(LIGHT.x, LIGHT.z), LIGHT.z, { parent: group, list: bills });
+    const lighthouseCut = cutout(`landmarks-${LANDMARK.LIGHTHOUSE}`, 16, LIGHT.x, groundY(LIGHT.x, LIGHT.z), LIGHT.z, { parent: group, list: bills });
     cutout(`landmarks-${LANDMARK.WINDMILL}`, 15, MILL.x, groundY(MILL.x, MILL.z), MILL.z, { parent: group, list: bills });
     cutout(`landmarks-${LANDMARK.FERRIS}`, 18, FAIR.x, groundY(FAIR.x, FAIR.z), FAIR.z, { parent: group, list: bills });
     for (const p of [LIGHT, MILL, FAIR]) shadowSpots.push({ x: p.x, y: groundY(p.x, p.z) + 0.1, z: p.z, w: 6 });
@@ -1227,6 +1230,62 @@ export function createWorld(THREE, scene, deps) {
       const a = bearing(FAIR, VILLAGES[nv - 1]) + 0.9 + i * 0.85;
       const kind = i % 2 ? PROP.CART : PROP.LAMP;
       plant(`props-${kind}`, kind === PROP.CART ? 2.6 : 3.2, FAIR.x + Math.cos(a) * 10.5, FAIR.z + Math.sin(a) * 10.5, undefined, kind === PROP.CART);
+    }
+
+    // Scenery accents: a fountain by the fair, a little pier on the beach, and a
+    // scatter of autumn trees, rock clusters and a bench in open ground. They draw
+    // from their own random stream (like the launch pad), so everything else on
+    // the island stays exactly where it was.
+    const ar = seededRandom((T.seed ^ 0xacce5) >>> 0);
+    const accentFree = (x, z, r) => roadDist(x, z) > r && sdSlab(x, z) > r + 10
+      && keepOut.every((k) => Math.hypot(x - k.x, z - k.z) > k.r) && heightAt(x, z) > -0.3 && slopeAt(x, z) < 0.2;
+    // A fountain beside the fair: the Ferris wheel stands on its centre, the carts
+    // and lamps ring it at 10.5, so the fountain goes in between.
+    for (let i = 0; i < 12; i++) {
+      const a = ar() * TAU, x = FAIR.x + Math.cos(a) * 6.5, z = FAIR.z + Math.sin(a) * 6.5;
+      if (roadDist(x, z) > 2.5 && sites.every((s) => Math.hypot(x - s.x, z - s.z) > s.r + 2)) {
+        plant('props-fountain', 3.4, x, z, groundY(x, z) + 0.05);
+        break;
+      }
+    }
+    // A pier stepping out over the shallow water, at the open beach.
+    for (let i = 0; i < 72; i++) {
+      const a = ar() * TAU, d = ISLAND_R * (0.72 + ar() * 0.12);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (coastAt(x, z) > 0.02 && coastAt(x, z) < 0.14 && roadDist(x, z) > 4 && isFree(x, z, 3)) {
+        plant('props-dock', 3.6, x, z, groundY(x, z) + 0.02);
+        break;
+      }
+    }
+    // Autumn trees: warm canopies for the leafy biomes, sparse elsewhere.
+    const autumnT = T.biome === 'alpine' ? 0.5 : 0.16;
+    for (let i = 0; i < 90; i++) {
+      const a = ar() * TAU, d = 20 + ar() * (ISLAND_R - 26);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (ar() > autumnT) continue;
+      if (accentFree(x, z, 3.5) && coastAt(x, z) > 0.16) {
+        plant('scenery-autumn-tree', 5.5 + ar() * 3, x, z);
+        keepOut.push({ x, z, r: 2.4 });
+      }
+    }
+    // Rock clusters: more where the terrain is rugged.
+    const rockT = T.biome === 'alpine' ? 0.5 : T.biome === 'meadow' ? 0.18 : 0.3;
+    for (let i = 0; i < 90; i++) {
+      const a = ar() * TAU, d = 18 + ar() * (ISLAND_R - 24);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (ar() > rockT) continue;
+      if (accentFree(x, z, 3) && slopeAt(x, z) > 0.05) {
+        plant('scenery-rock-cluster', 2.6 + ar() * 2, x, z);
+        keepOut.push({ x, z, r: 2.2 });
+      }
+    }
+    // An extra bench on the open verge between the trees.
+    for (let i = 0; i < 40; i++) {
+      const a = ar() * TAU, d = 24 + ar() * (ISLAND_R - 30);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (ar() < 0.5 || !accentFree(x, z, 3) || coastAt(x, z) <= 0.14) continue;
+      plant(`props-${PROP.BENCH}`, 1.6, x, z);
+      break;
     }
 
     const highRocks = [];
@@ -1515,7 +1574,8 @@ export function createWorld(THREE, scene, deps) {
       for (const s of sites) {
         let choice = s.want ? mod.ATTRACTIONS.find((a) => a.key === s.want) : null; // reserved for a city.json landmark
         if (!choice) {
-          const fits = mod.ATTRACTIONS.filter((a) => (a.tags || []).includes(s.tag) && a.radius <= s.r + 1.5);
+          // Never an automatic 3D lighthouse: every island already has its cutout one.
+          const fits = mod.ATTRACTIONS.filter((a) => a.key !== 'lighthouse' && (a.tags || []).includes(s.tag) && a.radius <= s.r + 1.5);
           let pool = s.r > 15 ? fits.filter((a) => a.radius > 12) : fits;
           if (!pool.length) pool = fits;
           const fresh = pool.filter((a) => !used.has(a.key));
@@ -1527,6 +1587,7 @@ export function createWorld(THREE, scene, deps) {
           for (const a of pool) { k -= a.weight ?? 1; if (k <= 0) { choice = a; break; } }
         }
         used.add(choice.key);
+        if (choice.key === 'lighthouse') { lighthouseCut.visible = false; beam.visible = false; } // a requested 3D lighthouse replaces the cutout one
         try {
           const obj = choice.build({ THREE, envMat: sharedEnvMat, ink: inkMat, rnd: seededRandom((T.seed ^ fnv(choice.key)) >>> 0) }, {});
           obj.group.position.set(s.x, heightAt(s.x, s.z) - 0.03, s.z);
