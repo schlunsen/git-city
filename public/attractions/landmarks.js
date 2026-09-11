@@ -3,7 +3,7 @@
  * hot-air balloon pad). Contract and kit: see ../attractions.js and ./kit.js.
  */
 
-import { TAU, tools, finish, rider } from './kit.js';
+import { TAU, tools, finish, chase, rider } from './kit.js';
 
 // ===========================================================================
 // 9. RADIO TOWER — red/white triangular lattice mast with dishes and panel
@@ -244,4 +244,246 @@ export function buildBalloonPad(kit, opts = {}) {
   }
   update(0, 0);
   return { group: finish(T, group, [balloon, flame, sock, ...ropes.map((r) => r.r)]), update, radius: 5.5 };
+}
+
+// ===========================================================================
+// 12. LIGHTHOUSE — a striped tower on a rocky headland: the lamp glows at
+//     night, a beam sweeps the water, and gulls circle the top.
+// ===========================================================================
+export function buildLighthouse(kit, opts = {}) {
+  const T = tools(kit);
+  const { THREE, rnd } = T;
+  const group = new THREE.Group();
+  group.name = 'lighthouse';
+  const accent = opts.color ?? T.pick([0xef6f6c, 0x3abeff, 0x8c78ff]);
+  const baseR = 1.5, TH = 6.2;
+
+  // Rocky headland footing (reaches down like every builder).
+  T.inked(group, T.cone(4.6, 2.2, 9), T.mat(0x8b8f9c), 0, -0.4, 0, 0.22);
+  T.add(group, T.cone(3.6, 1.4, 8), T.mat(0x9aa3b2), 0, 0.5, 0);
+
+  // Striped tower: alternate cream / accent rings, tapering.
+  const rings = 6;
+  for (let i = 0; i < rings; i++) {
+    const f = i / rings;
+    const r = baseR * (1 - 0.42 * f);
+    const h = TH / rings;
+    const y = 1.1 + i * h + h / 2;
+    T.inked(group, T.cyl(r * 0.94, r, h, 14), i % 2 ? T.mat(0xf6f1e4) : T.mat(accent), 0, y, 0, 0.12);
+  }
+  // Gallery deck + railing under the lamp room.
+  const galY = 1.1 + TH;
+  const deckR = baseR * 0.58 + 0.7;
+  T.inked(group, T.cyl(deckR, deckR + 0.2, 0.35, 14), T.mat(0x3a4152), 0, galY + 0.15, 0, 0.1);
+  const railG = new THREE.TorusGeometry(deckR, 0.06, 4, 18).rotateX(Math.PI / 2);
+  T.add(group, railG, T.mat(0x2f3542), 0, galY + 0.9, 0).castShadow = false;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU;
+    T.add(group, T.box(0.08, 0.55, 0.08), T.mat(0x2f3542), Math.cos(a) * deckR, galY + 0.6, Math.sin(a) * deckR);
+  }
+
+  // Lamp room: glass cylinder + glowing lantern + cap.
+  const lamp = new THREE.Group();
+  lamp.position.y = galY + 0.6;
+  group.add(lamp);
+  T.inked(lamp, T.cyl(baseR * 0.42, baseR * 0.46, 1.1, 10), T.mat(0xf6f1e4), 0, 0, 0, 0.1);
+  const glassM = T.mat(0xfff3c2, { emissive: 0xffd869, emissiveIntensity: 0.9, transparent: true, opacity: 0.92 });
+  const glass = T.add(lamp, T.cyl(baseR * 0.34, baseR * 0.34, 0.75, 10), glassM, 0, 0.85, 0);
+  glass.castShadow = false;
+  T.inked(lamp, new THREE.ConeGeometry(baseR * 0.6, 0.9, 10), T.mat(accent), 0, 1.6, 0, 0.12);
+  T.inked(lamp, T.ball(0.16, 8, 6), T.mat(0xf6f1e4), 0, 2.15, 0, 0.08);
+
+  // Sweeping beam: a translucent wedge group that rotates about the lamp.
+  const beam = new THREE.Group();
+  beam.position.y = galY + 0.85;
+  group.add(beam);
+  const beamGeo = new THREE.ConeGeometry(1.6, 7, 4, 1, true).rotateZ(-Math.PI / 2).translate(3.5, 0, 0);
+  const beamM = T.basic(0xfff3c2, { transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
+  const beamMesh = T.add(beam, beamGeo, beamM, 0, 0, 0);
+  beamMesh.castShadow = false;
+
+  // Gulls: three little v-shapes circling the top.
+  const gullM = T.mat(0x2f3542);
+  const gulls = [];
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.Group();
+    const wingG = T.box(0.5, 0.05, 0.12);
+    T.add(g, wingG, gullM, -0.22, 0, 0).rotation.z = 0.5;
+    T.add(g, wingG, gullM, 0.22, 0, 0).rotation.z = -0.5;
+    group.add(g);
+    gulls.push({ g, r: 3.2 + i * 0.9, ph: rnd() * TAU, sp: 0.5 + i * 0.18 });
+  }
+
+  const ph = rnd() * 20;
+  function update(dt, t) {
+    const n = T.night();
+    glassM.emissiveIntensity = 0.25 + 1.7 * n;
+    beamM.opacity = 0.05 + 0.3 * n;
+    beam.rotation.y = (t + ph) * 0.5;
+    for (const gu of gulls) {
+      const a = (t + ph) * gu.sp + gu.ph;
+      gu.g.position.set(Math.cos(a) * gu.r, galY + 2.6 + Math.sin(a * 2) * 0.5, Math.sin(a) * gu.r);
+      gu.g.rotation.y = -a;
+    }
+  }
+  update(0, 0);
+  return { group: finish(T, group, [beam, glass, ...gulls.map((g) => g.g)]), update, radius: 5 };
+}
+
+// ===========================================================================
+// 13. RECORD SHOP — the island's little arcade and record store: a marquee
+//     with chasing bulbs, a gramophone sign, and crates out front.
+// ===========================================================================
+export function buildRecordShop(kit, opts = {}) {
+  const T = tools(kit);
+  const { THREE, rnd } = T;
+  const group = new THREE.Group();
+  group.name = 'recordShop';
+  const accent = opts.color ?? T.pick([0xef6f6c, 0xffa03a, 0x8c78ff]);
+  const W = 4.4, D = 3.2, H = 3.0;
+
+  // Foundation slab.
+  T.inked(group, T.box(W + 0.8, 0.3, D + 0.8), T.mat(0xb9b1a2), 0, -0.15, 0, 0.16);
+
+  // Storefront: dark frontage, cream walls, a big window.
+  T.inked(group, T.box(W, H, 0.3), T.mat(0x3a4152), 0, H / 2, D / 2 - 0.15, 0.14); // front
+  T.inked(group, T.box(0.3, H, D), T.mat(0xe8e0cf), -W / 2 + 0.15, H / 2, 0, 0.14); // left
+  T.inked(group, T.box(0.3, H, D), T.mat(0xe8e0cf), W / 2 - 0.15, H / 2, 0, 0.14); // right
+  T.inked(group, T.box(W, 0.3, D), T.mat(0x2f3542), 0, H + 0.15, 0, 0.16); // roof line
+  // Flat roof with an AC box + antenna.
+  T.inked(group, T.box(1.0, 0.6, 0.8), T.mat(0x8b93a5), -W / 4, H + 0.6, -D / 4, 0.1);
+  T.add(group, T.cyl(0.03, 0.03, 1.2, 4), T.mat(0x3a4152), W / 3, H + 1.0, -D / 4);
+
+  // Window (glowing at night) + door.
+  const winM = T.mat(0x35415a, { emissive: 0xffb85c, emissiveIntensity: 0.0 });
+  const win = T.add(group, T.box(2.2, 1.4, 0.06), winM, -0.7, 1.5, D / 2 + 0.02);
+  win.castShadow = false;
+  T.inked(group, T.box(0.08, 1.4, 0.08), T.mat(0x2f3542), -0.7 + 1.1, 1.5, D / 2 + 0.02);
+  T.inked(group, T.box(1.0, 2.1, 0.1), T.mat(accent), 1.35, 1.05, D / 2 + 0.04, 0.1);
+  T.add(group, T.ball(0.07, 6, 4), T.mat(0xd9c9a0), 1.05, 1.0, D / 2 + 0.12);
+
+  // Marquee: a sign box above the door with a ring of chasing bulbs.
+  const marquee = new THREE.Group();
+  marquee.position.set(0, H + 0.85, D / 2 + 0.35);
+  group.add(marquee);
+  T.inked(marquee, T.box(W - 0.4, 0.9, 0.25), T.mat(0x2a2f3d), 0, 0, 0, 0.12);
+  const bulbM1 = T.glow(0xffe9a8, 0.4), bulbM2 = T.glow(0xffe9a8, 0.4);
+  const bulbG = T.ball(0.09, 6, 4);
+  const nB = 8;
+  for (let i = 0; i < nB; i++) {
+    const x = -(W - 0.9) / 2 + i * ((W - 0.9) / (nB - 1));
+    const b = T.add(marquee, bulbG, i % 2 ? bulbM1 : bulbM2, x, 0.55, 0);
+    b.castShadow = false;
+  }
+  // Chunky block-letter sign (simple bars, no textures).
+  const letterM = T.glow(0xfaf3e3, 0.9);
+  const bars = [
+    [-1.5, -0.35], [-1.5, 0.0], [-1.5, 0.35], [-1.15, 0.35], [-0.8, 0.35], [-0.8, -0.35],
+    [-0.4, -0.35], [-0.4, 0.35], [-0.05, 0.0],
+  ];
+  for (const [x, y] of bars) {
+    const l = T.add(marquee, T.box(0.28, 0.1, 0.06), letterM, x, y, 0.14);
+    l.castShadow = false;
+  }
+
+  // Gramophone sign on a bracket to the right of the door.
+  const gram = new THREE.Group();
+  gram.position.set(W / 2 + 0.45, 2.2, D / 2 - 0.4);
+  group.add(gram);
+  T.inked(gram, T.cyl(0.05, 0.05, 1.0, 4), T.mat(0x3a4152), 0, -0.5, 0, 0.05);
+  T.inked(gram, new THREE.ConeGeometry(0.55, 0.9, 10), T.mat(accent), 0, 0.25, 0.1, 0.1).rotateZ(0.4);
+  T.add(gram, T.cyl(0.3, 0.3, 0.06, 12).rotateX(Math.PI / 2), T.mat(0x2a2f3d), 0, -0.15, 0.28);
+
+  // Crates + a speaker out front.
+  T.inked(group, T.box(0.9, 0.7, 0.8), T.mat(0x8a6a4a), -W / 2 + 0.9, 0.35, D / 2 + 0.9, 0.1);
+  T.inked(group, T.box(0.8, 0.6, 0.7), T.mat(0x6d5238), -W / 2 + 1.9, 0.3, D / 2 + 0.7, 0.1);
+  T.inked(group, T.box(0.8, 1.0, 0.6), T.mat(0x2f3542), W / 2 - 0.9, 0.5, D / 2 + 0.7, 0.1);
+  T.add(group, T.ball(0.2, 8, 6), T.mat(0x8b93a5), W / 2 - 0.9, 0.5, D / 2 + 1.02);
+
+  const ph = rnd() * 10;
+  function update(dt, t) {
+    chase(bulbM1, bulbM2, Math.floor((t + ph) * 3) % 2 === 0, T.night());
+    winM.emissiveIntensity = 0.15 + 1.4 * T.night();
+    gram.rotation.y = Math.sin((t + ph) * 0.6) * 0.12;
+  }
+  update(0, 0);
+  return { group: finish(T, group, [marquee, gram, win]), update, radius: 6 };
+}
+
+// ===========================================================================
+// 14. ROBOT MONUMENT — a friendly blocky robot on a stone plinth in the park:
+//     it waves, its eyes and heart glow at night, and a little flag flutters.
+// ===========================================================================
+export function buildRobotMonument(kit, opts = {}) {
+  const T = tools(kit);
+  const { THREE, rnd } = T;
+  const group = new THREE.Group();
+  group.name = 'robotMonument';
+  const accent = opts.color ?? T.pick([0x64b8d8, 0x8c78ff, 0x3abeff]);
+  const bodyM = T.mat(0xdfe3ec), darkM = T.mat(0x3a4152), accentM = T.mat(accent);
+
+  // Plinth + hedges.
+  T.inked(group, T.box(3.0, 1.2, 3.0), T.mat(0xb9b1a2), 0, -0.3, 0, 0.18);
+  T.inked(group, T.box(2.4, 0.5, 2.4), T.mat(0xa89f8c), 0, 0.45, 0, 0.12);
+  T.inked(group, T.box(2.8, 0.3, 0.8), T.mat(0x4a7a3a), 0, -0.15, 1.9, 0.1);
+  T.inked(group, T.box(0.8, 0.3, 2.8), T.mat(0x4a7a3a), 1.9, -0.15, 0, 0.1);
+  // Nameplate.
+  const plateM = T.mat(0xd9c9a0, { emissive: 0x8a6a2a, emissiveIntensity: 0.25 });
+  const plate = T.add(group, T.box(1.2, 0.3, 0.06), plateM, 0, 0.2, 1.22);
+  plate.castShadow = false;
+
+  // Robot (stands on the plinth top).
+  const robot = new THREE.Group();
+  robot.position.y = 0.7;
+  group.add(robot);
+  T.inked(robot, T.box(1.3, 1.5, 0.9), bodyM, 0, 0.75, 0, 0.14);
+  const heartM = T.glow(0xffe9a8, 0.6);
+  const heart = T.add(robot, T.ball(0.22, 8, 6), heartM, 0, 0.75, 0.47);
+  heart.castShadow = false;
+  T.inked(robot, T.box(1.0, 0.25, 0.95), accentM, 0, 1.55, 0, 0.1);
+  const head = new THREE.Group();
+  head.position.y = 2.05;
+  robot.add(head);
+  T.inked(head, T.box(1.1, 0.95, 0.95), bodyM, 0, 0, 0, 0.14);
+  const eyeM = T.glow(0x8fe9ff, 0.8);
+  const eyeG = T.box(0.22, 0.3, 0.08);
+  const eL = T.add(head, eyeG, eyeM, -0.25, 0.05, 0.5); eL.castShadow = false;
+  const eR = T.add(head, eyeG, eyeM, 0.25, 0.05, 0.5); eR.castShadow = false;
+  T.add(head, T.box(0.6, 0.1, 0.06), darkM, 0, -0.25, 0.5).castShadow = false;
+  T.add(head, T.cyl(0.05, 0.05, 0.5, 4), darkM, 0, 0.7, 0);
+  const tipM = T.glow(0xef5c5c, 0.8);
+  const tip = T.add(head, T.ball(0.12, 6, 4), tipM, 0, 1.0, 0);
+  tip.castShadow = false;
+  // Arms: left rests, right waves.
+  T.inked(robot, T.box(0.34, 0.9, 0.34), bodyM, -0.85, 0.85, 0, 0.1);
+  T.inked(robot, T.ball(0.2, 6, 4), accentM, -0.85, 0.35, 0, 0.08);
+  const armR = new THREE.Group();
+  armR.position.set(0.85, 1.2, 0);
+  robot.add(armR);
+  T.inked(armR, T.box(0.34, 0.9, 0.34), bodyM, 0, -0.4, 0, 0.1);
+  T.inked(armR, T.ball(0.2, 6, 4), accentM, 0, -0.9, 0, 0.08);
+  // Legs.
+  T.inked(robot, T.box(0.4, 0.5, 0.45), darkM, -0.3, -0.25, 0, 0.08);
+  T.inked(robot, T.box(0.4, 0.5, 0.45), darkM, 0.3, -0.25, 0, 0.08);
+
+  // Flag on a pole beside the plinth.
+  const flagPole = new THREE.Group();
+  flagPole.position.set(-2.2, 0, -1.4);
+  group.add(flagPole);
+  T.inked(flagPole, T.cyl(0.05, 0.06, 3.2, 5), T.mat(0x8b93a5), 0, 1.6, 0, 0.05);
+  const flag = T.add(flagPole, T.box(0.9, 0.55, 0.05), accentM, 0.5, 2.8, 0);
+  flag.castShadow = false;
+
+  const ph = rnd() * 10;
+  function update(dt, t) {
+    const n = T.night();
+    armR.rotation.z = 2.1 + Math.sin((t + ph) * 2.2) * 0.5; // wave
+    head.rotation.y = Math.sin((t + ph) * 0.4) * 0.3;
+    eyeM.emissiveIntensity = 0.4 + 1.4 * n;
+    tipM.emissiveIntensity = 0.5 + 1.5 * n * (Math.sin((t + ph) * 3) > 0 ? 1 : 0.2);
+    heartM.emissiveIntensity = 0.3 + 1.0 * n;
+    flag.rotation.y = Math.sin((t + ph) * 3) * 0.25;
+  }
+  update(0, 0);
+  return { group: finish(T, group, [robot, head, armR, flag, heart, tip, plate]), update, radius: 5 };
 }
