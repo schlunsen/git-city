@@ -37,6 +37,7 @@ These come from real mistakes. Read them before generating anything.
    - All four share a style, and `key.py` splits them.
 6. **Reuse before you generate.** The `props` sheet already has a lamp post, a bench, a fire hydrant, a mailbox, a food cart and a bus stop (`PROP` in `world.js`). A second hydrant in a different style makes the island look patched together.
 7. **Only `generate.py` → `key.py`.** Don't process images with other scripts or tools; every committed PNG should be reproducible from a `JOBS` entry.
+8. **Say "no faces".** Ask for cute plants and the model gives them eyes and smiles (the first sunflowers, cactus and stump all had them). Add "plain plants with no faces, eyes or smiles".
 
 ## Adding to the set regularly
 
@@ -53,7 +54,11 @@ The set grows a batch at a time: street furniture, vegetation, waterfront props 
 3. Open the preview. Then place the sprites in `public/world.js`. The *Scenery accents* block shows the pattern: `plant(name, height, x, z)` with the `coastAt` / `roadDist` / `slopeAt` / `isFree` helpers and its own random stream.
 4. Check them in the browser by day and by night, run `node --test tests/`, and open a PR.
 
-The scenery-accents batch (`props-fountain`, `props-dock`, `scenery-autumn-tree`, `scenery-rock-cluster`: job `scenery_accents`) was made this way.
+The scenery-accents batch (`props-fountain`, `props-dock`, `scenery-autumn-tree`, `scenery-rock-cluster`: job `scenery_accents`) was made this way, and so was the second nature round:
+- **`trees2` → `trees-5` … `trees-9`:** weeping willow, white birch, acacia, baobab, apple.
+- **`plants2` → `bushes-5` … `bushes-9`:** sunflowers, cactus, reeds, mossy stump, fern.
+
+Most of them join the biome lists in `BIOMES`: acacias, baobabs and cacti make the savanna, birches the alpine and lakeland woods. Willows and reeds are placed along the lakes and rivers instead.
 
 ## 1. Setup
 
@@ -128,7 +133,10 @@ python3 scripts/assets/key.py row  scripts/assets/raw/scenery_accents.png --name
 
 `--names` gives each sprite of a row its own file name, in order from left to right.
 
-- **Chroma key.** The model never paints exactly `#FF00FF` (the rocket sheet came back as `rgb(224, 78, 152)`), so the background colour is sampled from the image border. Pixels near it become transparent, and edge pixels are un-mixed from it, so no pink fringe survives.
+- **Chroma key.** The model never paints exactly `#FF00FF`: sheets come back anywhere from `rgb(224, 78, 152)` to a dusty rose `rgb(211, 71, 138)`, so the background colour is sampled from the image border.
+  - Pixels that closely match it become transparent anywhere, holes included.
+  - Softer matches only fade along the rim of that background, and rim pixels are un-mixed from it, so no pink fringe survives.
+  - Everything inside the ink outlines stays solid, so reds and browns that resemble the rose keep their colour. (An earlier version faded them too: the baobab came out teal, the apples purple, and a quarter of the autumn tree was see-through.)
 - **Splitting.** Sheets are split on empty columns. Sprites are trimmed, scaled to `--max-side` (384 px; clouds use 512) and written as `<name>-<start + i>.png`.
 - **Specks.** Sprites smaller than `--min-px` are dropped. The first run of the original sheets produced a 16×12 speck.
 - **Edge hairline.** A 3 px frame at the image edge is ignored. The rocket sheet had a one-pixel hairline along its top edge, and that alone glued all three rockets into one sprite.

@@ -25,22 +25,31 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 OUT = Path(__file__).resolve().parents[2] / 'public' / 'assets'
 
 
-def key(im, thresh=70, soft=40, frame=3):
+def key(im, thresh=70, soft=40, frame=3, tight=45):
     """Magenta -> alpha. Models never paint exactly #FF00FF, so the background
-    colour is the median of the image border; soft edge pixels are un-mixed
-    from it (despill) so no pink fringe survives. `frame` px along the image
-    edge are forced transparent: models sometimes paint a hairline there, and
-    one opaque pixel per column is enough to glue a whole row of sprites together."""
+    colour is the median of the image border.
+    - Pixels closer than `tight` to it are background anywhere (holes too).
+    - Softer matches only fade within 2 px of that background: the anti-aliased
+      rim. Colours inside the ink outlines that merely resemble the background
+      (a red apple, a brown trunk) stay opaque and keep their colour; the
+      background often comes back a dusty rose, uncomfortably close to them.
+    - Rim pixels are un-mixed from the background (despill), so no pink fringe survives.
+    - `frame` px along the image edge are forced transparent: models sometimes
+      paint a hairline there, and one opaque pixel per column is enough to glue
+      a whole row of sprites together."""
     a = np.asarray(im.convert('RGB')).astype(np.float32)
     border = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
     bg = np.median(border, axis=0)
     d = np.sqrt(((a - bg) ** 2).sum(-1))
     alpha = np.clip((d - thresh) / soft, 0, 1)
+    sure_bg = d < tight
+    rim = np.asarray(Image.fromarray((sure_bg * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(5))) > 0
+    alpha = np.where(sure_bg, 0.0, np.where(rim, alpha, 1.0))
     if frame:
         alpha[:frame], alpha[-frame:], alpha[:, :frame], alpha[:, -frame:] = 0, 0, 0, 0
     al = alpha[..., None]
