@@ -18,6 +18,8 @@ Maintainers styling a single repository's building: see
 
 1. **Have a profile repository.** It's the public repository named exactly like
    your login (`octocat/octocat`), the one that holds your profile README.
+   An **organization** uses its `.github` repository instead (`acme/.github`),
+   the one that holds the organization profile README.
    [GitHub's guide to profile READMEs](https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme)
    explains how to create it.
 2. **Add `.git-city/city.json`** to its default branch:
@@ -197,13 +199,31 @@ it was loaded, ignored or partly ignored. Then:
    API is rate-limited). You need to be signed in to GitHub and own the
    repository, as for any commit.
 
-Anyone can open the panel on any city and preview ideas; only the owner of
-`<login>/<login>` can commit the result.
+Anyone can open the panel on any city and preview ideas; only someone who can
+commit to `<login>/<login>` (or to `<org>/.github`) can save the result.
+
+## Organizations
+
+Every GitHub organization has a city as well: `?user=<org>` builds it from the
+organization's public repositories, its members (they become the neighbouring
+islands) and its public activity. Everything on this page applies to it.
+
+The one difference is where the file lives. Organizations have no repository
+named after themselves; their profile repository is **`.github`**, so the
+config is `<org>/.github/.git-city/city.json`. Git City looks for
+`<org>/<org>/.git-city/city.json` first and falls back to `.github`, and the
+Customize panel points its Publish button at whichever one applies.
+
+```
+a developer   schlunsen/schlunsen/.git-city/city.json
+an org        Lunar-Rails/.github/.git-city/city.json
+```
 
 ## Caching and updates
 
 - Git City reads `https://raw.githubusercontent.com/<login>/<login>/HEAD/.git-city/city.json`
-  (your default branch). It doesn't use the GitHub API, so it never eats into
+  (your default branch), and for an organization
+  `https://raw.githubusercontent.com/<org>/.github/HEAD/.git-city/city.json`. It doesn't use the GitHub API, so it never eats into
   the 60-requests-per-hour budget.
 - GitHub's CDN caches the file for **up to 5 minutes**, so changes can take
   that long to appear. A hard reload doesn't skip that cache.

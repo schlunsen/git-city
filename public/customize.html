@@ -110,11 +110,12 @@
   <div class="hero">
     <div class="eyebrow">Guide</div>
     <h1>Customize your <span>city</span></h1>
-    <p class="lead">Git City builds an island from every GitHub profile automatically. With one small JSON file you take over the parts you care about. Developers set up the island in their <b>profile repository</b>. Maintainers style a repository's <b>building</b> in the repository itself.</p>
+    <p class="lead">Git City builds an island from every GitHub profile automatically. With one small JSON file you take over the parts you care about. Developers set up the island in their <b>profile repository</b>, organizations in their <b><code>.github</code></b> repository. Maintainers style a repository's <b>building</b> in the repository itself.</p>
     <div class="grid2" style="margin-top: 26px">
       <div class="card level">
         <div class="eyebrow">Profile level</div>
         <div class="path">&lt;login&gt;/&lt;login&gt;/.git-city/city.json</div>
+        <div class="path" style="margin-top: 6px">&lt;org&gt;/.github/.git-city/city.json</div>
         Your whole island: its name and welcome message, biome, city shape, landmarks, the look (light, weather, TV / FX, your time zone), neighbours, which repositories lead or hide, every building, the player's music and your plane.
       </div>
       <div class="card level repo">
@@ -133,9 +134,9 @@
   <section id="profile">
     <div class="eyebrow">Profile level</div>
     <h2>Your island: <code>city.json</code></h2>
-    <p>The file lives in your <b>profile repository</b>: the public repository named exactly like your login (the one that shows your profile README).</p>
+    <p>The file lives in your <b>profile repository</b>: the public repository named exactly like your login (the one that shows your profile README). An <b>organization</b> keeps it in its <code>.github</code> repository instead &mdash; <code>&lt;org&gt;/.github/.git-city/city.json</code> &mdash; and everything on this page works the same way.</p>
     <ol class="steps">
-      <li><b>Have a profile repository.</b> Create a public repository named exactly <code>&lt;your login&gt;</code> if you don't have one yet. <a href="https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme" rel="noopener">GitHub's guide</a>.</li>
+      <li><b>Have a profile repository.</b> Create a public repository named exactly <code>&lt;your login&gt;</code> if you don't have one yet (for an organization: a public repository named <code>.github</code>). <a href="https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme" rel="noopener">GitHub's guide</a>.</li>
       <li><b>Add <code>.git-city/city.json</code></b> on its default branch. Start with the minimal example below, or press <b>Customize</b> in your city and let Git City write it for you.</li>
       <li><b>Reload your city after about 5 minutes</b> (<code>?user=&lt;login&gt;</code>). GitHub's CDN caches the file for up to 5 minutes.</li>
     </ol>
@@ -236,7 +237,7 @@
       <li><b>Edit and watch.</b> With <i>Live preview</i> on, every change is applied to the island around you. The draft goes through exactly the same validation as a published file, and the JSON updates below the form, with any warnings. <i>Revert</i> drops the draft.</li>
       <li><b>Publish.</b> Git City opens <b>GitHub's own editor</b> in a new tab. It never uses tokens or OAuth. With no file yet, you get GitHub's "new file" page with <code>.git-city/city.json</code> already filled in. If the file exists, GitHub can't pre-fill it: press <b>Copy JSON</b>, then <b>Edit city.json on GitHub</b>, paste over the contents, and commit.</li>
     </ol>
-    <p class="note">Anyone can open the panel on any city and try ideas; only the owner of the profile repository can commit the result.</p>
+    <p class="note">Anyone can open the panel on any city and try ideas; only someone who can commit to the profile repository (or the organization's <code>.github</code>) can save the result.</p>
   </section>
 
   <section id="reference">

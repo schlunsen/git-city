@@ -102,6 +102,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
   injectStyle(); // also styles the profile card's "How to customize" link
   let root = null, pill = null;
   let draft = null, forLogin = null, live = true, previewing = false, lastJson = '', timer = 0;
+  let forRepo = null, forOrg = false; // where city.json goes: <login>/<login>, or <org>/.github
   const repoInfo = new Map(); // login -> { exists: true|false|null, branch }
   const els = {};
 
@@ -124,12 +125,13 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     if (!ctx?.login) return;
     ensureRoot();
     if (forLogin !== ctx.login || !draft) { draft = draftFrom(ctx.published); forLogin = ctx.login; }
+    forRepo = ctx.configRepo; forOrg = !!ctx.org;
     render(ctx);
     root.hidden = false;
     document.body.classList.add('cz-open');
     updatePill();
     onOpen?.();
-    lookupRepo(ctx.login);
+    lookupRepo(ctx.configRepo);
     root.querySelector('.cz-close')?.focus({ preventScroll: true });
   }
   function close() {
@@ -399,30 +401,30 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     els.pubNote = h('p', { class: 'cz-note' });
     els.alt = h('a', { class: 'cz-link', target: '_blank', rel: 'noopener noreferrer' });
     return h('div', { class: 'cz-publish' }, h('div', { class: 'cz-actions' }, els.primary, els.copy), els.pubNote, els.alt,
-      h('p', { class: 'cz-note' }, 'Needs your public profile repository ', h('b', { text: `${forLogin}/${forLogin}` }),
-        ' (the one that holds your profile README). ',
+      h('p', { class: 'cz-note' }, forOrg ? 'Needs the organization\'s public repository ' : 'Needs your public profile repository ', h('b', { text: forRepo }),
+        forOrg ? ' (the one that holds its profile README). ' : ' (the one that holds your profile README). ',
         h('a', { href: PROFILE_README_DOCS, target: '_blank', rel: 'noopener noreferrer', text: 'How profile repositories work ↗' })));
   }
   function updatePublish(ctx) {
     if (!els.primary) return;
-    const info = repoInfo.get(ctx.login.toLowerCase());
+    const info = repoInfo.get(ctx.configRepo.toLowerCase());
     const branch = info?.branch || 'HEAD';
     els.alt.hidden = true;
     if (info?.exists === false) {
       els.primary.href = 'https://github.com/new';
-      els.primary.textContent = `Create ${ctx.login}/${ctx.login} ↗`;
-      els.pubNote.textContent = `There is no ${ctx.login}/${ctx.login} repository yet. Create a public repository named exactly "${ctx.login}", then come back and press Publish.`;
+      els.primary.textContent = `Create ${ctx.configRepo} ↗`;
+      els.pubNote.textContent = `There is no ${ctx.configRepo} repository yet. Create a public repository named exactly "${ctx.configRepo.split('/')[1]}"${ctx.org ? ` in the ${ctx.login} organization` : ''}, then come back and press Publish.`;
     } else if (ctx.found) {
-      els.primary.href = editFileUrl(ctx.login, branch);
+      els.primary.href = editFileUrl(ctx.configRepo, branch);
       els.primary.textContent = 'Edit city.json on GitHub ↗';
       els.pubNote.textContent = 'GitHub can\'t pre-fill an existing file: Copy JSON, open the editor, select everything, paste, and commit. The city updates within about 5 minutes.';
-      els.alt.href = blobUrl(ctx.login, branch);
+      els.alt.href = blobUrl(ctx.configRepo, branch);
       els.alt.textContent = `View the published ${CONFIG_PATH} ↗`;
       els.alt.hidden = false;
     } else {
-      const url = newFileUrl(ctx.login, lastJson, branch);
+      const url = newFileUrl(ctx.configRepo, lastJson, branch);
       const fits = url.length <= MAX_PREFILL_URL;
-      els.primary.href = fits ? url : newFileUrl(ctx.login, '', branch);
+      els.primary.href = fits ? url : newFileUrl(ctx.configRepo, '', branch);
       els.primary.textContent = 'Publish on GitHub ↗';
       els.pubNote.textContent = fits
         ? `Opens GitHub's editor with ${CONFIG_PATH} filled in. Commit it to your default branch; the city updates within about 5 minutes. If GitHub says the file already exists, use Copy JSON and edit it instead.`
@@ -430,12 +432,12 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     }
   }
   // Default branch + whether the profile repo exists: one unauthenticated API call per login, per visit.
-  async function lookupRepo(login) {
-    const key = login.toLowerCase();
+  async function lookupRepo(repo) { // "owner/name"
+    const key = repo.toLowerCase();
     if (repoInfo.has(key)) return;
     repoInfo.set(key, { exists: null, branch: 'HEAD' });
     try {
-      const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(login)}/${encodeURIComponent(login)}`,
+      const res = await fetch(`https://api.github.com/repos/${repo.split('/').map(encodeURIComponent).join('/')}`,
         { headers: { Accept: 'application/vnd.github+json' }, credentials: 'omit' });
       if (res.status === 404) repoInfo.set(key, { exists: false, branch: 'HEAD' });
       else if (res.ok) {
@@ -445,7 +447,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
       } else repoInfo.delete(key); // rate-limited: HEAD for now, ask again next time
     } catch { repoInfo.delete(key); }
     const ctx = context();
-    if (ctx?.login === login && root && !root.hidden) updatePublish(ctx);
+    if (ctx?.configRepo === repo && root && !root.hidden) updatePublish(ctx);
   }
   async function copyText(text, btn, label) {
     let ok = false;
@@ -477,7 +479,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
 
   // ---- the panel ----------------------------------------------------------------
   function statusBlock(ctx) {
-    const file = `${ctx.login}/${ctx.login}/${CONFIG_PATH}`;
+    const file = `${ctx.configRepo}/${CONFIG_PATH}`;
     const box = h('div', { class: 'cz-status' });
     if (ctx.found && !ctx.error) box.append(h('b', { text: 'Published. ' }), `Loaded ${file}.`);
     else if (ctx.found) { box.dataset.tone = 'bad'; box.append(h('b', { text: 'city.json ignored. ' }), ctx.error); }

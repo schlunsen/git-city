@@ -69,6 +69,10 @@ repositories, give buildings their own colours, signs and billboards, choose
 your neighbours, set the look (accent, time, weather, TV / FX), the player's
 soundtrack and your plane's livery.
 
+Organizations get a city too (`?user=<org>`), built from the org's public
+repositories and members. They keep the same file in their `.github`
+repository: `<org>/.github/.git-city/city.json`.
+
 ```json
 {
   "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",

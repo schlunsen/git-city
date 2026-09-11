@@ -3,7 +3,7 @@
  *
  * Every island has up to six neighbouring islands, reachable through portal
  * gates out at sea (see world.js setNeighbors / gateFor / arrival). Neighbours
- * are the people a developer follows; if that's thin, the contributors to
+ * are the people a developer follows (an organization's public members); if that's thin, the contributors to
  * their most-starred repo; then the featured developers. The list is cached
  * per login for a week, so the neighbourhood stays put between visits and the
  * unauthenticated GitHub API budget (60 requests/hour) isn't spent twice.
@@ -33,7 +33,7 @@ async function getJSON(url, timeout = 5000) {
  *   logins), placed first; the automatic list only tops them up.
  * @returns {Promise<{ login: string, avatar: string, via: string }[]>}
  */
-export async function fetchNeighbors(login, { repos = [], fallback = [], max = 6, pinned = [] } = {}) {
+export async function fetchNeighbors(login, { repos = [], fallback = [], max = 6, pinned = [], org = false } = {}) {
   const self = login.toLowerCase(), pins = [];
   for (const name of pinned) {
     if (pins.length >= max || typeof name !== 'string' || name.toLowerCase() === self) continue;
@@ -41,12 +41,12 @@ export async function fetchNeighbors(login, { repos = [], fallback = [], max = 6
     pins.push({ login: name, avatar: `https://github.com/${encodeURIComponent(name)}.png?size=128`, via: 'neighbour' });
   }
   if (pins.length >= max) return pins; // a full hand-picked list costs no API requests
-  const auto = await autoNeighbors(login, { repos, fallback, max });
+  const auto = await autoNeighbors(login, { repos, fallback, max, org });
   const seen = new Set(pins.map((p) => p.login.toLowerCase()));
   return [...pins, ...auto.filter((n) => !seen.has(n.login.toLowerCase()))].slice(0, max);
 }
 
-async function autoNeighbors(login, { repos, fallback, max }) {
+async function autoNeighbors(login, { repos, fallback, max, org }) {
   const key = `gc-neighbors:${login.toLowerCase()}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) || 'null');
@@ -63,8 +63,11 @@ async function autoNeighbors(login, { repos, fallback, max }) {
     list.push({ login: name, avatar: u?.avatar_url || `https://github.com/${encodeURIComponent(name)}.png?size=128`, via });
   };
 
-  const following = await getJSON(`https://api.github.com/users/${encodeURIComponent(login)}/following?per_page=30`);
-  for (const u of following || []) push(u, 'follows');
+  // A developer's neighbours are who they follow; an organization's are its public members.
+  const following = await getJSON(org
+    ? `https://api.github.com/orgs/${encodeURIComponent(login)}/public_members?per_page=30`
+    : `https://api.github.com/users/${encodeURIComponent(login)}/following?per_page=30`);
+  for (const u of following || []) push(u, org ? 'member' : 'follows');
 
   if (list.length < max) {
     const top = repos.filter((r) => !r.fork).sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))[0];

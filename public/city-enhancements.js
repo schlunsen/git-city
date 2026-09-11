@@ -16,14 +16,15 @@
 
 // Fetch the profile's public events (up to 300 over 90 days). Failure-tolerant:
 // any error yields [] so the city still renders without an activity timeline.
-export async function fetchEvents(login, { perPage = 100, pages = 3 } = {}) {
+export async function fetchEvents(login, { perPage = 100, pages = 3, org = false } = {}) { // org: an organization's public events
   const events = [];
   try {
     for (let page = 1; page <= pages; page++) {
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 6000);
       const res = await fetch(
-        `https://api.github.com/users/${encodeURIComponent(login)}/events/public?per_page=${perPage}&page=${page}`,
+        org ? `https://api.github.com/orgs/${encodeURIComponent(login)}/events?per_page=${perPage}&page=${page}`
+          : `https://api.github.com/users/${encodeURIComponent(login)}/events/public?per_page=${perPage}&page=${page}`,
         { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal }
       );
       clearTimeout(to);

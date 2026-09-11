@@ -20,7 +20,7 @@ export function renderExplorer(user, repos) {
   $('hud-login').textContent = user.login;
   $('hud-status').innerHTML = `${repos.length} repos · <span class="live">fetching activity…</span>`;
   $('stat-card').innerHTML = `
-    <div class="head"><span class="dot"></span>${escapeHtml(user.name || 'Profile')}</div>
+    <div class="head"><span class="dot"></span>${escapeHtml(user.name || user.login || 'Profile')}${user.type === 'Organization' ? ' · organization' : ''}</div>
     <div class="row"><span>Repositories</span><b class="tnum">${repos.length}</b></div>
     <div class="row"><span>Stars</span><b class="tnum">${fmtNum(totalStars)}</b></div>
     <div class="row"><span>Followers</span><b class="tnum">${fmtNum(user.followers)}</b></div>
