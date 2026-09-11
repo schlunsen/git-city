@@ -18,6 +18,8 @@ import {
 } from './history.js';
 import { createWorld, roundedRect, roundedRingGeometry } from './world.js';
 import { createExplorer } from './explore.js'; // walk / drive / fly explore modes
+import { fetchNeighbors } from './neighbors.js';
+import { buildRepoSigns } from './repo-signs.js'; // repo names on every building (fascia + tower crowns) // portal gates to the next developer's island
 
 // ---------------------------------------------------------------------------
 // Config
@@ -1162,6 +1164,8 @@ function buildCity(repos, user) {
     createBuilding(repo, x, z, h, f, color);
   });
 
+  // Repo names on the buildings, readable from walk / drive / fly.
+  buildRepoSigns(THREE, buildingMeshes, (repo) => LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR);
   buildDistrictSigns(THREE, slots.assignments);
   buildDistrictBaseplates(THREE, slots.assignments);
 
@@ -2893,7 +2897,7 @@ function resetCamera() {
   controls.update();
 }
 
-async function loadCity(login) {
+async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js portal travel, fired once the new city stands
   login = login.trim().replace(/^@/, '');
   const version = ++cityVersion;
   currentLogin = login;
@@ -2936,6 +2940,9 @@ async function loadCity(login) {
     // top language, attractions from fame.
     setCityLayout(cityLayoutFor(user, repos));
     world.setProfile({ user, repos }, cityLayout.city);
+    // Neighbour portal gates at sea (neighbors.js): fire-and-forget, dropped if another city loaded meanwhile.
+    fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES) })
+      .then((list) => { if (version === cityVersion) world.setNeighbors(user.login, list); }).catch(() => {});
     const visibleRepos = buildCity(repos, user);
     explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
     renderExplorer(user, visibleRepos);
@@ -2947,6 +2954,7 @@ async function loadCity(login) {
     buildForkBeams(repos);
     resetCamera();
     loading.classList.add('hidden');
+    onBuilt?.(user.login); // explore.js portal travel: the new island is ready
     // The activity timeline arrives second so the city never waits on it.
     const events = sample ? sample.events : await fetchEvents(user.login);
     if (version !== cityVersion) return;
@@ -2980,6 +2988,20 @@ function main() {
     dayFactor: () => dayFactor,
     slabHalf: SLAB_HALF, slabRadius: SLAB_R, ringHalf: RING_R, ringCorner: RING_CORNER, cell: CELL, plazaRadius: PLAZA_R,
     layout: () => cityLayout, // live footprint (dist / contour / streets) for slab bounds and spawn points
+    world: () => world, // portal gates at sea: gates / gateFor / arrival (world.js)
+    // Portal travel: resolves { ok } once the neighbour's city is built. A login without a
+    // featured snapshot is looked up first, so a rate-limited hop leaves this island intact.
+    travel: async (login) => {
+      const key = FIXTURES[login.toLowerCase()] ? login.toLowerCase() : login;
+      if (!FIXTURES[key]) {
+        try { await fetchJSON(`${API}/users/${encodeURIComponent(key)}`); }
+        catch (e) { return { ok: false, reason: e.message === 'notfound' ? 'no such GitHub user' : 'GitHub rate limit' }; }
+      }
+      return new Promise((resolve) => {
+        const failed = () => resolve({ ok: false, reason: 'the island failed to load' });
+        loadCity(key, { onBuilt: (l) => resolve({ ok: true, login: l }) }).then(failed, failed); // first resolve wins
+      });
+    },
     onModeChange: (mode) => { if (mode !== 'orbit') { endTour(); camGoal = null; } setMenu(false); },
   });
   buildStreetlamps();
