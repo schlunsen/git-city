@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
-  "title": "Git City building config (v1)",
-  "description": "Styles this repository's building in Git City. Publish it as .git-city/building.json in the repository's default branch. The repository owner's city.json (repos[name]) wins, field by field. Data only: Git City validates every field, ignores unknown keys and never loads URLs from it; over-long text is shortened. See https://github.com/schlunsen/git-city/blob/main/docs/building-config.md",
+  "$id": "https://gitilla.com/schema/building-config.v1.json",
+  "title": "Gitilla building config (v1)",
+  "description": "Styles this repository's building in Gitilla. Publish it as .git-city/building.json in the repository's default branch. The repository owner's city.json (repos[name]) wins, field by field. Data only: Gitilla validates every field, ignores unknown keys and never loads URLs from it; over-long text is shortened. See https://github.com/schlunsen/git-city/blob/main/docs/building-config.md",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
-      "description": "Editor hint only; Git City never loads it."
+      "description": "Editor hint only; Gitilla never loads it."
     },
     "version": {
       "const": 1,

@@ -1,5 +1,5 @@
 /*
- * Git City — activity timeline (Gource-style "code in motion").
+ * Gitilla — activity timeline (Gource-style "code in motion").
  * Pure functions, no DOM / Three.js: the same module drives the 3D actor,
  * the HUD clock and the activity strip, and is unit-tested under node.
  *

@@ -1,5 +1,5 @@
 /*
- * Git City — repo name signs on the buildings.
+ * Gitilla — repo name signs on the buildings.
  *
  * Every building carries its repo's name so it can be read from the explore
  * modes:

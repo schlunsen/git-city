@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// explore.js — walk, drive and fly through Git City.
+// explore.js — walk, drive and fly through Gitilla.
 //
 // createExplorer(THREE, deps) layers three camera modes over the app's
 // OrbitControls view:

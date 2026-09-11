@@ -1,5 +1,5 @@
 /*
- * Git City — who lives next door.
+ * Gitilla — who lives next door.
  *
  * Every island has up to six neighbouring islands, reachable through portal
  * gates out at sea (see world.js setNeighbors / gateFor / arrival). Neighbours

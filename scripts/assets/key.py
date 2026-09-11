@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a generated magenta-background sheet into Git City PNGs in public/assets/.
+"""Turn a generated magenta-background sheet into Gitilla PNGs in public/assets/.
 
 usage:
   python3 scripts/assets/key.py row   scripts/assets/raw/rockets.png --name landmarks --start 4 --pick 0

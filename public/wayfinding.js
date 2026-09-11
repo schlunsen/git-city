@@ -1,6 +1,6 @@
 import { STREET_W } from './city/layout.js';
 // ---------------------------------------------------------------------------
-// wayfinding.js — finding your way around Git City at street level.
+// wayfinding.js — finding your way around Gitilla at street level.
 //
 // buildWayfinding(THREE, opts) -> { group, update(dt, elapsed, camera, dayFactor, mode), dispose() }
 //

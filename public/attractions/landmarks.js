@@ -1,5 +1,5 @@
 /*
- * Git City attractions: the hilltop landmarks (radio tower, observatory,
+ * Gitilla attractions: the hilltop landmarks (radio tower, observatory,
  * hot-air balloon pad). Contract and kit: see ../attractions.js and ./kit.js.
  */
 

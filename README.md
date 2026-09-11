@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏙️ Git City
+# 🏙️ Gitilla
 
 **Turn any GitHub profile into a living cartoon city.**
 
@@ -8,19 +8,19 @@ Every repository becomes a building. Stars make it tall, the language paints it,
 and the last 90 days of activity play back as the developer flies across the
 skyline — beaming pushes, pull requests and stars onto the rooftops.
 
-[**▶ Open Git City**](https://schlunsen.github.io/git-city/) ·
-[torvalds](https://schlunsen.github.io/git-city/?user=torvalds) ·
-[sindresorhus](https://schlunsen.github.io/git-city/?user=sindresorhus) ·
-[antfu](https://schlunsen.github.io/git-city/?user=antfu) ·
-[gaearon](https://schlunsen.github.io/git-city/?user=gaearon) ·
-[schlunsen](https://schlunsen.github.io/git-city/?user=schlunsen)
+[**▶ Open Gitilla**](https://gitilla.com/) ·
+[torvalds](https://gitilla.com/?user=torvalds) ·
+[sindresorhus](https://gitilla.com/?user=sindresorhus) ·
+[antfu](https://gitilla.com/?user=antfu) ·
+[gaearon](https://gitilla.com/?user=gaearon) ·
+[schlunsen](https://gitilla.com/?user=schlunsen)
 
 [![Deploy](https://github.com/schlunsen/git-city/actions/workflows/pages.yml/badge.svg)](https://github.com/schlunsen/git-city/actions/workflows/pages.yml)
 ![Three.js](https://img.shields.io/badge/three.js-r186-000?logo=threedotjs)
 ![No build step](https://img.shields.io/badge/build%20step-none-64dedb)
 [![License: MIT](https://img.shields.io/badge/license-MIT-8c78ff)](LICENSE)
 
-<img src="docs/screenshots/hero.jpg" alt="Git City rendering sindresorhus: a dense cel-shaded city of yellow JavaScript, pink CSS and blue TypeScript towers on a grass island" width="100%">
+<img src="docs/screenshots/hero.jpg" alt="Gitilla rendering sindresorhus: a dense cel-shaded city of yellow JavaScript, pink CSS and blue TypeScript towers on a grass island" width="100%">
 
 </div>
 
@@ -75,7 +75,7 @@ repository: `<org>/.github/.git-city/city.json`.
 
 ```json
 {
-  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "$schema": "https://gitilla.com/schema/city-config.v1.json",
   "version": 1,
   "island": { "name": "Schlunsen Isle", "biome": "tropical" },
   "welcome": "Welcome to my city!",
@@ -86,13 +86,13 @@ repository: `<org>/.github/.git-city/city.json`.
 Or open your city, press **Customize**, preview your changes live on the
 island, and **Publish**: it opens GitHub's own editor with the file filled in
 (no tokens, no OAuth). The file is data only, strictly validated, and never
-makes Git City load anything.
+makes Gitilla load anything.
 
 Maintainers can style a single repository's building too (graffiti, roof,
 neon windows, a flag, colour, silhouette) with `.git-city/building.json` in
 the repository itself; the owner's `city.json` wins, field by field.
 
-- **[How to customize](https://schlunsen.github.io/git-city/customize.html)**:
+- **[How to customize](https://gitilla.com/customize.html)**:
   the step-by-step guide for both levels, with copyable examples
 - [docs/city-config.md](docs/city-config.md): every field, the limits, caching
   (about 5 minutes), security and troubleshooting
@@ -141,7 +141,7 @@ Any static file server works. Add `?user=<login>` to load a profile, or
 The browser talks to the GitHub API directly, and anonymous visitors get
 **60 requests an hour**. So the featured developers ship with snapshots in
 [`public/fixtures/`](public/fixtures), refreshed every day by
-[a GitHub Action](.github/workflows/pages.yml). Git City uses a fresh snapshot
+[a GitHub Action](.github/workflows/pages.yml). Gitilla uses a fresh snapshot
 when it has one, goes live otherwise, and falls back to the snapshot if GitHub
 says no.
 

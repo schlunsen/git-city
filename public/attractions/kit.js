@@ -1,5 +1,5 @@
 /*
- * Git City attractions: the shared builder toolkit.
+ * Gitilla attractions: the shared builder toolkit.
  *
  * Constants, tools(kit) (per-build geometry/material cache, ink hulls, vertex
  * paint, instanced beams, the day/night probe), bulb chasing, static batching

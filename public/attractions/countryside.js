@@ -1,5 +1,5 @@
 /*
- * Git City attractions: the countryside (wind turbines, windmill, farm,
+ * Gitilla attractions: the countryside (wind turbines, windmill, farm,
  * campsite). Contract and kit: see ../attractions.js and ./kit.js.
  */
 

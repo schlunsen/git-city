@@ -1,5 +1,5 @@
 /*
- * Git City — the cartoon world around the city block.
+ * Gitilla — the cartoon world around the city block.
  *
  * Everything outside the repo grid lives here, and it is generated from the
  * GitHub profile: the same login always gets the same island.

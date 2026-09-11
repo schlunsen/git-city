@@ -1,5 +1,5 @@
 /*
- * Git City — visual enhancement modules
+ * Gitilla — visual enhancement modules
  * Self-contained, hand-written GLSL where sensible (no postprocessing libs).
  * Each builder is additive: it takes the existing scene/graphs and returns
  * a small object with an optional .update(dt, elapsed) hook. Drop-ins for
