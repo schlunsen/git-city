@@ -8,6 +8,8 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SunLight } from 'three/addons/lights/SunLight.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   fetchEvents, contributionDays, buildHeatmapRing, buildSky, createPostPass, createCrtPass, buildDust,
 } from './city-enhancements.js';
@@ -15,6 +17,7 @@ import {
   buildTimeline, paceTimeline, actorState, stepIndexAt, dailyHistogram, activityByRepo, dateParts,
 } from './history.js';
 import { createWorld, roundedRect, roundedRingGeometry } from './world.js';
+import { createExplorer } from './explore.js'; // walk / drive / fly explore modes
 
 // ---------------------------------------------------------------------------
 // Config
@@ -91,6 +94,7 @@ let play = { playing: false, t: 0, speed: 1, lastIndex: -1, autoplayTimer: null 
 let flyover = true;          // slow idle orbit
 let follow = true;           // orbit target drifts toward the actor while playing
 let camGoal = null;          // { target, position } glide for focusRepo
+let explorer = null;         // explore.js handle (walk / drive / fly); owns the camera while exploring
 let swallowTap = false;      // set when a tap only dismissed the compact menu
 let bursts = [];             // transient particle bursts at beamed buildings
 const buildingByName = new Map();
@@ -129,6 +133,49 @@ function outlineBox(w, h, d, t = 0.3) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w + t, h + t, d + t), getOutlineMat());
   m.raycast = () => {};
   return m;
+}
+// Decorative meshes (plaza, cars) opt out of picking with this no-op.
+const noRaycast = () => {};
+const TAU = Math.PI * 2;
+function box(w, h, d, x = 0, y = 0, z = 0) {
+  return new THREE.BoxGeometry(w, h, d).translate(x, y, z);
+}
+// Inverted-hull copy of any part, scaled about its own centre so the ink rim
+// is about t/2 thick on each side. Works for rounded and tapered shapes too.
+function hullOf(g, t) {
+  g.computeBoundingBox();
+  const c = g.boundingBox.getCenter(new THREE.Vector3()), s = g.boundingBox.getSize(new THREE.Vector3());
+  return g.clone().translate(-c.x, -c.y, -c.z)
+    .scale((s.x + t) / s.x, (s.y + t) / s.y, (s.z + t) / s.z).translate(c.x, c.y, c.z);
+}
+// Merge static parts into one geometry (one draw call). With `colored`, parts
+// are [geometry, hex] pairs baked into a vertex colour attribute so a single
+// vertexColors material paints them all. The result is flagged shared.
+function mergeParts(parts, colored = false) {
+  const geos = parts.map(p => {
+    const g = colored ? p[0] : p;
+    const n = g.index ? g.toNonIndexed() : g;
+    if (n !== g) g.dispose();
+    if (colored) {
+      const col = new THREE.Color(p[1]), a = new Float32Array(n.attributes.position.count * 3);
+      for (let i = 0; i < a.length; i += 3) col.toArray(a, i);
+      n.setAttribute('color', new THREE.BufferAttribute(a, 3));
+    }
+    return n;
+  });
+  const merged = mergeGeometries(geos);
+  for (const g of geos) g.dispose();
+  merged.userData.shared = true;
+  return merged;
+}
+// Flat ring extruded upward from y = 0 (pool rim, plaza kerb).
+function annulusGeo(rIn, rOut, h, seg = 36) {
+  const s = new THREE.Shape();
+  s.absarc(0, 0, rOut, 0, TAU, false);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, rIn, 0, TAU, true);
+  s.holes.push(hole);
+  return new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: seg }).rotateX(-Math.PI / 2);
 }
 const envPalette = []; // { mat, night, day } — recoloured every frame by applyDayFactor
 function envMat(night, day, extra = {}) {
@@ -246,6 +293,193 @@ const SLAB_HALF = DISTRICT / 2 + 7; // the paved block, sidewalk included
 const SLAB_R = 15;                  // corner radius — the block melts into the island
 const RING_R = (BLOCK / 2) * CELL;  // boulevard centreline half-size
 const RING_CORNER = SLAB_R - (SLAB_HALF - RING_R); // concentric with the slab corners
+const PLAZA_R = CELL * 1.7;         // central town square, kept clear of buildings
+
+// ---------------------------------------------------------------------------
+// City footprints. Every profile gets one (same login, same shape). A shape
+// is a signed distance function in world units (< 0 inside) whose zero
+// contour is the boulevard's centreline. That contour is polar ray-marched
+// into a polygon (every shape is star-shaped from the plaza), then the exact
+// distance to the polygon is baked on a grid: lanes, curbs, the slab edge and
+// the island's verge are all iso-contours of that one field, so they stay
+// concentric. A cell is active when a full-size building clears the boulevard.
+// ---------------------------------------------------------------------------
+const SIDEWALK = SLAB_HALF - RING_R; // boulevard centreline -> slab edge (7)
+const LOT_HALF = 3;                  // largest building half-footprint (starsToFootprint tops out at 6)
+const LOT_CLEAR = 1.4;               // footprint corners stay this far inside the boulevard centreline
+const SHAPE_TAU = Math.PI * 2;
+function sdRoundBox(x, z, hx, hz, r) {
+  const qx = Math.abs(x) - hx + r, qz = Math.abs(z) - hz + r;
+  return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - r;
+}
+function sminPoly(a, b, k) { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k / 4; }
+// { base, make(n, seed) -> { cols, rows, sdf } }. The grid is cols x rows cells
+// (odd, so the plaza sits on the middle cell); n grows by 2 until all repos fit.
+const CITY_SHAPES = {
+  square: { base: 11, make: n => ({ cols: n, rows: n, sdf: (x, z) => sdRoundBox(x, z, n * CELL / 2, n * CELL / 2, RING_CORNER) }) },
+  wide: { base: 11, make: n => ({ cols: n + 2, rows: n - 2, sdf: (x, z) => sdRoundBox(x, z, (n + 2) * CELL / 2, (n - 2) * CELL / 2, 11) }) },
+  tall: { base: 11, make: n => ({ cols: n - 2, rows: n + 2, sdf: (x, z) => sdRoundBox(x, z, (n - 2) * CELL / 2, (n + 2) * CELL / 2, 11) }) },
+  round: { base: 13, make: n => ({ cols: n, rows: n, sdf: (x, z) => Math.hypot(x, z) - (n * CELL / 2 + 1) }) },
+  plus: { base: 13, make: n => { // a cross: the corner cells are gone, the inside corners filleted
+    const L = n * CELL / 2, W = (n - 6) * CELL / 2;
+    return { cols: n, rows: n, sdf: (x, z) => sminPoly(sdRoundBox(x, z, L, W, 9), sdRoundBox(x, z, W, L, 9), 16) };
+  } },
+  octagon: { base: 13, make: n => { // chamfered square with rounded corners
+    const h = n * CELL / 2, d = h * 1.1;
+    return { cols: n, rows: n, sdf: (x, z) => -sminPoly(-sdRoundBox(x, z, h, h, 0), -((Math.abs(x) + Math.abs(z)) / Math.SQRT2 - d), 14) };
+  } },
+  blob: { base: 13, make: (n, seed) => { // an organic outline, its wobble seeded by the login
+    let s = seed >>> 0;
+    const rnd = () => ((s = (Math.imul(s ^ (s >>> 15), 2246822507) + 0x9e3779b9) >>> 0) / 4294967296);
+    const R = n * CELL / 2, p = [rnd(), rnd(), rnd()].map(v => v * SHAPE_TAU), sq = 0.5 + rnd() * 0.6;
+    const rAt = a => R * (1 + 0.07 * Math.sin(2 * a + p[0]) + 0.045 * Math.sin(3 * a + p[1]) + 0.02 * Math.sin(5 * a + p[2]))
+      * (1 + 0.05 * sq * Math.cos(4 * a) ** 2);
+    return { cols: n, rows: n, sdf: (x, z) => (Math.hypot(x, z) - rAt(Math.atan2(z, x))) * 0.9 };
+  } },
+};
+const CITY_SHAPE_NAMES = ['square', 'wide', 'tall', 'round', 'plus', 'octagon', 'blob'];
+// `seed` hashes the login (+ account year); a valid `override` (?city=round) wins.
+function chooseCityShape(seed, override) {
+  if (CITY_SHAPES[override]) return override;
+  return CITY_SHAPE_NAMES[(seed >>> 0) % CITY_SHAPE_NAMES.length];
+}
+
+// Polar ray-march: per bearing, the first radius where f rises through `level`.
+function polarContour(f, level, maxR, N = 360) {
+  const pts = [];
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * SHAPE_TAU, c = Math.cos(a), s = Math.sin(a);
+    let lo = 0, hi = maxR;
+    for (let r = 1.5; r < maxR; r += 1.5) { if (f(c * r, s * r) > level) { hi = r; break; } lo = r; }
+    for (let i = 0; i < 22; i++) { const m = (lo + hi) / 2; if (f(c * m, s * m) > level) hi = m; else lo = m; }
+    const r = (lo + hi) / 2;
+    pts.push({ x: c * r, z: s * r });
+  }
+  return pts;
+}
+
+function buildCityLayout(shape, n, seed) {
+  const def = CITY_SHAPES[shape].make(n, seed);
+  const { cols, rows } = def, hx = (cols - 1) / 2, hz = (rows - 1) / 2;
+  const reach = Math.hypot(cols, rows) * CELL / 2 + 12;
+  // 1. The boulevard centreline as a polygon.
+  const line = polarContour(def.sdf, 0, reach);
+  const N = line.length, ax = new Float64Array(N), az = new Float64Array(N), ex = new Float64Array(N), ez = new Float64Array(N), il = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    const p = line[i], q = line[(i + 1) % N];
+    ax[i] = p.x; az[i] = p.z; ex[i] = q.x - p.x; ez[i] = q.z - p.z; il[i] = 1 / (ex[i] * ex[i] + ez[i] * ez[i]);
+  }
+  const rMax = Math.max(...line.map(p => Math.hypot(p.x, p.z)));
+  const exact = (x, z) => {
+    let best = Infinity;
+    for (let i = 0; i < N; i++) {
+      const px = x - ax[i], pz = z - az[i];
+      let t = (px * ex[i] + pz * ez[i]) * il[i];
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const dx = px - ex[i] * t, dz = pz - ez[i] * t, d = dx * dx + dz * dz;
+      if (d < best) best = d;
+    }
+    // Inside or out: compare with the polygon's radius on this bearing.
+    const f = ((Math.atan2(z, x) / SHAPE_TAU) % 1 + 1) % 1 * N, k = Math.floor(f) % N;
+    const p = line[k], q = line[(k + 1) % N], c = Math.cos(f / N * SHAPE_TAU), s = Math.sin(f / N * SHAPE_TAU);
+    const qx = q.x - p.x, qz = q.z - p.z, r = (p.x * qz - p.z * qx) / (c * qz - s * qx);
+    return Math.hypot(x, z) < r ? -Math.sqrt(best) : Math.sqrt(best);
+  };
+  // 2. Bake the field on a grid; bilinear lookups are cheap enough for the island's heightfield.
+  const H = 1.5, G0 = -(rMax + SIDEWALK + 40), GN = Math.ceil(-2 * G0 / H) + 1;
+  const field = new Float32Array(GN * GN);
+  for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) field[j * GN + i] = exact(G0 + i * H, G0 + j * H);
+  const dist = (x, z) => {
+    const u = (x - G0) / H, v = (z - G0) / H;
+    const cu = Math.min(Math.max(u, 0), GN - 1.001), cv = Math.min(Math.max(v, 0), GN - 1.001);
+    const i = Math.floor(cu), j = Math.floor(cv), fu = cu - i, fv = cv - j, o = j * GN + i;
+    const d = (field[o] * (1 - fu) + field[o + 1] * fu) * (1 - fv) + (field[o + GN] * (1 - fu) + field[o + GN + 1] * fu) * fv;
+    return u === cu && v === cv ? d : d + Math.hypot((u - cu) * H, (v - cv) * H); // off the grid: keeps growing
+  };
+  const contours = new Map();
+  const contour = (level, M = 360) => { // memoised; callers must not mutate the result
+    const key = `${level}:${M}`;
+    if (!contours.has(key)) contours.set(key, polarContour(dist, level, reach + Math.max(0, level) + 4, M));
+    return contours.get(key);
+  };
+  // 3. Cells: active when a full-size footprint clears the boulevard; `lot`
+  // when at least an empty-lot decal fits (the ragged edge of round shapes).
+  const fits = (x, z, half, clear) => dist(x - half, z - half) <= -clear && dist(x + half, z - half) <= -clear
+    && dist(x - half, z + half) <= -clear && dist(x + half, z + half) <= -clear;
+  const cells = [];
+  for (let gx = -hx; gx <= hx; gx++) for (let gz = -hz; gz <= hz; gz++) {
+    const { x, z } = worldForCell(gx, gz);
+    const plaza = Math.hypot(Math.max(0, Math.abs(x) - 3.2), Math.max(0, Math.abs(z) - 3.2)) <= CELL * 1.7;
+    const active = fits(x, z, LOT_HALF, LOT_CLEAR);
+    cells.push({ gx, gz, x, z, plaza, active, inside: plaza || active, lot: !plaza && (active || fits(x, z, 2.6, 2.2)) });
+  }
+  const byKey = new Map(cells.map(c => [`${c.gx},${c.gz}`, c]));
+  const L = { shape, n, seed, cols, rows, hx, hz, cells, dist, contour, reach, rMax, cellAt: (gx, gz) => byKey.get(`${gx},${gz}`) };
+  L.capacity = cells.filter(c => c.active && !c.plaza).length;
+  L.streets = cityStreets(L);
+  // 4. Country roads leave where the two central axes cross the slab edge.
+  L.exits = [0, 1, 2, 3].map(k => {
+    const a = k * Math.PI / 2, c = Math.round(Math.cos(a)), s = Math.round(Math.sin(a));
+    let lo = 0, hi = reach + SIDEWALK;
+    for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (dist(c * m, s * m) > SIDEWALK + 0.3) hi = m; else lo = m; }
+    const x = c * lo, z = s * lo, e = 0.5;
+    const gx = dist(x + e, z) - dist(x - e, z), gz = dist(x, z + e) - dist(x, z - e), gl = Math.hypot(gx, gz) || 1;
+    return { a, x, z, nx: gx / gl, nz: gz / gl };
+  });
+  return L;
+}
+
+// Inner streets run on the cell boundaries wherever they border a cell inside
+// the block, and reach out to meet the boulevard when it is close by (so a
+// curved edge never leaves dead ends). Returns centrelines { x0, z0, x1, z1, vertical }.
+function cityStreets(L) {
+  const out = [];
+  const reachOut = (px, pz, dx, dz) => { // how far to move an end (along d) onto the centreline
+    if (L.dist(px, pz) >= 0) { // a cell corner past a steep curve: pull back instead
+      for (let t = 0.25; t <= CELL / 2; t += 0.25) if (L.dist(px - dx * t, pz - dz * t) < 0) return -t;
+      return 0;
+    }
+    for (let t = 0; t <= CELL * 1.5; t += 0.25) if (L.dist(px + dx * t, pz + dz * t) >= 0) return t;
+    return 0;
+  };
+  for (const vertical of [true, false]) {
+    const across = vertical ? L.hx : L.hz, along = vertical ? L.hz : L.hx;
+    for (let i = -across; i < across; i++) {
+      const p = (i + 0.5) * CELL;
+      const inside = k => {
+        const a = vertical ? L.cellAt(i, k) : L.cellAt(k, i), b = vertical ? L.cellAt(i + 1, k) : L.cellAt(k, i + 1);
+        return !!((a && a.inside) || (b && b.inside));
+      };
+      for (let k = -along; k <= along; k++) {
+        if (!inside(k)) continue;
+        let e = k;
+        while (e + 1 <= along && inside(e + 1)) e++;
+        let t0 = (k - 0.5) * CELL, t1 = (e + 0.5) * CELL;
+        t0 -= vertical ? reachOut(p, t0, 0, -1) : reachOut(t0, p, -1, 0);
+        t1 += vertical ? reachOut(p, t1, 0, 1) : reachOut(t1, p, 1, 0);
+        out.push(vertical ? { x0: p, z0: t0, x1: p, z1: t1, vertical } : { x0: t0, z0: p, x1: t1, z1: p, vertical });
+        k = e;
+      }
+    }
+  }
+  return out;
+}
+
+const cityLayouts = new Map();
+// The smallest size of `shape` that fits `need` buildings. Same inputs, same object.
+function makeCityLayout(shape = 'square', need = 100, seed = 0) {
+  const S = CITY_SHAPES[shape] ? shape : 'square';
+  for (let n = CITY_SHAPES[S].base; ; n += 2) {
+    const key = `${S}:${n}:${S === 'blob' ? seed >>> 0 : 0}`;
+    let L = cityLayouts.get(key);
+    if (!L) {
+      L = buildCityLayout(S, n, seed);
+      if (cityLayouts.size >= 12) cityLayouts.delete(cityLayouts.keys().next().value);
+      cityLayouts.set(key, L);
+    }
+    if (L.capacity >= need || n >= CITY_SHAPES[S].base + 8) return L;
+  }
+}
 
 // Language -> (name, district color). Shared by building palette + districts.
 const LANG_META = {
@@ -293,30 +527,18 @@ function starsToFootprint(stars) {
   return 3.6 + t * 2.4; // 3.6..6.0 world units, keeps blocks from touching
 }
 
-// Distribute repos onto a BLOCKxBLOCK grid, ranked by stars. Ranks 0..11 sit
-// in the inner ring closest to the plaza; the rest fill outward. Deterministic
-// order so re-renders of the same data are stable.
-function assignSlots(count) {
-  const rings = [];
-  const mid = (BLOCK - 1) / 2;
-  for (let gx = 0; gx < BLOCK; gx++) {
-    for (let gz = 0; gz < BLOCK; gz++) {
-      const dist = Math.max(Math.abs(gx - mid), Math.abs(gz - mid)); // chebyshev
-      rings.push({ gx, gz, dist });
-    }
-  }
-  // Sort by ring distance, then by a fixed zigzag for variety.
-  rings.sort((a, b) =>
-    a.dist !== b.dist ? a.dist - b.dist : (a.gx + a.gz) - (b.gx + b.gz));
-  return rings;
+// The layout's building cells (active, off the plaza), ranked by ring distance
+// from the plaza, then by a fixed zigzag for variety. Deterministic order so
+// re-renders of the same data are stable.
+function assignSlots(L) {
+  return L.cells.filter(c => c.active && !c.plaza)
+    .map(c => ({ gx: c.gx, gz: c.gz, dist: Math.max(Math.abs(c.gx), Math.abs(c.gz)) })) // chebyshev
+    .sort((a, b) => a.dist !== b.dist ? a.dist - b.dist : (a.gx + a.gz) - (b.gx + b.gz));
 }
 
+// Cells are addressed from the plaza: (0, 0) is the middle cell.
 function worldForCell(gx, gz) {
-  const mid = (BLOCK - 1) / 2;
-  return {
-    x: (gx - mid) * CELL,
-    z: (gz - mid) * CELL,
-  };
+  return { x: gx * CELL, z: gz * CELL };
 }
 
 // ---------------------------------------------------------------------------
@@ -334,13 +556,10 @@ const QUADRANTS = [
 
 // Group repos by language, then pack the dominant languages onto quadrants.
 // Returns { byCell: Map<gx+','+gz, repo>, assignments: [{repo,gx,gz,district}] }.
-function assignDistricts(ranked) {
-  const mid = (BLOCK - 1) / 2;
-  const available = assignSlots().filter(({ gx, gz }) => {
-    const { x, z } = worldForCell(gx, gz);
-    // Reserve the complete plaza, including a building's half footprint.
-    return Math.hypot(Math.max(0, Math.abs(x) - 3.2), Math.max(0, Math.abs(z) - 3.2)) > CELL * 1.7;
-  });
+// Only the layout's active cells are used; the plaza (with a building's half
+// footprint) is always reserved.
+function assignDistricts(ranked, L = makeCityLayout('square')) {
+  const available = assignSlots(L);
   const clusters = new Map();
   for (const repo of ranked) {
     const key = (repo.language || 'other').toLowerCase();
@@ -352,7 +571,7 @@ function assignDistricts(ranked) {
     b[1].reduce((sum, r) => sum + r.stargazers_count, 0) - a[1].reduce((sum, r) => sum + r.stargazers_count, 0));
   ordered.forEach(([district, repos], index) => {
     const q = QUADRANTS[index % 4];
-    const anchor = { gx: mid + q.cx * 2, gz: mid + q.cz * 2 };
+    const anchor = { gx: q.cx * 2, gz: q.cz * 2 };
     for (const repo of repos) {
       available.sort((a, b) =>
         Math.hypot(a.gx - anchor.gx, a.gz - anchor.gz) - Math.hypot(b.gx - anchor.gx, b.gz - anchor.gz));
@@ -412,7 +631,7 @@ function initScene() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, coarse ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoftShadowMap was removed from three.js
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -453,7 +672,7 @@ function initScene() {
     idleTimer = setTimeout(() => { if (!tour.active && flyover) controls.autoRotate = true; }, 4000);
   });
 
-  clock = new THREE.Clock();
+  clock = new THREE.Timer(); // advanced once per frame in animate()
   raycaster = new THREE.Raycaster();
   pointerNDC = new THREE.Vector2();
 
@@ -461,17 +680,19 @@ function initScene() {
   hemi = new THREE.HemisphereLight(0xbfd4ff, 0x1a1410, 0.5);
   scene.add(hemi);
 
-  sun = new THREE.DirectionalLight(0xfff1d6, 1.3);
+  // r186 SunLight: a directional sun with two cascaded shadow maps fitted to
+  // the view, so shadows reach across the whole island (the old
+  // DirectionalLight had a fixed 140-unit box around the city). No target:
+  // it shines from its position toward the origin.
+  sun = new SunLight(0xfff1d6, 1.3);
   sun.position.set(60, 90, 40);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048);
-  const d = 70;
-  sun.shadow.camera.left = -d; sun.shadow.camera.right = d;
-  sun.shadow.camera.top = d; sun.shadow.camera.bottom = -d;
-  sun.shadow.camera.near = 10; sun.shadow.camera.far = 260;
+  sun.shadow.mapSize.set(coarse ? 1024 : 2048, coarse ? 1024 : 2048); // per cascade
+  sun.shadow.camera.far = coarse ? 260 : 420; // max shadow distance from the camera
   sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.radius = 2.5; // PCF blur keeps the soft shadow edges
   scene.add(sun);
-  scene.add(sun.target);
 
   moon = new THREE.DirectionalLight(0x8aa2ff, 0.25);
   moon.position.set(-50, 70, -30);
@@ -496,111 +717,403 @@ function onResize() {
 // ---------------------------------------------------------------------------
 // Static environment (ground, streets, plaza)
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// The paved block for the current city footprint (see makeCityLayout): slab +
+// inked curb, the boulevard ring with its own curb, the inner streets clipped
+// to the shape, lane dashes and the streetlamps. Rebuilt only when the
+// footprint changes; the plaza in the middle never does.
+// ---------------------------------------------------------------------------
+let cityLayout = null;  // makeCityLayout() result for the loaded profile
+let blockGroup = null;  // meshes built from cityLayout
+let blockMats = null;   // env materials, made once (envPalette recolours them)
+
+function getBlockMats() {
+  if (!blockMats) {
+    const keep = m => { m.userData.shared = true; return m; };
+    blockMats = {
+      slab: keep(envMat(0x1a2230, 0xe3dccb)),
+      ink: keep(envMat(0x090c14, 0x2b3140)),
+      street: keep(envMat(0x0e131c, 0x4a5468)),
+      stripe: keep(envMat(0x8a6a30, 0xf5cf4f, { emissive: 0x2a1c08 })),
+    };
+  }
+  return blockMats;
+}
+// A closed contour of { x, z } points as a Shape in the XY plane (y = -z), so
+// rotateX(-PI/2) lays it flat the right way round.
+function contourShape(pts) {
+  const s = new THREE.Shape();
+  pts.forEach((p, i) => (i ? s.lineTo(p.x, -p.z) : s.moveTo(p.x, -p.z)));
+  s.closePath();
+  return s;
+}
+// Flat band between two iso-contours of the layout's distance field.
+function contourBand(L, inner, outer) {
+  const s = contourShape(L.contour(outer));
+  s.holes.push(contourShape(L.contour(inner)));
+  return new THREE.ShapeGeometry(s).rotateX(-Math.PI / 2);
+}
+// Evenly spaced points (by arc length) around a closed contour.
+function loopResample(pts, spacing) {
+  const n = pts.length, cum = [0];
+  for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; cum.push(cum[i] + Math.hypot(b.x - a.x, b.z - a.z)); }
+  const total = cum[n], m = Math.max(8, Math.round(total / spacing)), out = [];
+  for (let k = 0, i = 0; k < m; k++) {
+    const s = (k / m) * total;
+    while (cum[i + 1] < s) i++;
+    const a = pts[i], b = pts[(i + 1) % n], f = (s - cum[i]) / (cum[i + 1] - cum[i] || 1);
+    out.push({ x: a.x + (b.x - a.x) * f, z: a.z + (b.z - a.z) * f });
+  }
+  return out;
+}
+// A smooth closed loop through evenly spaced points (uniform Catmull-Rom).
+// Points come back as Vector2(x, z), like the THREE.Path lanes it stands in for.
+class LoopCurve extends THREE.Curve {
+  constructor(pts) { super(); this.pts = pts; this.arcLengthDivisions = pts.length * 4; }
+  getPoint(t, out = new THREE.Vector2()) {
+    const P = this.pts, n = P.length, f = (((t % 1) + 1) % 1) * n, i = Math.floor(f), u = f - i, u2 = u * u, u3 = u2 * u;
+    const a = P[(i + n - 1) % n], b = P[i % n], c = P[(i + 1) % n], d = P[(i + 2) % n];
+    const cr = (p0, p1, p2, p3) => 0.5 * (2 * p1 + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (3 * p1 - p0 - 3 * p2 + p3) * u3);
+    return out.set(cr(a.x, b.x, c.x, d.x), cr(a.z, b.z, c.z, d.z));
+  }
+}
+// Car lane `offset` units outside (+) or inside (-) the boulevard centreline.
+function boulevardLane(L, offset) {
+  L.lanes ??= new Map();
+  if (!L.lanes.has(offset)) L.lanes.set(offset, new LoopCurve(loopResample(L.contour(offset), 1.5)));
+  return L.lanes.get(offset);
+}
+// What world.js needs to wrap the island around this footprint. Built once per
+// layout: the world caches by identity.
+function cityDescriptor(L) {
+  L.city ??= {
+    sdf: (x, z) => L.dist(x, z) - SIDEWALK, // < 0 on the paved slab
+    outline: offset => { // a fresh closed Path, `offset` units outward from the slab edge
+      const path = new THREE.Path();
+      L.contour(SIDEWALK + offset).forEach((p, i) => (i ? path.lineTo(p.x, p.z) : path.moveTo(p.x, p.z)));
+      path.closePath();
+      return path;
+    },
+    exits: L.exits,
+  };
+  return L.city;
+}
+// Pick the footprint for a profile: deterministic per login (and account
+// year), big enough for every repo shown. ?city=round previews a shape.
+const CITY_SHAPE_BY_PROFILE = false; // off: every city is square unless ?city= asks for a shape
+function cityLayoutFor(user, repos) {
+  const need = Math.max(1, Math.min(MAX_BUILDINGS, (repos || []).filter(r => !r.fork && !r.archived).length));
+  const seed = hashStr(`city-v1:${String(user?.login || '').toLowerCase()}:${String(user?.created_at || '').slice(0, 4)}`);
+  const override = new URLSearchParams(location.search).get('city');
+  const shape = CITY_SHAPE_BY_PROFILE ? chooseCityShape(seed, override) : chooseCityShape(seed, override || 'square');
+  return makeCityLayout(shape, need, seed);
+}
+function setCityLayout(L) {
+  if (L === cityLayout && blockGroup) return;
+  cityLayout = L;
+  cityDescriptor(L);
+  buildBlock(L);
+  buildStreetlamps(L);
+}
+
+function buildBlock(L) {
+  if (blockGroup) { cityGroup.remove(blockGroup); disposeObject(blockGroup); }
+  const M = getBlockMats(), group = new THREE.Group();
+  const add = (geo, mat, y) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.y = y; m.raycast = noRaycast;
+    group.add(m);
+    return m;
+  };
+  const merge = parts => { const g = mergeGeometries(parts); for (const p of parts) p.dispose(); return g; };
+  // The slab (top face at y = 0) with a dark curb, so the block reads as one
+  // inked shape sitting on the grass.
+  const slab = level => new THREE.ExtrudeGeometry(contourShape(L.contour(level)), { depth: 0.6, bevelEnabled: false }).rotateX(-Math.PI / 2);
+  add(slab(SIDEWALK), M.slab, -0.6).receiveShadow = true;
+  add(slab(SIDEWALK + 0.6).scale(1, 0.5 / 0.6, 1), M.ink, -0.58);
+  // The boulevard follows the outline, inked with its own curb; inner streets
+  // run under its edges so every junction is covered.
+  add(contourBand(L, -2.0, 2.0), M.ink, 0.07);
+  add(contourBand(L, -1.6, 1.6), M.street, 0.085);
+  const streets = [], dashes = [];
+  const dash = (x, y, z, tx, tz) => dashes.push(new THREE.BoxGeometry(0.5, 0.06, 2.2).rotateY(Math.atan2(tx, tz)).translate(x, y, z));
+  for (const s of L.streets) {
+    const len = Math.hypot(s.x1 - s.x0, s.z1 - s.z0);
+    streets.push(new THREE.BoxGeometry(s.vertical ? 3.2 : len, 0.08, s.vertical ? len : 3.2).translate((s.x0 + s.x1) / 2, 0.04, (s.z0 + s.z1) / 2));
+    // Lane dashes on the grid's 4.5-unit rhythm, clear of the plaza and the boulevard.
+    const t0 = s.vertical ? s.z0 : s.x0, t1 = s.vertical ? s.z1 : s.x1, p = s.vertical ? s.x0 : s.z0;
+    for (let t = Math.ceil((t0 - 2.25) / 4.5) * 4.5 + 2.25; t < t1; t += 4.5) {
+      const x = s.vertical ? p : t, z = s.vertical ? t : p;
+      if (Math.hypot(x, z) < PLAZA_R || L.dist(x, z) > -2) continue;
+      dash(x, 0.09, z, s.vertical ? 0 : 1, s.vertical ? 1 : 0);
+    }
+  }
+  // Boulevard dashes on the straight and gently curved runs, not the tight corners.
+  const ring = loopResample(L.contour(0), 4.5);
+  ring.forEach((b, i) => {
+    const a = ring[(i + ring.length - 1) % ring.length], c = ring[(i + 1) % ring.length];
+    const turn = Math.abs(Math.atan2((b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x), (b.x - a.x) * (c.x - b.x) + (b.z - a.z) * (c.z - b.z)));
+    if (turn < 4.5 / 14) dash(b.x, 0.1, b.z, c.x - a.x, c.z - a.z);
+  });
+  add(merge(streets), M.street, 0);
+  add(merge(dashes), M.stripe, 0);
+  group.userData.layout = L;
+  cityGroup.add(group);
+  blockGroup = group;
+}
+
 function buildEnvironment() {
-  // The ground itself (island, water, hills) is built by world.js. Here we lay
-  // the paved block: a rounded slab with a dark curb so it reads as one inked
-  // shape sitting on the grass instead of a square tile dropped on a plane.
-  const slab = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(roundedRect(THREE, SLAB_HALF, SLAB_R), { depth: 0.6, bevelEnabled: false, curveSegments: 14 }),
-    envMat(0x1a2230, 0xe3dccb));
-  slab.rotation.x = -Math.PI / 2;
-  slab.position.y = -0.6; // extrudes upward: top face at y = 0
-  slab.receiveShadow = true;
-  cityGroup.add(slab);
-  const curb = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(roundedRect(THREE, SLAB_HALF + 0.6, SLAB_R + 0.6), { depth: 0.5, bevelEnabled: false, curveSegments: 14 }),
-    envMat(0x090c14, 0x2b3140));
-  curb.rotation.x = -Math.PI / 2;
-  curb.position.y = -0.58;
-  cityGroup.add(curb);
+  // The ground itself (island, water, hills) is built by world.js. The paved
+  // block (slab, boulevard, streets) follows each profile's footprint and is
+  // laid by setCityLayout(); the classic square stands in until one loads.
+  setCityLayout(makeCityLayout('square'));
+  buildPlaza();
+}
 
-  // --- Street grid (darker strips + dashed lane markings) ------------------
-  // Streets run between cells, i.e. at half-integer positions in cell space.
-  const streetMat = envMat(0x0e131c, 0x4a5468);
-  const stripeMat = envMat(0x8a6a30, 0xf5cf4f, { emissive: 0x2a1c08 });
-  const stripeGeom = new THREE.BoxGeometry(0.5, 0.06, 2.2);
+// ---------------------------------------------------------------------------
+// Central plaza: a designed town square. Painted radial paving with compass
+// walkways, a contribution track under the heatmap ring, a teal inlay, an
+// inked kerb, tree planters, benches and lanterns on the rim, and a monument
+// (octagonal steps rising out of the fountain pool, a plinth with the Git
+// emblem, a tapered commit-history pillar, a floating glowing diamond). The
+// avatar hovers above the diamond. Built once; nothing here is pickable.
+// ---------------------------------------------------------------------------
+const PLAZA_Y = 0.14;                                  // paving surface height
+const POOL = { water: 3.9, rimIn: 6.5, rimOut: 7.2 };  // fountain pool radii
+let plazaFx = null; // { finial, finialY, setGlow(glow) }
 
-  // Street centerlines sit at cell boundaries: x = (gx - (BLOCK-1)/2 - 0.5)*CELL
-  // for gx = 0..BLOCK (i.e. the gaps between the BLOCK building cells, plus the
-  // outer edges). Buildings occupy cell centers, so streets never cover them.
-  // The outer ring is a boulevard with rounded corners (inked with its own
-  // curb); the inner streets run between the ring's opposite sides.
-  const boulevardCurb = new THREE.Mesh(
-    roundedRingGeometry(THREE, RING_R + 2.0, RING_CORNER + 2.0, RING_R - 2.0, RING_CORNER - 2.0), envMat(0x090c14, 0x2b3140));
-  boulevardCurb.position.y = 0.07;
-  cityGroup.add(boulevardCurb);
-  const boulevard = new THREE.Mesh(
-    roundedRingGeometry(THREE, RING_R + 1.6, RING_CORNER + 1.6, RING_R - 1.6, RING_CORNER - 1.6), streetMat);
-  boulevard.position.y = 0.085;
-  cityGroup.add(boulevard);
-  const straight = RING_R - RING_CORNER; // dashes only on the boulevard's straight runs
-  for (let t = -straight + 2; t < straight - 1; t += 4.5) {
-    for (const side of [RING_R, -RING_R]) {
-      const s1 = new THREE.Mesh(stripeGeom, stripeMat);
-      s1.rotation.y = Math.PI / 2; s1.position.set(t, 0.1, side); cityGroup.add(s1);
-      const s2 = new THREE.Mesh(stripeGeom, stripeMat);
-      s2.position.set(side, 0.1, t); cityGroup.add(s2);
+function buildPlaza() {
+  const add = (mesh, cast = false, receive = false) => {
+    mesh.castShadow = cast; mesh.receiveShadow = receive; mesh.raycast = noRaycast;
+    cityGroup.add(mesh);
+    return mesh;
+  };
+  // Base disc hides the street grid under the square; the paving is painted on top.
+  add(new THREE.Mesh(new THREE.CylinderGeometry(PLAZA_R, PLAZA_R, 0.12, 64), envMat(0x1f2837, 0xe6dcc6)), false, true).position.y = 0.06;
+  const { map, glowMap } = paintPlazaPaving();
+  const paveMat = envMat(0x5a6680, 0xffffff, { map, emissive: 0xffffff, emissiveMap: glowMap, emissiveIntensity: 0.1 });
+  add(new THREE.Mesh(new THREE.CircleGeometry(PLAZA_R, 96).rotateX(-Math.PI / 2), paveMat), false, true).position.y = PLAZA_Y;
+  // Raised, inked kerb so the square reads as one designed shape.
+  add(new THREE.Mesh(annulusGeo(PLAZA_R - 0.05, PLAZA_R + 0.4, 0.26, 48), envMat(0x141a26, 0xb3a489)), false, true);
+  add(new THREE.Mesh(new THREE.CylinderGeometry(PLAZA_R + 0.5, PLAZA_R + 0.5, 0.36, 96, 1, true), getOutlineMat())).position.y = 0.13;
+
+  // Static parts are merged: vertex-coloured stone, ink hulls, teal glow, lanterns.
+  const stone = [], hull = [], teal = [], lanterns = [], pools = [];
+  const part = (g, hex, t = 0, m = null) => {
+    if (t) hull.push(m ? hullOf(g, t).applyMatrix4(m) : hullOf(g, t));
+    stone.push([m ? g.applyMatrix4(m) : g, hex]);
+  };
+  const STONE = 0xe9dfc9, STONE_2 = 0xd8cbad, STONE_3 = 0xc4b594, SLATE = 0x7483a6, SLATE_2 = 0x5b6788;
+
+  // --- Monument: octagonal steps out of the pool, plinth, pillar, diamond.
+  let y = PLAZA_Y;
+  for (const [r, h, c] of [[4.5, 0.55, STONE_2], [3.6, 0.45, STONE], [2.75, 0.4, STONE_2]]) {
+    part(new THREE.CylinderGeometry(r, r, h, 8).rotateY(Math.PI / 8).translate(0, y + h / 2, 0), c, 0.2);
+    y += h;
+  }
+  part(box(3.1, 0.3, 3.1, 0, y + 0.15, 0), STONE_3, 0.16);   // base moulding
+  part(box(2.7, 2.2, 2.7, 0, y + 1.4, 0), STONE, 0.2);        // die
+  part(box(3.2, 0.32, 3.2, 0, y + 2.66, 0), STONE_3, 0.16);   // cornice
+  const plinthMid = y + 1.4;
+  y += 2.82;
+  const sh = 7.6, bw = 0.9, tw = 0.62, shaftY = y, hw = yy => bw - (bw - tw) * (yy - shaftY) / sh;
+  part(box(2.0, 0.32, 2.0, 0, y + 0.16, 0), SLATE_2, 0.16);   // collar
+  part(new THREE.CylinderGeometry(tw * Math.SQRT2, bw * Math.SQRT2, sh, 4).rotateY(Math.PI / 4).translate(0, y + sh / 2, 0), SLATE, 0.22);
+  // Commit history up each face of the pillar: a glowing line with four commits.
+  const tilt = Math.atan((bw - tw) / sh), lineMid = y + sh * 0.5;
+  for (let f = 0; f < 4; f++) {
+    const rot = new THREE.Matrix4().makeRotationY(f * Math.PI / 2);
+    teal.push(box(0.06, sh * 0.8, 0.08).rotateZ(tilt).translate(hw(lineMid) + 0.015, lineMid, 0).applyMatrix4(rot));
+    for (let k = 0; k < 4; k++) {
+      const yy = y + sh * (0.17 + k * 0.22);
+      teal.push(box(0.08, 0.3, 0.3, hw(yy) + 0.02, yy, 0).applyMatrix4(rot));
     }
   }
-  for (let i = 1; i < BLOCK; i++) {
-    const p = (i - (BLOCK - 1) / 2 - 0.5) * CELL;
-    // horizontal street (runs along X)
-    const h = new THREE.Mesh(new THREE.BoxGeometry(DISTRICT, 0.08, 3.2), streetMat);
-    h.position.set(0, 0.04, p);
-    cityGroup.add(h);
-    // vertical street (runs along Z)
-    const v = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.08, DISTRICT), streetMat);
-    v.position.set(p, 0.04, 0);
-    cityGroup.add(v);
-    // lane dashes along each street
-    const dashes = BLOCK * 2;
-    for (let k = 0; k < dashes; k++) {
-      const t = -DISTRICT / 2 + (k + 0.5) * (DISTRICT / dashes);
-      const s1 = new THREE.Mesh(stripeGeom, stripeMat);
-      s1.rotation.y = Math.PI / 2;
-      s1.position.set(t, 0.09, p);
-      cityGroup.add(s1);
-      const s2 = new THREE.Mesh(stripeGeom.clone(), stripeMat);
-      s2.rotation.y = 0;
-      s2.position.set(p, 0.09, t);
-      cityGroup.add(s2);
-    }
+  y += sh;
+  part(box(1.75, 0.3, 1.75, 0, y + 0.15, 0), STONE, 0.16);   // capital
+  y += 0.3;
+  const cap = new THREE.ConeGeometry(0.8 * Math.SQRT2, 1.2, 4).rotateY(Math.PI / 4).translate(0, y + 0.6, 0);
+  hull.push(hullOf(cap, 0.16));
+  teal.push(cap);
+  const finial = new THREE.Mesh(new THREE.OctahedronGeometry(0.72), toonMat({ color: ACCENT, emissive: ACCENT, emissiveIntensity: 0.6 }));
+  const finialHull = new THREE.Mesh(new THREE.OctahedronGeometry(0.83), getOutlineMat());
+  finialHull.raycast = noRaycast;
+  finial.add(finialHull);
+  finial.scale.set(1, 1.35, 1); // a tall Git-ish diamond
+  const finialY = y + 1.2 + 1.3;
+  add(finial, true).position.y = finialY;
+  cityGroup.userData.beacon = finial;
+  // Git emblem on the four faces of the plinth.
+  const emblem = paintGitEmblem();
+  const emblemMat = toonMat({ map: emblem, emissive: 0xffffff, emissiveMap: emblem, emissiveIntensity: 0.15, alphaTest: 0.5 });
+  const plates = [];
+  for (let f = 0; f < 4; f++) plates.push(new THREE.PlaneGeometry(1.9, 1.9).translate(0, 0, 1.365).rotateY(f * Math.PI / 2).translate(0, plinthMid, 0));
+  add(new THREE.Mesh(mergeParts(plates), emblemMat));
+  // Four stone footbridges cross the pool from the walkways to the steps.
+  for (let f = 0; f < 4; f++) {
+    const rot = new THREE.Matrix4().makeRotationY(f * Math.PI / 2);
+    part(box(2.9, 0.16, 1.3, 5.4, PLAZA_Y + 0.47, 0), STONE_3, 0.12, rot);
+    for (const s of [-1, 1]) part(box(2.9, 0.16, 0.1, 5.4, PLAZA_Y + 0.63, s * 0.6), STONE_2, 0, rot);
   }
 
-  // --- Central plaza (circular, lighter stone) ------------------------------
-  const plazaR = CELL * 1.7;
-  const plaza = new THREE.Mesh(
-    new THREE.CylinderGeometry(plazaR, plazaR, 0.12, 48),
-    envMat(0x1f2837, 0xf0e9d8));
-  plaza.position.y = 0.06;
-  plaza.receiveShadow = true;
-  cityGroup.add(plaza);
+  // --- Rim furniture: tree planters on the diagonals, benches facing the
+  // monument, lanterns flanking the four walkways.
+  const at = (r, a) => [Math.cos(a) * r, Math.sin(a) * r];
+  for (let q = 0; q < 4; q++) {
+    const a = Math.PI / 4 + q * Math.PI / 2, [px, pz] = at(13.8, a);
+    part(new THREE.CylinderGeometry(1.05, 0.9, 0.7, 8).translate(px, PLAZA_Y + 0.35, pz), STONE_3, 0.16);
+    part(new THREE.CylinderGeometry(0.94, 0.94, 0.06, 8).translate(px, PLAZA_Y + 0.68, pz), 0x5b4330);
+    part(new THREE.CylinderGeometry(0.11, 0.16, 1.4, 6).translate(px, PLAZA_Y + 1.35, pz), 0x7a5236);
+    part(new THREE.IcosahedronGeometry(1.2, 1).translate(px, PLAZA_Y + 2.65, pz), 0x5fb35a, 0.18);
+    const [ox, oz] = at(0.55, a + 2.2);
+    part(new THREE.IcosahedronGeometry(0.72, 1).translate(px + ox, PLAZA_Y + 2.2, pz + oz), 0x7fc96b, 0.14);
+  }
+  for (const { b, x: bx, z: bz } of plazaBenchSpots()) {
+    const m = new THREE.Matrix4().makeRotationY(Math.PI / 2 - b).setPosition(bx, PLAZA_Y, bz);
+    part(box(1.5, 0.1, 0.46, 0, 0.44, 0), 0xd08b54, 0.1, m);        // seat
+    part(box(1.5, 0.34, 0.08, 0, 0.78, 0.22), 0xd08b54, 0.1, m);    // backrest (outward)
+    for (const lx of [-0.58, 0.58]) part(box(0.1, 0.42, 0.42, lx, 0.21, 0.02), 0x3a4152, 0, m);
+  }
+  for (let q = 0; q < 4; q++) for (const s of [-1, 1]) {
+    const [lx, lz] = at(14.55, q * Math.PI / 2 + s * 0.2);
+    part(box(0.36, 0.26, 0.36, lx, PLAZA_Y + 0.13, lz), 0x2a2f3a);
+    part(new THREE.CylinderGeometry(0.07, 0.09, 3.0, 6).translate(lx, PLAZA_Y + 1.6, lz), 0x2a2f3a);
+    part(new THREE.ConeGeometry(0.34, 0.3, 4).rotateY(Math.PI / 4).translate(lx, PLAZA_Y + 3.67, lz), 0x2a2f3a);
+    const lantern = box(0.36, 0.44, 0.36, lx, PLAZA_Y + 3.3, lz);
+    hull.push(hullOf(lantern, 0.12));
+    lanterns.push(lantern);
+    pools.push(new THREE.CircleGeometry(2.8, 24).rotateX(-Math.PI / 2).translate(lx, PLAZA_Y + 0.03, lz));
+  }
 
-  // plaza ring inlay
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(plazaR - 1.4, 0.22, 8, 64),
-    toonMat({ color: 0x64dedb, emissive: 0x1e5e5c }));
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.14;
-  cityGroup.add(ring);
+  add(new THREE.Mesh(mergeParts(stone, true), envMat(0x76829f, 0xffffff, { vertexColors: true })), true, true);
+  add(new THREE.Mesh(mergeParts(hull), getOutlineMat()));
+  const tealMat = toonMat({ color: ACCENT, emissive: ACCENT, emissiveIntensity: 0.3 });
+  add(new THREE.Mesh(mergeParts(teal), tealMat), true);
+  const lanternMat = toonMat({ color: 0xfff1c9, emissive: 0xffd58a, emissiveIntensity: 0.1 });
+  add(new THREE.Mesh(mergeParts(lanterns), lanternMat));
+  const poolMat = new THREE.MeshBasicMaterial({
+    map: makeGlowTexture(64), color: 0xffd9a0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  add(new THREE.Mesh(mergeParts(pools), poolMat));
 
-  // --- Plaza monument base (obelisk) — avatar floats above it ---------------
-  const obelisk = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.2, 2.6, 14, 4),
-    toonMat({ color: 0x5a6378 }));
-  obelisk.position.y = 7;
-  obelisk.castShadow = true;
-  cityGroup.add(obelisk);
-  const obeliskHull = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2.9, 14.4, 4), getOutlineMat());
-  obeliskHull.raycast = () => {};
-  obeliskHull.position.y = 7;
-  cityGroup.add(obeliskHull);
-  const beacon = new THREE.Mesh(
-    new THREE.BoxGeometry(1.4, 1.4, 1.4),
-    toonMat({ color: 0x64dedb, emissive: 0x2c7a78 }));
-  beacon.position.y = 14.6;
-  cityGroup.add(beacon);
-  cityGroup.userData.beacon = beacon;
+  plazaFx = {
+    finial, finialY,
+    setGlow(glow) {
+      tealMat.emissiveIntensity = 0.3 + glow * 1.1;
+      emblemMat.emissiveIntensity = 0.15 + glow * 0.9;
+      lanternMat.emissiveIntensity = 0.1 + glow * 2.2;
+      paveMat.emissiveIntensity = 0.1 + glow * 0.9;
+      poolMat.opacity = glow * 0.7;
+      poolMat.visible = glow > 0.02;
+    },
+  };
+}
+
+// Top-down paving for the square, plus a matching emissive mask for the teal
+// inlays. Canvas angles match world atan2(z, x).
+function paintPlazaPaving() {
+  const S = 1024, c = S / 2, k = c / PLAZA_R;
+  const canvas = () => { const cv = document.createElement('canvas'); cv.width = cv.height = S; return cv; };
+  const cv = canvas(), gv = canvas(), x = cv.getContext('2d'), gx = gv.getContext('2d');
+  const rnd = seededRandom(1234);
+  const ring = (ctx, r0, r1, fill) => {
+    ctx.beginPath(); ctx.arc(c, c, r1 * k, 0, TAU); ctx.arc(c, c, r0 * k, 0, TAU, true);
+    ctx.fillStyle = fill; ctx.fill();
+  };
+  const line = (ctx, r, w, stroke) => {
+    ctx.beginPath(); ctx.arc(c, c, r * k, 0, TAU); ctx.lineWidth = w * k; ctx.strokeStyle = stroke; ctx.stroke();
+  };
+  // A course of radial pavers: n stones, alternating tones with a little noise.
+  const course = (r0, r1, n, off, tones) => {
+    for (let i = 0; i < n; i++) {
+      const a0 = off + (i / n) * TAU, a1 = a0 + TAU / n;
+      x.beginPath(); x.arc(c, c, r1 * k, a0, a1); x.arc(c, c, r0 * k, a1, a0, true); x.closePath();
+      x.fillStyle = tones[(i + (rnd() < 0.18 ? 1 : 0)) % tones.length]; x.fill();
+      x.lineWidth = 1.6; x.strokeStyle = 'rgba(120,100,70,0.45)'; x.stroke();
+    }
+  };
+  x.fillStyle = '#e9dfca'; x.fillRect(0, 0, S, S);
+  gx.fillStyle = '#000'; gx.fillRect(0, 0, S, S);
+  // Pool floor (seen through the water) with two tile rings.
+  ring(x, 0, POOL.rimOut, '#2c7392');
+  line(x, 5.0, 0.05, '#4a9bb8'); line(x, 5.8, 0.05, '#4a9bb8');
+  const light = ['#efe6d3', '#e5d9c1', '#eadfca'], warm = ['#ded1b7', '#d4c6aa'];
+  course(7.2, 7.95, 36, 0, ['#d2c3a3', '#c9b998']);
+  course(7.95, 9.1, 44, 0, light);
+  course(9.1, 10.3, 52, TAU / 104, light);
+  course(11.7, 13.0, 64, 0, light);
+  course(13.24, 14.25, 72, 0, warm);
+  course(14.25, PLAZA_R, 80, TAU / 160, warm);
+  // Walkways at the four compass points, laid in a small square grid.
+  for (let q = 0; q < 4; q++) {
+    x.save(); x.translate(c, c); x.rotate(q * Math.PI / 2);
+    const w0 = POOL.rimOut * k, w1 = PLAZA_R * k, hw = 1.2 * k;
+    x.fillStyle = '#f5eee0'; x.fillRect(w0, -hw, w1 - w0, hw * 2);
+    x.strokeStyle = 'rgba(150,130,95,0.35)'; x.lineWidth = 1.2;
+    for (let p = w0; p < w1; p += 0.6 * k) { x.beginPath(); x.moveTo(p, -hw); x.lineTo(p, hw); x.stroke(); }
+    for (let p = -hw; p <= hw + 0.1; p += 0.6 * k) { x.beginPath(); x.moveTo(w0, p); x.lineTo(w1, p); x.stroke(); }
+    x.strokeStyle = '#b5a68a'; x.lineWidth = 0.08 * k;
+    for (const e of [-hw, hw]) { x.beginPath(); x.moveTo(w0, e); x.lineTo(w1, e); x.stroke(); }
+    x.restore();
+  }
+  // Planter footprints on the diagonals.
+  for (let q = 0; q < 4; q++) {
+    const a = Math.PI / 4 + q * Math.PI / 2;
+    x.beginPath(); x.arc(c + Math.cos(a) * 13.8 * k, c + Math.sin(a) * 13.8 * k, 1.45 * k, 0, TAU);
+    x.fillStyle = '#cdbf9e'; x.fill(); x.lineWidth = 0.06 * k; x.strokeStyle = '#ad9e80'; x.stroke();
+  }
+  // Contribution track under the heatmap ring, edged with glowing teal.
+  ring(x, 10.3, 11.7, '#bdb096');
+  for (const r of [10.33, 11.67]) { line(x, r, 0.07, '#64dedb'); line(gx, r, 0.07, '#64dedb'); }
+  // Teal inlay ring (glows at night), inked on both edges.
+  ring(x, 13.0, 13.24, '#64dedb'); ring(gx, 13.0, 13.24, '#64dedb');
+  line(x, 13.0, 0.035, '#27323f'); line(x, 13.24, 0.035, '#27323f');
+  ring(x, PLAZA_R - 0.14, PLAZA_R, '#a39679'); // kerb-side border
+  const tex = cvs => {
+    const t = new THREE.CanvasTexture(cvs);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return t;
+  };
+  return { map: tex(cv), glowMap: tex(gv) };
+}
+
+// Teal Git-style diamond with a branch glyph (trunk, side branch, three commits).
+function paintGitEmblem() {
+  const S = 256, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const x = cv.getContext('2d');
+  x.translate(S / 2, S / 2);
+  x.save(); x.rotate(Math.PI / 4);
+  roundRect(x, -80, -80, 160, 160, 30);
+  x.fillStyle = '#64dedb'; x.fill();
+  x.lineWidth = 12; x.strokeStyle = '#0a0d16'; x.stroke();
+  x.restore();
+  x.strokeStyle = x.fillStyle = '#12363b';
+  x.lineWidth = 14; x.lineCap = 'round';
+  x.beginPath(); x.moveTo(-22, 50); x.lineTo(-22, -50); x.stroke();
+  x.beginPath(); x.moveTo(-22, 24); x.quadraticCurveTo(30, 20, 30, -22); x.stroke();
+  for (const [px, py] of [[-22, 50], [-22, -50], [30, -22]]) { x.beginPath(); x.arc(px, py, 15, 0, TAU); x.fill(); }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+function updatePlaza(dt) {
+  if (!plazaFx) return;
+  plazaFx.finial.rotation.y += dt * 0.9;
+  plazaFx.finial.position.y = plazaFx.finialY + Math.sin(clock.getElapsed() * 1.6) * 0.16;
+}
+
+// Benches on the plaza rim, two per tree planter, facing the monument (shared
+// by buildPlaza and the people sitting on them). b = angle around the plaza.
+function plazaBenchSpots() {
+  const spots = [];
+  for (let q = 0; q < 4; q++) for (const s of [-1, 1]) {
+    const b = Math.PI / 4 + q * Math.PI / 2 + s * 0.19;
+    spots.push({ b, x: Math.cos(b) * 13.8, z: Math.sin(b) * 13.8 });
+  }
+  return spots;
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +1149,8 @@ function buildCity(repos, user) {
     });
   }
 
-  const slots = assignDistricts(ranked);
+  const L = cityLayout || makeCityLayout('square');
+  const slots = assignDistricts(ranked, L);
 
   ranked.forEach((repo, i) => {
     const a = slots.assignments.find(x => x.repo === repo);
@@ -653,18 +1167,18 @@ function buildCity(repos, user) {
 
   // Vacant cells get a top-down decal (park, parking, court, site) so a small
   // profile still looks like a lived-in town instead of an empty grid.
+  // The ragged edge of a curved footprint gets them too, wherever a decal fits.
   const used = new Set(slots.assignments.map(a => `${a.gx},${a.gz}`));
   const lots = [];
-  for (let gx = 0; gx < BLOCK; gx++) for (let gz = 0; gz < BLOCK; gz++) {
-    if (used.has(`${gx},${gz}`)) continue;
-    const { x, z } = worldForCell(gx, gz);
-    if (Math.hypot(Math.max(0, Math.abs(x) - 3.2), Math.max(0, Math.abs(z) - 3.2)) <= CELL * 1.7) continue; // plaza
-    lots.push({ x, z, seed: hashStr(`${user.login}:${gx},${gz}`) });
+  for (const c of L.cells) {
+    if (!c.lot || used.has(`${c.gx},${c.gz}`)) continue;
+    // Seeded by corner-based cell coords, as before, so a square city keeps its lots.
+    lots.push({ x: c.x, z: c.z, seed: hashStr(`${user.login}:${c.gx + L.hx},${c.gz + L.hz}`) });
   }
   world?.setLots(lots);
 
   buildAvatar(user);
-  buildCars();
+  buildCars(user);
   return repos.filter(r => !r.fork && !r.archived).sort((a, b) => b.stargazers_count - a.stargazers_count).slice(0, MAX_BUILDINGS);
 }
 
@@ -925,16 +1439,18 @@ function buildDistrictSigns(THREE, assignments) {
     const pos = worldForCell(cell.gx, cell.gz);
     // Place the sign just outside the quadrant edge, facing the plaza.
     const dir = new THREE.Vector3(pos.x, 0, pos.z).normalize();
-    const edge = new THREE.Vector3(pos.x, 0, pos.z).add(dir.multiplyScalar(CELL * 0.8));
+    // ...but never out past the boulevard, whatever the footprint's outline.
+    let out = CELL * 0.8;
+    while (out > 0 && cityLayout && cityLayout.dist(pos.x + dir.x * out, pos.z + dir.z * out) > SIDEWALK - 3) out -= 0.5;
+    const edge = new THREE.Vector3(pos.x, 0, pos.z).add(dir.multiplyScalar(out));
     sign.position.set(edge.x, Math.max(13, (tallest.get(lang) || 0) * 1.08 + 5), edge.z);
     group.add(sign);
   }
   scene.add(group);
   districtSigns = { group };
 }
-function cellDist(gx, gz) {
-  const mid = (BLOCK - 1) / 2;
-  return Math.max(Math.abs(gx - mid), Math.abs(gz - mid));
+function cellDist(gx, gz) { // cells are addressed from the plaza
+  return Math.max(Math.abs(gx), Math.abs(gz));
 }
 
 function buildDistrictBaseplates(THREE, assignments) {
@@ -950,9 +1466,8 @@ function buildDistrictBaseplates(THREE, assignments) {
   scene.add(districtBaseplates);
 }
 function quadrantOf(gx, gz) {
-  const mid = (BLOCK - 1) / 2;
-  const ex = gx >= mid ? 1 : 0;
-  const ez = gz >= mid ? 1 : 0;
+  const ex = gx >= 0 ? 1 : 0;
+  const ez = gz >= 0 ? 1 : 0;
   return (ex && ez) ? 0 : (!ex && ez) ? 1 : (ex && !ez) ? 2 : 3;
 }
 
@@ -965,7 +1480,8 @@ function quadrantOf(gx, gz) {
 
 // Streetlamps along the main boulevard with emissive cones that read as neon
 // light pools at night.
-function buildStreetlamps() {
+function buildStreetlamps(L = cityLayout || makeCityLayout('square')) {
+  if (lampGroup) { scene.remove(lampGroup); disposeObject(lampGroup); } // rebuilt with the footprint
   lampGroup = new THREE.Group();
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 3.2, 6);
   const poleMat = toonMat({ color: 0x2a2f3a });
@@ -973,10 +1489,15 @@ function buildStreetlamps() {
   const coneGeo = new THREE.ConeGeometry(1.1, 2.6, 20, 1, true);
   const headMat = toonMat({ color: 0x1a1a1a, emissive: 0xffd9a0, emissiveIntensity: 0.1 });
   const coneMat = new THREE.MeshBasicMaterial({ color: 0xffe4b0, transparent: true, opacity: 0.0, side: THREE.DoubleSide, depthWrite: false });
-  const along = DISTRICT / 2 + 4;
-  for (let i = 0; i <= 8; i++) {
-    const x = -along + (i / 8) * along * 2;
-    for (const z of [7.2, -7.2]) {
+  // Two rows along the east-west avenue, out to the sidewalk just past the
+  // boulevard on each side (4 units beyond its centreline), whatever the footprint.
+  const rowEnd = (z, s) => { let x = 0; while (x < 200 && L.dist(s * x, z) < 4) x += 0.25; return s * x; };
+  for (const z of [7.2, -7.2]) {
+    const x0 = rowEnd(z, -1), x1 = rowEnd(z, 1);
+    for (let i = 0; i <= 8; i++) {
+      const x = x0 + (i / 8) * (x1 - x0);
+      if (Math.hypot(x, z) < PLAZA_R + 1.5) continue; // the plaza has its own lanterns
+      if (Math.abs(L.dist(x, z)) < 2.4) continue;    // never on the boulevard
       const g = new THREE.Group();
       const pole = new THREE.Mesh(poleGeo, poleMat); pole.position.y = 1.6;
       const head = new THREE.Mesh(headGeo, headMat.clone()); head.position.y = 3.3;
@@ -994,66 +1515,186 @@ function buildStreetlamps() {
   for (const l of lampGroup.children) lampGroup.userData.cones.push(l.userData.cone);
 }
 
-// Plaza fountain: a shader-animated water disc + droplet particles.
+// Plaza fountain: a stone-rimmed pool around the monument's steps, cel-banded
+// shader water with foam edges (teal underwater glow at night) and eight jets
+// arcing from spouts on the rim toward the monument.
 function buildFountain() {
   const g = new THREE.Group();
-  // Basin ring
-  const basin = new THREE.Mesh(new THREE.TorusGeometry(2.4, 0.4, 10, 32),
-    new THREE.MeshStandardMaterial({ color: 0x3a4256, roughness: 0.6 }));
-  basin.rotation.x = Math.PI / 2; basin.position.y = 0.4;
-  g.add(basin);
-  // Water disc with a small moving-normal shader (cheap ripple).
+  const rimMat = envMat(0x3c465a, 0xe2d6bc);
+  const rim = new THREE.Mesh(annulusGeo(POOL.rimIn, POOL.rimOut, 0.55, 48), rimMat);
+  rim.position.y = PLAZA_Y;
+  rim.castShadow = rim.receiveShadow = true;
+  const rimHull = new THREE.Mesh(new THREE.CylinderGeometry(POOL.rimOut + 0.1, POOL.rimOut + 0.1, 0.72, 72), getOutlineMat());
+  rimHull.position.y = PLAZA_Y + 0.26;
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(POOL.rimIn, 0.045, 4, 96).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a0d16 }));
+  lip.position.y = PLAZA_Y + 0.55;
+  const JETS = 8, PER = 18, N = JETS * PER, jetAng = j => (j + 0.5) * TAU / JETS; // between the footbridges
+  const spouts = [];
+  for (let j = 0; j < JETS; j++) spouts.push(box(0.3, 0.22, 0.3, Math.cos(jetAng(j)) * 6.85, PLAZA_Y + 0.66, Math.sin(jetAng(j)) * 6.85));
+  const spoutMesh = new THREE.Mesh(mergeParts(spouts), rimMat);
+  // Water: radial ripples quantised into cel bands, foam hugging the octagonal
+  // steps and the rim. Colours are lerped for night by update().
   const waterMat = new THREE.ShaderMaterial({
-    transparent: true,
-    uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(0x2f8fd6) } },
+    transparent: true, depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 }, uGlow: { value: 0 }, uIn: { value: 4.16 }, uOut: { value: POOL.rimIn },
+      uDeep: { value: new THREE.Color() }, uLight: { value: new THREE.Color() }, uFoam: { value: new THREE.Color() },
+    },
     vertexShader: `
-      varying vec2 vUv;
-      void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      varying vec2 vP;
+      void main() { vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
-      uniform float uTime; uniform vec3 uColor; varying vec2 vUv;
-      float wave(vec2 p, float t){ return sin(p.x*8.0+t)*0.5+sin(p.y*9.0-t*1.3)*0.5; }
-      void main(){
-        float w = wave(vUv*3.0, uTime);
-        float ring = smoothstep(0.0,0.15,distance(vUv,vec2(0.5)))*0.0+1.0;
-        vec3 col = uColor * (0.8 + w*0.18);
-        float a = 0.72 + w*0.08;
-        gl_FragColor = vec4(col, a);
+      uniform float uTime, uGlow, uIn, uOut; uniform vec3 uDeep, uLight, uFoam;
+      varying vec2 vP;
+      void main() {
+        float r = length(vP), a = atan(vP.y, vP.x);
+        vec2 q = abs(vP);
+        float oct = max(max(q.x, q.y), (q.x + q.y) * 0.70710678); // distance to the octagonal steps
+        float w = sin(r * 5.0 - uTime * 1.7) * 0.55 + sin(a * 11.0 + r * 1.5 + uTime * 0.8) * 0.3 + sin(a * 4.0 - uTime * 0.5) * 0.25;
+        vec3 col = mix(uDeep, uLight, step(0.62, w) * 0.75 + step(0.05, w) * 0.25);
+        float wob = sin(a * 24.0 + uTime * 2.2) * 0.04;
+        float foam = clamp(step(oct - uIn, 0.16 + wob) + step(uOut - r, 0.14 + wob), 0.0, 1.0);
+        col = mix(col, uFoam, foam * 0.9);
+        col += uGlow * vec3(0.05, 0.42, 0.40) * (1.0 - smoothstep(0.0, 1.4, oct - uIn));
+        gl_FragColor = vec4(col, 0.9);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
       }`,
   });
-  const water = new THREE.Mesh(new THREE.CircleGeometry(2.3, 32), waterMat);
-  water.rotation.x = -Math.PI / 2; water.position.y = 0.55;
-  g.add(water);
-  // Droplets
-  const N = 120;
-  const pos = new Float32Array(N * 3); const seed = new Float32Array(N);
-  for (let i = 0; i < N; i++) { pos[i*3]=0; pos[i*3+1]=0.6; pos[i*3+2]=0; seed[i]=Math.random(); }
+  const water = new THREE.Mesh(new THREE.RingGeometry(POOL.water, POOL.rimIn + 0.05, 96, 2), waterMat);
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = PLAZA_Y + 0.32;
+  // Jets: droplets travelling along an arc from each spout.
+  const pos = new Float32Array(N * 3), seed = new Float32Array(N);
+  for (let i = 0; i < N; i++) seed[i] = Math.random();
   const dg = new THREE.BufferGeometry();
   dg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const droplets = new THREE.Points(dg, new THREE.PointsMaterial({ color: 0xbfe4ff, size: 0.12, transparent: true, opacity: 0.8 }));
-  g.add(droplets);
-  g.userData = { waterMat, droplets, seed, N };
-  g.position.set(6, 0, 0);
+  const dropMat = new THREE.PointsMaterial({ color: 0xe6f8ff, size: 0.28, map: makeGlowTexture(32), transparent: true, depthWrite: false });
+  const droplets = new THREE.Points(dg, dropMat);
+  droplets.frustumCulled = false;
+  g.add(rim, rimHull, lip, spoutMesh, water, droplets);
+  g.traverse(o => { if (o.isMesh || o.isPoints) o.raycast = noRaycast; });
   scene.add(g);
-  fountain = { group: g, updateWater: (t) => { waterMat.uniforms.uTime.value = t; } };
+  const u = waterMat.uniforms;
+  const pal = {
+    deep: [new THREE.Color(0x0f2c46), new THREE.Color(0x3a9bd6)], light: [new THREE.Color(0x1d6a82), new THREE.Color(0x8fe0f0)],
+    foam: [new THREE.Color(0x7cc4d2), new THREE.Color(0xf4fcff)], drop: [new THREE.Color(0x9fe6ee), new THREE.Color(0xe6f8ff)],
+  };
+  fountain = {
+    group: g,
+    update(t, day) {
+      u.uTime.value = t;
+      u.uGlow.value = 1 - day;
+      u.uDeep.value.copy(pal.deep[0]).lerp(pal.deep[1], day);
+      u.uLight.value.copy(pal.light[0]).lerp(pal.light[1], day);
+      u.uFoam.value.copy(pal.foam[0]).lerp(pal.foam[1], day);
+      dropMat.color.copy(pal.drop[0]).lerp(pal.drop[1], day);
+      for (let j = 0; j < JETS; j++) {
+        const cx = Math.cos(jetAng(j)), cz = Math.sin(jetAng(j));
+        for (let k = 0; k < PER; k++) {
+          const i = j * PER + k, f = (t * 0.55 + k / PER + seed[i] * 0.05) % 1;
+          const r = 6.75 - f * 2.1 + (seed[i] - 0.5) * 0.14;
+          pos[i * 3] = cx * r;
+          pos[i * 3 + 1] = PLAZA_Y + 0.72 + Math.sin(f * Math.PI) * 1.5 - f * 0.34;
+          pos[i * 3 + 2] = cz * r;
+        }
+      }
+      dg.attributes.position.needsUpdate = true;
+    },
+  };
 }
 
-// Tiny voxel pedestrians walking block-edge waypoints (InstancedMesh).
+// People: little cel-shaded townsfolk on the plaza. Walkers on two promenades
+// (a couple with dogs on a lead), people resting on the benches and a group
+// chatting on the rim. Each body part is one InstancedMesh with per-instance
+// colours, so the whole crowd costs about a dozen draw calls.
+const SKIN_TONES = [0xf5d0b0, 0xe8b48f, 0xc98d68, 0x8d5a3c, 0xf2c9a0, 0x6b4630];
+const SHIRTS = [0xe8665a, 0x5aa7e8, 0x5fcf9a, 0xf2c14e, 0xa889e6, 0x64dedb, 0xf28cb8, 0xf39a4b, 0xf1ede4];
+const PANTS = [0x2f3a5a, 0x4a6fa5, 0x6b4f3a, 0x3a3f4a, 0xb59f74];
+const HAIR = [0x23201f, 0x5a3a22, 0xe0b458, 0xc0602c, 0xb9b9bd, 0x23201f, 0x5a3a22];
+const COATS = [0xc98a4a, 0xf1ede4, 0x3a3230, 0x9a6b40];
+const _pm = new THREE.Matrix4(), _pl = new THREE.Matrix4(), _pt = new THREE.Matrix4(), _pr = new THREE.Matrix4(), _pe = new THREE.Euler();
+
 function buildPedestrians() {
-  const N = 24;
-  const bodyGeo = new THREE.BoxGeometry(0.35, 0.6, 0.35);
-  const headGeo = new THREE.BoxGeometry(0.3, 0.28, 0.3);
-  const bodyMat = toonMat({ color: 0xffffff });
-  const headMat = toonMat({ color: 0xffd9b0 });
-  const bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, N);
-  const heads = new THREE.InstancedMesh(headGeo, headMat, N);
-  const data = [];
-  const ring = QUAD * CELL * 0.5;
-  for (let i = 0; i < N; i++) {
-    const lane = 6 + (i % 3) * 2.5; // a few concentric walking lanes
-    data.push({ angle: Math.random() * Math.PI * 2, radius: lane + Math.random()*3, speed: (0.15 + Math.random()*0.25) * (Math.random()<0.5?1:-1), phase: Math.random()*6 });
+  const rnd = seededRandom(20260911);
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const people = [], dogs = [];
+  const person = o => ({ skin: pick(SKIN_TONES), shirt: pick(SHIRTS), pants: pick(PANTS), hair: pick(HAIR), phase: rnd() * TAU, ...o });
+  // Walkers: the inner promenade (pool to contribution track) runs one way,
+  // the outer one (track to the rim furniture) the other.
+  for (let i = 0; i < 20; i++) {
+    const inner = i % 2 === 0, r = inner ? 7.9 + rnd() * 1.6 : 11.95 + rnd() * 0.5, v = 0.7 + rnd() * 0.35;
+    people.push(person({ mode: 'walk', r, a: rnd() * TAU, w: (inner ? 1 : -1) * v / r, v, x: 0, z: 0, h: 0 }));
   }
-  scene.add(bodies, heads);
-  pedestrians = { bodies, heads, data, N };
+  for (const owner of [people[2], people[7]]) dogs.push({ owner, coat: pick(COATS), phase: rnd() * TAU });
+  // People resting on benches, facing the monument.
+  const benches = plazaBenchSpots();
+  for (const [bi, offsets] of [[0, [-0.36, 0.36]], [3, [0.1]], [5, [-0.2]], [6, [-0.36, 0.36]]]) {
+    const { b, x, z } = benches[bi];
+    for (const lx of offsets) people.push(person({
+      mode: 'sit', y: PLAZA_Y + 0.11, h: Math.atan2(-Math.cos(b), -Math.sin(b)),
+      x: x + lx * Math.sin(b) - 0.02 * Math.cos(b), z: z - lx * Math.cos(b) - 0.02 * Math.sin(b),
+    }));
+  }
+  // A little group chatting on the open stretch of rim between a bench and a
+  // lantern, with their dog sitting beside them.
+  const ga = 1.2, gx = Math.cos(ga) * 14, gz = Math.sin(ga) * 14;
+  for (let k = 0; k < 3; k++) {
+    const th = 0.5 + k * TAU / 3;
+    people.push(person({ mode: 'chat', x: gx + Math.cos(th) * 0.42, z: gz + Math.sin(th) * 0.42, h: Math.atan2(-Math.cos(th), -Math.sin(th)) }));
+  }
+  dogs.push({ owner: null, x: gx - Math.sin(ga) * 0.85, z: gz + Math.cos(ga) * 0.85, h: Math.atan2(Math.sin(ga), -Math.cos(ga)), coat: pick(COATS), phase: 0 });
+
+  const N = people.length;
+  const legGeo = box(0.12, 0.4, 0.14, 0, -0.2, 0);   // pivots at the hip
+  const armGeo = box(0.09, 0.34, 0.1, 0, -0.17, 0);  // pivots at the shoulder
+  const torsoGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.44, 8).translate(0, 0.62, 0);
+  const headGeo = new THREE.IcosahedronGeometry(0.19, 1).translate(0, 1.03, 0);
+  const hairGeo = new THREE.SphereGeometry(0.205, 10, 5, 0, TAU, 0, Math.PI * 0.55).rotateX(-0.45).translate(0, 1.04, 0);
+  const eyesGeo = mergeParts([box(0.035, 0.055, 0.03, 0.065, 1.02, 0.185), box(0.035, 0.055, 0.03, -0.065, 1.02, 0.185)]);
+  const hullGeo = mergeParts([hullOf(torsoGeo, 0.07), hullOf(headGeo, 0.07)]);
+  const cloth = toonMat({ color: 0xffffff }); // tinted per instance
+  const inst = (geo, mat, count, cast = false) => {
+    const m = new THREE.InstancedMesh(geo, mat, count);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.castShadow = cast; m.frustumCulled = false; m.raycast = noRaycast;
+    scene.add(m);
+    return m;
+  };
+  const meshes = {
+    legL: inst(legGeo, cloth, N, true), legR: inst(legGeo, cloth, N, true), armL: inst(armGeo, cloth, N), armR: inst(armGeo, cloth, N),
+    torso: inst(torsoGeo, cloth, N, true), head: inst(headGeo, cloth, N, true), hair: inst(hairGeo, cloth, N),
+    eyes: inst(eyesGeo, new THREE.MeshBasicMaterial({ color: 0x1a1d26 }), N), hull: inst(hullGeo, getOutlineMat(), N),
+  };
+  const col = new THREE.Color();
+  people.forEach((p, i) => {
+    for (const k of ['legL', 'legR']) meshes[k].setColorAt(i, col.setHex(p.pants));
+    for (const k of ['armL', 'armR', 'torso']) meshes[k].setColorAt(i, col.setHex(p.shirt));
+    meshes.head.setColorAt(i, col.setHex(p.skin));
+    meshes.hair.setColorAt(i, col.setHex(p.hair));
+  });
+
+  // Dogs: one merged, vertex-coloured model tinted per instance by its coat.
+  const dogBody = box(0.2, 0.18, 0.42, 0, 0.25, 0), dogHead = box(0.19, 0.18, 0.19, 0, 0.4, 0.25);
+  const dogHull = mergeParts([hullOf(dogBody, 0.07), hullOf(dogHead, 0.07)]);
+  const dogParts = [[dogBody, 0xffffff], [dogHead, 0xffffff],
+    [box(0.1, 0.08, 0.1, 0, 0.36, 0.38), 0xd8d0c4],                                     // snout
+    [box(0.05, 0.04, 0.03, 0, 0.39, 0.435), 0x1a1d26],                                   // nose
+    [box(0.05, 0.1, 0.07, 0.075, 0.5, 0.22), 0x8a7a6a], [box(0.05, 0.1, 0.07, -0.075, 0.5, 0.22), 0x8a7a6a], // ears
+    [box(0.03, 0.04, 0.02, 0.05, 0.44, 0.345), 0x1a1d26], [box(0.03, 0.04, 0.02, -0.05, 0.44, 0.345), 0x1a1d26], // eyes
+    [box(0.045, 0.045, 0.2).rotateX(0.7).translate(0, 0.36, -0.28), 0xffffff],          // tail up
+  ];
+  for (const lx of [-0.07, 0.07]) for (const lz of [-0.14, 0.14]) dogParts.push([box(0.06, 0.17, 0.06, lx, 0.085, lz), 0xffffff]);
+  const dogMesh = inst(mergeParts(dogParts, true), toonMat({ vertexColors: true }), dogs.length, true);
+  const dogInk = inst(dogHull, getOutlineMat(), dogs.length);
+  dogs.forEach((d, i) => dogMesh.setColorAt(i, col.setHex(d.coat)));
+  // Leads, one segment per dog (a loose dog's stays collapsed).
+  const leashGeo = new THREE.BufferGeometry();
+  leashGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dogs.length * 6), 3));
+  const leash = new THREE.LineSegments(leashGeo, new THREE.LineBasicMaterial({ color: 0x2a2320 }));
+  leash.frustumCulled = false; leash.raycast = noRaycast;
+  scene.add(leash);
+  pedestrians = { people, dogs, meshes, dogMesh, dogInk, leash };
 }
 
 // Weather: rain (streaking points) or snow (soft points). Toggleable.
@@ -1238,13 +1879,15 @@ function buildAvatar(user) {
     const size = 256, canvas = document.createElement('canvas');
     canvas.width = canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const r = size / 2 - 10;
+    const r = size / 2 - 16;
     ctx.save();
     ctx.beginPath(); ctx.arc(size / 2, size / 2, r, 0, Math.PI * 2); ctx.clip();
-    ctx.drawImage(img, 10, 10, size - 20, size - 20);
+    ctx.drawImage(img, 16, 16, size - 32, size - 32);
     ctx.restore();
     ctx.lineWidth = 9; ctx.strokeStyle = '#64dedb';
     ctx.beginPath(); ctx.arc(size / 2, size / 2, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 6; ctx.strokeStyle = '#0a0d16'; // ink rim, like every other outline in town
+    ctx.beginPath(); ctx.arc(size / 2, size / 2, r + 7, 0, Math.PI * 2); ctx.stroke();
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     mat.map = tex; mat.color.set(0xffffff); mat.needsUpdate = true;
@@ -1260,7 +1903,7 @@ function buildingAnchor(step, out) {
 
 function updateActor(dt) {
   if (!actor) return;
-  const t = clock.elapsedTime;
+  const t = clock.getElapsed();
   actor.halo.material.opacity = 0.34 + Math.sin(t * 2.2) * 0.1;
   actor.halo.material.rotation = t * 0.3;
   let acting = 0, target = null;
@@ -1354,72 +1997,278 @@ function updateBursts(dt) {
 }
 
 // ---------------------------------------------------------------------------
-// Cars (small colored boxes looping the main boulevard)
+// Cars — cute cel-shaded traffic (sedan, compact, taxi, pickup, van, bus) on
+// the boulevard and on the ring road just outside the plaza. Each car type is
+// five merged geometries built once and every material is shared by the whole
+// fleet, so a city rebuild only re-creates cheap Mesh wrappers.
 // ---------------------------------------------------------------------------
-function buildCars() {
-  for (const c of carGroup.children) { disposeObject(c); }
-  carGroup.clear();
-  const carColors = [0xe05252, 0x52a0e0, 0xe0c052, 0x70d070, 0xd070d0, 0xe08852];
-  const carCount = 8;
-  // Two lanes on the boulevard, one per direction, both hugging the rounded corners.
-  const lanes = [
-    { path: roundedRect(THREE, RING_R + 0.85, RING_CORNER + 0.85, THREE.Path), dir: 1 },
-    { path: roundedRect(THREE, RING_R - 0.85, RING_CORNER - 0.85, THREE.Path), dir: -1 },
-  ];
-  for (let i = 0; i < carCount; i++) {
-    const car = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 1.1, 1.2),
-      toonMat({ color: carColors[i % carColors.length] }));
-    car.castShadow = true;
-    car.add(outlineBox(2.4, 1.1, 1.2, 0.18));
-    const lane = lanes[i % 2];
-    car.userData = { u: (i / carCount), speed: (0.22 + (i % 3) * 0.05) / (Math.PI * 2), lane };
-    carGroup.add(car);
+const CAR_PAINTS = [0xe85d5d, 0x4d9be6, 0x58c99b, 0xf39a4b, 0xa480e0, 0xf2ede2, 0xf08fb8, 0x3fc1ba];
+const BUS_PAINTS = [0xf0714f, 0x3fb6c9, 0x58c99b];
+const TAXI_YELLOW = 0xf6c343;
+const INNER_RING = 2.5 * CELL; // street loop at x, z = ±22.5, just outside the plaza
+let carKit = null;   // shared geometries + materials, built on first use
+let carLanes = [];   // { path, dir, length, cars[] }
+const _tan1 = new THREE.Vector2(), _tan2 = new THREE.Vector2(), _carPt = new THREE.Vector2();
+
+// Side profile (x = length, y = height) with rounded corners, extruded across
+// the width and centred on z.
+function sideExtrude(pts, radii, width) {
+  const s = new THREE.Shape(), n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const [px, py] = pts[i], [ax, ay] = pts[(i + n - 1) % n], [bx, by] = pts[(i + 1) % n];
+    const r = radii[i] || 0;
+    const da = Math.hypot(ax - px, ay - py), db = Math.hypot(bx - px, by - py);
+    const ka = Math.min(r, da / 2) / da, kb = Math.min(r, db / 2) / db;
+    const sx = px + (ax - px) * ka, sy = py + (ay - py) * ka;
+    if (i === 0) s.moveTo(sx, sy); else s.lineTo(sx, sy);
+    if (r > 0) s.quadraticCurveTo(px, py, px + (bx - px) * kb, py + (by - py) * kb);
   }
+  s.closePath();
+  return new THREE.ExtrudeGeometry(s, { depth: width, bevelEnabled: false, curveSegments: 4 }).translate(0, 0, -width / 2);
+}
+
+// One car type: rounded body, glass greenhouse with a painted roof and pillars,
+// wheels with hub caps, bumpers, head/tail lights and an ink hull.
+// Local frame: +x forward, y up from the road, centred on x and z.
+function makeCarType(o) {
+  const { L, W, wr, wheelX, y0, y1, rf, rb, cab } = o;
+  const x0 = -L / 2, x1 = L / 2, wc = W - 0.16;
+  const paint = [], fixed = [], head = [], tail = [], hull = [];
+  const body = sideExtrude([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], [0.08, 0.08, rf, rb], W);
+  const cabin = sideExtrude([[cab.rb, y1 - 0.02], [cab.fb, y1 - 0.02], [cab.ft, cab.top], [cab.rt, cab.top]], [0, 0, 0.14, 0.12], wc);
+  hull.push(hullOf(body, 0.16), hullOf(cabin, 0.14));
+  paint.push(body, box(cab.ft - cab.rt + 0.1, 0.1, wc + 0.06, (cab.ft + cab.rt) / 2, cab.top - 0.02, 0)); // roof
+  for (const px of cab.pillars) paint.push(box(0.12, cab.top - y1, wc + 0.03, px, (cab.top + y1) / 2, 0));
+  fixed.push([cabin, 0x9ad3ea]);
+  for (const x of wheelX) for (const s of [-1, 1]) {
+    const z = s * (W / 2 - 0.1);
+    fixed.push([new THREE.CylinderGeometry(wr, wr, 0.26, 12).rotateX(Math.PI / 2).translate(x, wr, z), 0x1d212b]);
+    fixed.push([new THREE.CylinderGeometry(wr * 0.46, wr * 0.46, 0.3, 8).rotateX(Math.PI / 2).translate(x, wr, z), 0xcfd5de]);
+  }
+  for (const bx of [x1 + 0.01, x0 - 0.01]) fixed.push([box(0.14, 0.16, W - 0.08, bx, y0 + 0.1, 0), 0x363c4a]);
+  const ly = o.lampY ?? y0 + (y1 - y0) * 0.55;
+  for (const s of [-1, 1]) {
+    head.push(box(0.08, 0.14, 0.26, x1 - 0.01, ly, s * (W / 2 - 0.25)));
+    tail.push(box(0.08, 0.13, 0.22, x0 + 0.01, ly, s * (W / 2 - 0.22)));
+  }
+  o.extra?.({ paint, fixed, head, hull, x0, x1, W, wc });
+  return { L, paint: mergeParts(paint), fixed: mergeParts(fixed, true), head: mergeParts(head), tail: mergeParts(tail), hull: mergeParts(hull) };
+}
+
+function getCarKit() {
+  if (carKit) return carKit;
+  const shared = m => { m.userData.shared = true; return m; };
+  const sedan = { L: 2.6, W: 1.3, wr: 0.3, wheelX: [-0.85, 0.85], y0: 0.22, y1: 0.8, rf: 0.26, rb: 0.2,
+    cab: { rb: -1.0, fb: 0.46, rt: -0.76, ft: 0.08, top: 1.3, pillars: [-0.32] } };
+  const types = {
+    sedan: makeCarType(sedan),
+    taxi: makeCarType({ ...sedan, extra: ({ head, fixed }) => {
+      head.push(box(0.5, 0.2, 0.34, -0.34, 1.43, 0));             // lit roof sign
+      fixed.push([box(2.0, 0.09, 1.32, 0, 0.64, 0), 0x2a2f3a]);     // dark side band
+    } }),
+    compact: makeCarType({ L: 2.1, W: 1.22, wr: 0.28, wheelX: [-0.68, 0.68], y0: 0.2, y1: 0.72, rf: 0.3, rb: 0.24,
+      cab: { rb: -0.9, fb: 0.4, rt: -0.8, ft: -0.02, top: 1.3, pillars: [-0.38] } }),
+    pickup: makeCarType({ L: 2.8, W: 1.34, wr: 0.33, wheelX: [-0.92, 0.92], y0: 0.26, y1: 0.84, rf: 0.24, rb: 0.08,
+      cab: { rb: -0.22, fb: 0.74, rt: -0.22, ft: 0.38, top: 1.44, pillars: [] },
+      extra: ({ paint, fixed, hull, x0, W }) => {
+        fixed.push([box(1.12, 0.04, W - 0.2, -0.8, 0.855, 0), 0x3a3f4c]); // open bed
+        for (const s of [-1, 1]) paint.push(box(1.18, 0.18, 0.08, -0.8, 0.93, s * (W / 2 - 0.04)));
+        paint.push(box(0.08, 0.18, W, x0 + 0.04, 0.93, 0));
+        hull.push(hullOf(box(1.26, 0.18, W, -0.76, 0.93, 0), 0.12));
+      } }),
+    van: makeCarType({ L: 2.9, W: 1.4, wr: 0.32, wheelX: [-0.95, 0.98], y0: 0.25, y1: 0.85, rf: 0.3, rb: 0.12,
+      cab: { rb: -1.43, fb: 1.02, rt: -1.43, ft: 0.62, top: 1.72, pillars: [] },
+      extra: ({ paint, fixed, wc }) => {
+        paint.push(box(1.52, 0.87, wc + 0.04, -0.69, 1.285, 0));          // cargo box behind the cab
+        fixed.push([box(1.44, 0.12, wc + 0.06, -0.69, 1.2, 0), 0xf4efe4]); // livery stripe
+      } }),
+    bus: makeCarType({ L: 4.8, W: 1.5, wr: 0.34, wheelX: [-1.55, 1.5], y0: 0.3, y1: 1.0, rf: 0.2, rb: 0.16, lampY: 0.55,
+      cab: { rb: -2.32, fb: 2.34, rt: -2.32, ft: 2.28, top: 1.74, pillars: [-1.65, -0.85, -0.05, 0.75, 1.55] },
+      extra: ({ fixed, head }) => {
+        fixed.push([box(4.5, 0.14, 1.52, 0, 0.62, 0), 0xf4efe4]);          // livery band
+        head.push(box(0.05, 0.14, 0.9, 2.3, 1.6, 0));                      // destination sign
+      } }),
+  };
+  // Headlight pools: a trapezoid on the road (u along the beam, v across it)
+  // with a soft canvas falloff, so it reads as light rather than a decal.
+  const beamGeo = new THREE.BufferGeometry();
+  beamGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0.06, -0.45, 0, 0.06, 0.45, 5, 0.06, 1.6, 5, 0.06, -1.6], 3));
+  beamGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 1, 1, 0], 2));
+  beamGeo.setIndex([0, 1, 2, 0, 2, 3]);
+  beamGeo.userData.shared = true;
+  const bc = document.createElement('canvas');
+  bc.width = bc.height = 64;
+  const bctx = bc.getContext('2d'), img = bctx.createImageData(64, 64);
+  for (let j = 0; j < 64; j++) for (let i = 0; i < 64; i++) {
+    const u = i / 63, v = j / 63, k = (j * 64 + i) * 4;
+    const a = Math.pow(1 - u, 1.5) * Math.min(1, u * 8) * (1 - Math.pow(Math.abs(v * 2 - 1), 2.5));
+    img.data.set([255, 236, 190, Math.round(a * 255)], k);
+  }
+  bctx.putImageData(img, 0, 0);
+  const beamTex = new THREE.CanvasTexture(bc);
+  beamTex.colorSpace = THREE.SRGBColorSpace;
+  const paints = new Map();
+  carKit = {
+    types, beamGeo,
+    paint: hex => paints.get(hex) || paints.set(hex, shared(toonMat({ color: hex }))).get(hex),
+    fixed: shared(toonMat({ vertexColors: true })),
+    head: shared(toonMat({ color: 0xfff6d8, emissive: 0xffe2a0, emissiveIntensity: 0.2 })),
+    tail: shared(toonMat({ color: 0xe0443e, emissive: 0xff3b30, emissiveIntensity: 0.15 })),
+    beam: shared(new THREE.MeshBasicMaterial({
+      map: beamTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    })),
+  };
+  return carKit;
+}
+
+function makeCar(kind, hex) {
+  const kit = getCarKit(), t = kit.types[kind];
+  const paint = new THREE.Mesh(t.paint, kit.paint(hex)), fixed = new THREE.Mesh(t.fixed, kit.fixed);
+  paint.castShadow = fixed.castShadow = true;
+  const body = new THREE.Group(); // leans into corners; the headlight pool stays on the road
+  body.add(paint, fixed, new THREE.Mesh(t.head, kit.head), new THREE.Mesh(t.tail, kit.tail), new THREE.Mesh(t.hull, getOutlineMat()));
+  const beam = new THREE.Mesh(kit.beamGeo, kit.beam);
+  beam.position.x = t.L / 2 - 0.1;
+  const car = new THREE.Group();
+  car.add(body, beam);
+  car.traverse(o => { if (o.isMesh) o.raycast = noRaycast; });
+  car.userData = { body, len: t.L };
+  return car;
+}
+
+function buildCars(user) {
+  // Cars only wrap the shared kit, so clearing them has nothing to dispose.
+  carGroup.clear();
+  const rnd = seededRandom(hashStr(`traffic:${user?.login || ''}`));
+  const shuffle = a => {
+    for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+    return a;
+  };
+  const boulevard = shuffle(['sedan', 'compact', 'taxi', 'van', 'pickup', 'bus', 'sedan', 'compact', 'taxi', 'van', 'compact', 'sedan']);
+  const inner = shuffle(['compact', 'sedan', 'taxi', 'van']);
+  const paints = shuffle([...CAR_PAINTS, ...CAR_PAINTS]);
+  // Right-hand traffic: each loop's outer lane runs one way, its inner lane the other.
+  // The boulevard lanes follow the city footprint (smooth closed curves 0.85
+  // either side of its centreline); the inner loop hugs the plaza.
+  const L = cityLayout || makeCityLayout('square');
+  const specs = [
+    { path: boulevardLane(L, 0.85), dir: -1, kinds: boulevard.slice(0, 6), speed: 10 },
+    { path: boulevardLane(L, -0.85), dir: 1, kinds: boulevard.slice(6), speed: 10 },
+    { path: roundedRect(THREE, INNER_RING + 0.8, 2.8, THREE.Path), dir: -1, kinds: inner.slice(0, 2), speed: 6.5 },
+    { path: roundedRect(THREE, INNER_RING - 0.8, 1.2, THREE.Path), dir: 1, kinds: inner.slice(2), speed: 6.5 },
+  ];
+  carLanes = specs.map(spec => {
+    const path = spec.path;
+    const lane = { path, dir: spec.dir, length: path.getLength(), cars: [] };
+    spec.kinds.forEach((kind, k) => {
+      const hex = kind === 'taxi' ? TAXI_YELLOW
+        : kind === 'bus' ? BUS_PAINTS[Math.floor(rnd() * BUS_PAINTS.length)] : paints.pop();
+      const car = makeCar(kind, hex), d = car.userData;
+      d.u = (k + 0.15 + rnd() * 0.5) / spec.kinds.length;
+      d.speed = spec.speed * (kind === 'bus' ? 0.8 : 0.88 + rnd() * 0.24);
+      d.v = d.speed; d.roll = 0; d.yaw = null;
+      lane.cars.push(car);
+      carGroup.add(car);
+    });
+    return lane;
+  });
+  updateCars(0);
 }
 
 function updateCars(dt) {
-  for (const car of carGroup.children) {
-    const d = car.userData;
-    d.u = (d.u + d.speed * d.lane.dir * dt + 1) % 1;
-    const p = d.lane.path.getPointAt(d.u), tan = d.lane.path.getTangentAt(d.u);
-    car.position.set(p.x, 0.7, p.y);
-    car.rotation.y = Math.atan2(-tan.y * d.lane.dir, tan.x * d.lane.dir);
+  const wrap = u => ((u % 1) + 1) % 1;
+  for (const { path, dir, length, cars } of carLanes) {
+    for (const car of cars) {
+      const d = car.userData;
+      // Keep a gap to the car ahead in this lane, so slow cars bunch traffic up.
+      let gap = Infinity;
+      for (const o of cars) {
+        if (o !== car) gap = Math.min(gap, wrap((o.userData.u - d.u) * dir) * length - (o.userData.len + d.len) / 2);
+      }
+      // Ease off into the rounded corners: compare the heading 6 units ahead.
+      path.getTangentAt(d.u, _tan1);
+      path.getTangentAt(wrap(d.u + dir * 6 / length), _tan2);
+      const bend = Math.min(1, Math.acos(THREE.MathUtils.clamp(_tan1.dot(_tan2), -1, 1)) / (Math.PI / 2));
+      const want = d.speed * (1 - 0.4 * bend) * THREE.MathUtils.smoothstep(gap, 1.2, 7);
+      d.v += (want - d.v) * Math.min(1, dt * (want < d.v ? 4 : 1.5)); // brake harder than it accelerates
+      d.u = wrap(d.u + dir * d.v * dt / length);
+      path.getPointAt(d.u, _carPt);
+      path.getTangentAt(d.u, _tan1);
+      const yaw = Math.atan2(-_tan1.y * dir, _tan1.x * dir);
+      if (d.yaw === null) d.yaw = yaw;
+      const dyaw = Math.atan2(Math.sin(yaw - d.yaw), Math.cos(yaw - d.yaw));
+      d.yaw = yaw;
+      // Cartoon suspension: the body leans out of the turn a touch.
+      const lean = dt > 0 ? THREE.MathUtils.clamp(dyaw / dt * 0.045, -0.09, 0.09) : 0;
+      d.roll += (lean - d.roll) * Math.min(1, dt * 6);
+      car.position.set(_carPt.x, 0.09, _carPt.y);
+      car.rotation.y = yaw;
+      d.body.rotation.x = d.roll;
+    }
   }
 }
 
 // ---- enhancement motion (all guarded, cheap) -----------------------------
 function updateFountain() {
-  if (!fountain) return;
-  fountain.updateWater(clock.elapsedTime);
-  // Animate droplet arcs around the basin.
-  const { droplets, seed, N } = fountain.group.userData;
-  const pos = droplets.geometry.attributes.position.array;
-  for (let i = 0; i < N; i++) {
-    const t = (clock.elapsedTime * 0.8 + seed[i]) % 1;
-    const ang = seed[i] * Math.PI * 2;
-    const r = t * 1.8;
-    pos[i*3] = Math.cos(ang) * r;
-    pos[i*3+1] = 0.6 + Math.sin(t * Math.PI) * 2.2;
-    pos[i*3+2] = Math.sin(ang) * r;
-  }
-  droplets.geometry.attributes.position.needsUpdate = true;
+  if (fountain?.update) fountain.update(clock.getElapsed(), dayFactor);
 }
 function updatePedestrians(dt) {
-  if (!pedestrians) return;
-  const { bodies, heads, data, N } = pedestrians;
-  const m = new THREE.Matrix4();
-  for (let i = 0; i < N; i++) {
-    const d = data[i];
-    d.angle += d.speed * dt;
-    const x = Math.cos(d.angle) * d.radius, z = Math.sin(d.angle) * d.radius;
-    const bob = Math.sin(clock.elapsedTime * 6 + d.phase) * 0.05;
-    m.makeTranslation(x, 0.75 + bob, z); bodies.setMatrixAt(i, m);
-    m.makeTranslation(x, 1.25 + bob, z); heads.setMatrixAt(i, m);
-
-  }
-  bodies.instanceMatrix.needsUpdate = true;
-  heads.instanceMatrix.needsUpdate = true;
+  if (!pedestrians?.people) return;
+  const { people, dogs, meshes, dogMesh, dogInk, leash } = pedestrians, t = clock.getElapsed();
+  const limb = (mesh, i, x, y, ax, az) => {
+    _pl.copy(_pm).multiply(_pt.makeTranslation(x, y, 0)).multiply(_pr.makeRotationFromEuler(_pe.set(ax, 0, az, 'ZYX')));
+    mesh.setMatrixAt(i, _pl);
+  };
+  people.forEach((p, i) => {
+    let y = PLAZA_Y, h = p.h, swing = 0, leg = 0, arm = 0, wave = 0;
+    if (p.mode === 'walk') {
+      p.a += p.w * dt;
+      p.phase += p.v * 8 * dt;
+      p.x = Math.cos(p.a) * p.r; p.z = Math.sin(p.a) * p.r;
+      h = p.h = p.w > 0 ? -p.a : Math.PI - p.a;
+      swing = Math.sin(p.phase);
+      y += Math.abs(Math.cos(p.phase)) * 0.045; // step bob
+    } else if (p.mode === 'sit') {
+      y = p.y; leg = -1.35; arm = -0.3;
+      swing = Math.sin(t * 1.4 + p.phase) * 0.12; // idly swinging feet
+    } else {
+      // Chatting: a gentle sway, and every so often an arm goes up mid-story.
+      h += Math.sin(t * 0.6 + p.phase) * 0.12;
+      y += Math.max(0, Math.sin(t * 2.2 + p.phase)) * 0.02;
+      wave = -1.9 * Math.pow(Math.max(0, Math.sin(t * 0.9 + p.phase * 2)), 4);
+    }
+    _pm.makeRotationY(h).setPosition(p.x, y, p.z);
+    for (const k of ['torso', 'head', 'hair', 'eyes', 'hull']) meshes[k].setMatrixAt(i, _pm);
+    const legSwing = p.mode === 'walk' ? swing * 0.55 : swing;
+    limb(meshes.legL, i, 0.075, 0.4, leg + legSwing, 0);
+    limb(meshes.legR, i, -0.075, 0.4, leg - legSwing, 0);
+    limb(meshes.armL, i, 0.22, 0.8, arm - swing * 0.5, 0.12);
+    limb(meshes.armR, i, -0.22, 0.8, arm + swing * 0.5 + wave, -0.12);
+  });
+  for (const m of Object.values(meshes)) m.instanceMatrix.needsUpdate = true;
+  const lp = leash.geometry.attributes.position.array;
+  dogs.forEach((d, i) => {
+    const o = d.owner;
+    let x = d.x, z = d.z, h = d.h, y = PLAZA_Y;
+    if (o) {
+      // Trots a step behind its owner, on the open side of the promenade.
+      const side = o.w > 0 ? 0.45 : -0.45, a = o.a - Math.sign(o.w) * 0.8 / o.r;
+      x = Math.cos(a) * (o.r + side); z = Math.sin(a) * (o.r + side); h = o.h;
+      y += Math.abs(Math.sin(o.phase * 1.3 + d.phase)) * 0.06;
+      // Lead from the owner's hand on that side to the collar.
+      const hs = Math.sign(side) * 0.26;
+      lp.set([o.x + Math.cos(o.a) * hs, PLAZA_Y + 0.5, o.z + Math.sin(o.a) * hs,
+        x + Math.sin(h) * 0.22, y + 0.34, z + Math.cos(h) * 0.22], i * 6);
+    } else {
+      h += Math.sin(t * 3) * 0.08;
+      y += Math.abs(Math.sin(t * 5)) * 0.015;
+    }
+    _pm.makeRotationY(h).setPosition(x, y, z);
+    dogMesh.setMatrixAt(i, _pm);
+    dogInk.setMatrixAt(i, _pm);
+  });
+  dogMesh.instanceMatrix.needsUpdate = dogInk.instanceMatrix.needsUpdate = true;
+  leash.geometry.attributes.position.needsUpdate = true;
 }
 function updateWeather(dt) {
   if (!weather || weather.mode === 'clear') return;
@@ -1430,7 +2279,7 @@ function updateWeather(dt) {
     data[i].y -= data[i].speed * dt;
     if (data[i].y < 0) data[i].y = 60;
     pos[i*3+1] = data[i].y;
-    pos[i*3] += Math.sin(clock.elapsedTime + data[i].drift) * dt * 2;
+    pos[i*3] += Math.sin(clock.getElapsed() + data[i].drift) * dt * 2;
   }
   geo.attributes.position.needsUpdate = true;
   // stretch rain into streaks via scale (cheap fake)
@@ -1451,7 +2300,7 @@ function updateShuttles(dt) {
 }
 function updateBeams(dt) {
   if (!forkBeams) return;
-  const t = clock.elapsedTime;
+  const t = clock.getElapsed();
   for (const b of forkBeams.beams) b.material.opacity = 0.3 + Math.sin(t * 2) * 0.15;
 }
 
@@ -1464,19 +2313,23 @@ function applyDayFactor(t) {
   const day = THREE.MathUtils.clamp(elev, 0, 1);     // 0..1 daylight amount
   dayFactor = day;
 
-  // Sun / moon
+  // Sun / moon. Nights are moonlit, not black: a strong cool key light from the
+  // moon plus a lifted sky fill, so the island still reads after dark.
   sun.intensity = 0.15 + day * 1.35;
-  moon.intensity = 0.08 + (1 - day) * 0.22;
-  hemi.intensity = 0.45 + day * 0.8;
+  moon.intensity = 0.08 + (1 - day) * 1.15;
+  hemi.intensity = 0.75 + day * 0.5;
 
-  // Sky dome + fog lerp: deep night blue -> warm daytime. The dome shader
+  // Sky dome + fog lerp: moonlit night blue -> warm daytime. The dome shader
   // paints the sky; we only lerp the fog color to match its horizon.
   if (skyDome) skyDome.setDay(day);
-  const nightFog = new THREE.Color(0x0b111a);
+  const nightFog = new THREE.Color(0x17223a);
   const dayFog = new THREE.Color(0xcfe4f4);
   const fog = nightFog.clone().lerp(dayFog, day);
   if (scene.fog) scene.fog.color.copy(fog);
-  for (const e of envPalette) e.mat.color.copy(e.night).lerp(e.day, day);
+  // Materials never fall all the way to their night colour: moonlight keeps
+  // ~30% of the day palette (world.js uses the same floor for its cutouts).
+  const lit = day + (1 - day) * 0.3;
+  for (const e of envPalette) e.mat.color.copy(e.night).lerp(e.day, lit);
   hemi.groundColor.setHex(0x1a1410).lerp(_tmpColor.setHex(0x5f9a58), day);
   world?.setDay(day);
 
@@ -1484,14 +2337,14 @@ function applyDayFactor(t) {
   const glow = Math.pow(1 - day, 1.6);
   // Lit panes come from each facade's emissive mask; a beam hit flares them.
   for (const b of buildingMeshes) {
-    const flick = 0.92 + Math.sin(clock.elapsedTime * 0.7 + b.flicker) * 0.08;
+    const flick = 0.92 + Math.sin(clock.getElapsed() * 0.7 + b.flicker) * 0.08;
     const inten = glow * flick * 1.15 + (b.pulse || 0) * 1.8;
     for (const m of b.bodyMats) m.emissiveIntensity = inten;
   }
   // "Office party" windows pulse a little above the base glow, and warm
   // windows get a faint per-building flicker so the skyline feels alive.
   for (const wp of windowPulse) {
-    wp.mat.emissiveIntensity = glow * (0.9 + Math.sin(clock.elapsedTime * 3 + wp.phase) * 0.5);
+    wp.mat.emissiveIntensity = glow * (0.9 + Math.sin(clock.getElapsed() * 3 + wp.phase) * 0.5);
   }
   // Streetlamps + plaza neon flare up at night; their light cones fade in too.
   if (lampGroup) {
@@ -1500,6 +2353,14 @@ function applyDayFactor(t) {
   }
   const beacon = cityGroup.userData.beacon;
   if (beacon) beacon.material.emissiveIntensity = 0.6 + glow * 1.2;
+  plazaFx?.setGlow(glow);
+  // Car head/tail lights come on at dusk; headlight pools appear on the road.
+  if (carKit) {
+    carKit.head.emissiveIntensity = 0.2 + glow * 1.8;
+    carKit.tail.emissiveIntensity = 0.15 + glow * 1.5;
+    carKit.beam.opacity = glow * 0.5;
+    carKit.beam.visible = glow > 0.02;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1896,6 +2757,7 @@ function wireUI() {
   syncBars();
   window.addEventListener('keydown', (e) => {
     if (e.target.closest?.('input, textarea, [contenteditable=true]')) return;
+    if (explorer?.wantsKey(e)) return; // exploring: Space jumps/drifts, T is ignored (Esc and V still pass)
     if (e.key === 't' || e.key === 'T') { tour.active ? endTour() : startTour(); }
     else if (e.key === ' ') { e.preventDefault(); setPlaying(!play.playing); }
     else if (e.key === 'Escape') { endTour(); closePanel(); setMenu(false); setProfile(false); }
@@ -1916,15 +2778,16 @@ function wireUI() {
 // ---------------------------------------------------------------------------
 // Render loop
 // ---------------------------------------------------------------------------
-function animate() {
+function animate(timestamp) {
   requestAnimationFrame(animate);
+  clock.update(timestamp);
   const dt = Math.min(clock.getDelta(), 0.05);
 
   // Day/night: 'auto' follows the viewer's clock, 'cycle' is the 60s demo loop.
   if (dayMode === 'auto') {
     applyDayFactor(localClockPhase());
   } else if (dayMode === 'cycle') {
-    const t = ((clock.elapsedTime % DAY_CYCLE_SECONDS) / DAY_CYCLE_SECONDS);
+    const t = ((clock.getElapsed() % DAY_CYCLE_SECONDS) / DAY_CYCLE_SECONDS);
     applyDayFactor(t);
   } else if (dayMode === 'day') {
     applyDayFactor(0.0);
@@ -1934,6 +2797,7 @@ function animate() {
 
   updateCars(dt);
   updateFountain();
+  updatePlaza(dt);
   updatePedestrians(dt);
   updateWeather(dt);
   updateShuttles(dt);
@@ -1946,14 +2810,18 @@ function animate() {
     updateTransport();
   }
   updateActor(dt);
-  world?.update(dt, clock.elapsedTime, camera, controls.target);
-  if (dust) { dust.update(dt, clock.elapsedTime); dust.setNight(1 - dayFactor); }
-  if (skyDome) skyDome.setTime(clock.elapsedTime);
+  world?.update(dt, clock.getElapsed(), camera, controls.target);
+  if (dust) { dust.update(dt, clock.getElapsed()); dust.setNight(1 - dayFactor); }
+  if (skyDome) skyDome.setTime(clock.getElapsed());
 
+  // Explore modes (explore.js) drive the camera while active (and while gliding
+  // back to orbit): the tour, camGoal glide, follow and controls.update() stand down.
+  const exploring = explorer ? explorer.update(dt, clock.getElapsed()) : false;
   // Cinematic fly-through (drives the camera; OrbitControls paused while active)
-  if (tour.active) updateTour(dt);
+  if (tour.active && !exploring) updateTour(dt);
 
-  if (!tour.active) {
+  if (exploring) { /* explore.js placed the camera this frame */ }
+  else if (!tour.active) {
     if (camGoal) {
       const k = 1 - Math.exp(-dt * 3);
       controls.target.lerp(camGoal.target, k);
@@ -1968,8 +2836,8 @@ function animate() {
   } else camera.lookAt(controls.target);
   districtSigns?.group.children.forEach(sign => sign.quaternion.copy(camera.quaternion));
   // TV wins over FX (it has its own grade); otherwise FX or a plain render.
-  if (tvOn && crtPass) crtPass.render(clock.elapsedTime);
-  else if (fxOn && postPass) postPass.render(clock.elapsedTime, dayFactor);
+  if (tvOn && crtPass) crtPass.render(clock.getElapsed());
+  else if (fxOn && postPass) postPass.render(clock.getElapsed(), dayFactor);
   else renderer.render(scene, camera);
 }
 
@@ -2000,7 +2868,7 @@ function setLoadStatus(msg) {
 }
 function disposeObject(obj) {
   obj.traverse(o => {
-    if (o.geometry) o.geometry.dispose();
+    if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose();
     if (o.material) {
       (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
         if (m.userData.shared) return;
@@ -2063,7 +2931,13 @@ async function loadCity(login) {
       }
     }
     if (version !== cityVersion) return;
+    // The block's footprint and the island around it are generated from the
+    // profile (same login, same city): shape from the login, biome from the
+    // top language, attractions from fame.
+    setCityLayout(cityLayoutFor(user, repos));
+    world.setProfile({ user, repos }, cityLayout.city);
     const visibleRepos = buildCity(repos, user);
+    explorer?.resetColliders(); // new buildings: re-box them (an active walk/drive keeps going, nudged clear)
     renderExplorer(user, visibleRepos);
     const url = new URL(location.href);
     url.searchParams.set('user', user.login);
@@ -2098,6 +2972,16 @@ function main() {
   initScene();
   buildEnvironment();
   world = createWorld(THREE, scene, { envMat, seededRandom, DISTRICT, CELL, slabHalf: SLAB_HALF, slabRadius: SLAB_R });
+  // Explore modes (explore.js): walk / drive / fly. Wires the #explore-btn menu, keys 1-4 and its own HUD.
+  explorer = createExplorer(THREE, {
+    scene, camera, renderer, controls, envMat, ink: getOutlineMat(),
+    heightAt: (x, z) => world.heightAt(x, z),
+    colliders: () => buildingMeshes.flatMap(b => b.bodies), // building bodies, boxed once per city
+    dayFactor: () => dayFactor,
+    slabHalf: SLAB_HALF, slabRadius: SLAB_R, ringHalf: RING_R, ringCorner: RING_CORNER, cell: CELL, plazaRadius: PLAZA_R,
+    layout: () => cityLayout, // live footprint (dist / contour / streets) for slab bounds and spawn points
+    onModeChange: (mode) => { if (mode !== 'orbit') { endTour(); camGoal = null; } setMenu(false); },
+  });
   buildStreetlamps();
   buildFountain();
   buildPedestrians();
@@ -2116,7 +3000,7 @@ function main() {
   document.getElementById('search-input').value = startUser;
   animate();
   loadCity(startUser);
-  window.__city = { scene, world, camera, controls }; // debug handle
+  window.__city = { scene, world, camera, controls, explorer }; // debug handle
 }
 
 main();
