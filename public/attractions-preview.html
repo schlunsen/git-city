@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Git City — attractions preview</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cfe4f4; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  canvas { display: block; }
+  #hud { position: fixed; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; max-width: 70vw; }
+  #hud button { font: inherit; border: 1px solid #0e1420; background: #f1f4f9; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+  #hud button.on { background: #64dedb; }
+  #stats { position: fixed; right: 10px; top: 10px; background: rgba(14,20,32,.8); color: #f1f4f9; padding: 8px 10px; border-radius: 8px; white-space: pre; }
+  #hint { position: fixed; left: 10px; bottom: 10px; color: #0e1420; opacity: .7; }
+  body.clean #hud, body.clean #stats, body.clean #hint { display: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="hud"></div>
+<div id="stats"></div>
+<div id="hint">N night · Space pause · 0 overview · 1-9 focus · drag to orbit</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ATTRACTIONS } from './attractions.js';
+
+// Query params: ?focus=<key> ?night=1 ?t=<prewarm seconds> ?pause=1 ?az=<deg> ?el=<deg> ?dist=<x radius> ?seed=<n> ?clean=1
+const Q = new URLSearchParams(location.search);
+if (Q.get('clean')) document.body.classList.add('clean');
+
+// Same 4-band ramp as app.js getToonRamp().
+const ramp = new THREE.DataTexture(new Uint8Array([98, 98, 98, 255, 152, 152, 152, 255, 218, 218, 218, 255, 255, 255, 255, 255]), 4, 1, THREE.RGBAFormat);
+ramp.minFilter = ramp.magFilter = THREE.NearestFilter;
+ramp.generateMipmaps = false;
+ramp.needsUpdate = true;
+
+const palette = [];
+function envMat(night, day, extra = {}) {
+  const m = new THREE.MeshToonMaterial({ color: day, gradientMap: ramp, ...extra });
+  palette.push({ m, night: new THREE.Color(night), day: new THREE.Color(day) });
+  return m;
+}
+const ink = new THREE.MeshBasicMaterial({ color: 0x0a0d16, side: THREE.BackSide });
+function mulberry32(a) {
+  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const rnd = mulberry32(Number(Q.get('seed') || 0xA77));
+const kit = { THREE, envMat, ink, rnd };
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 2000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+
+const hemi = new THREE.HemisphereLight(0xbfd4ff, 0x5f9a58, 1.25);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1d6, 1.5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 260 });
+sun.shadow.bias = -0.0004;
+scene.add(sun, sun.target);
+const moon = new THREE.DirectionalLight(0x8aa2ff, 0.25);
+moon.position.set(-50, 70, -30);
+scene.add(moon);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1200, 400), envMat(0x1e3326, 0x7cc55a));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Lay every attraction out in a row.
+const items = [];
+let cursor = 0;
+for (const a of ATTRACTIONS) {
+  const t0 = performance.now();
+  const obj = a.build(kit, {});
+  const ms = performance.now() - t0;
+  const r = obj.radius ?? a.radius;
+  cursor += r;
+  obj.group.position.set(cursor, 0, 0);
+  cursor += r + 6;
+  scene.add(obj.group);
+  let tris = 0, draws = 0;
+  obj.group.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    const g = o.geometry, n = (g.index ? g.index.count : g.attributes.position.count) / 3;
+    tris += n * (o.isInstancedMesh ? o.count : 1); draws++;
+  });
+  const box = new THREE.Box3().setFromObject(obj.group);
+  items.push({ ...a, obj, r, tris, draws, h: box.max.y, ms });
+}
+const totalW = cursor;
+
+const stats = items.map((i) => `${i.key.padEnd(15)} r=${String(i.r).padEnd(4)} h=${i.h.toFixed(1).padStart(5)} tris=${String(Math.round(i.tris)).padStart(5)} draws=${String(i.draws).padStart(3)} ${i.ms.toFixed(1)}ms`).join('\n');
+document.getElementById('stats').textContent = stats;
+console.log('[attractions]\n' + stats);
+
+// Focus / framing.
+const hud = document.getElementById('hud');
+function frame(item) {
+  const az = THREE.MathUtils.degToRad(Number(Q.get('az') ?? 35));
+  const el = THREE.MathUtils.degToRad(Number(Q.get('el') ?? 24));
+  const dist = Number(Q.get('dist') ?? 1);
+  let target, d;
+  if (!item) {
+    target = new THREE.Vector3(totalW / 2, 4, 0);
+    d = totalW * 0.62 * dist;
+  } else {
+    target = item.obj.group.position.clone().add(new THREE.Vector3(0, Math.min(item.h * 0.42, 9), 0));
+    d = Math.max(item.r * 2.3, item.h * 1.5, 12) * dist;
+  }
+  camera.position.set(target.x + Math.sin(az) * Math.cos(el) * d, target.y + Math.sin(el) * d, target.z + Math.cos(az) * Math.cos(el) * d);
+  controls.target.copy(target);
+  controls.update();
+  sun.target.position.set(target.x, 0, target.z);
+  sun.position.set(target.x + 40, 90, target.z + 30);
+  const s = item ? Math.max(item.r * 1.6, item.h, 20) : totalW / 2 + 10;
+  Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s });
+  sun.shadow.camera.updateProjectionMatrix();
+  for (const b of hud.querySelectorAll('button[data-k]')) b.classList.toggle('on', b.dataset.k === (item?.key ?? ''));
+}
+const mkBtn = (label, k, fn) => { const b = document.createElement('button'); b.textContent = label; b.dataset.k = k; b.onclick = fn; hud.appendChild(b); return b; };
+mkBtn('overview', '', () => frame(null));
+items.forEach((it, i) => mkBtn(`${i + 1} ${it.key}`, it.key, () => frame(it)));
+const nightBtn = mkBtn('night', 'night-toggle', () => setNight(!night));
+
+let night = false;
+function setNight(on) {
+  night = on;
+  nightBtn.classList.toggle('on', on);
+  for (const p of palette) p.m.color.copy(on ? p.night : p.day);
+  scene.background = new THREE.Color(on ? 0x0b111a : 0xcfe4f4);
+  hemi.intensity = on ? 0.45 : 1.25;
+  hemi.groundColor.setHex(on ? 0x1a1410 : 0x5f9a58);
+  sun.intensity = on ? 0.15 : 1.5;
+  moon.intensity = on ? 0.3 : 0.08;
+}
+setNight(!!Q.get('night'));
+frame(items.find((i) => i.key === Q.get('focus')) || null);
+
+addEventListener('keydown', (e) => {
+  if (e.key === 'n' || e.key === 'N') setNight(!night);
+  else if (e.key === ' ') paused = !paused;
+  else if (e.key === '0') frame(null);
+  else if (/^[1-9]$/.test(e.key) && items[+e.key - 1]) frame(items[+e.key - 1]);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// Animation: optional deterministic prewarm (?t=seconds), then real time.
+let elapsed = 0, paused = !!Q.get('pause');
+const prewarm = Number(Q.get('t') || 0);
+while (elapsed < prewarm) { elapsed += 1 / 30; for (const it of items) it.obj.update(1 / 30, elapsed); }
+for (const it of items) it.obj.update(0, elapsed);
+
+const timer = new THREE.Timer();
+timer.connect(document);
+renderer.setAnimationLoop((ts) => {
+  timer.update(ts);
+  const dt = Math.min(timer.getDelta(), 0.1);
+  if (!paused) { elapsed += dt; for (const it of items) it.obj.update(dt, elapsed); }
+  controls.update();
+  renderer.render(scene, camera);
+});
+window.__preview = { items, setNight, frame };
+</script>
+</body>
+</html>
