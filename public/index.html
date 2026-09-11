@@ -235,9 +235,27 @@
   #panel-lang .dot { width: 10px; height: 10px; border-radius: 50%; }
   #panel-link { display: block; text-align: center; text-decoration: none; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 13px; padding: 11px; border-radius: 8px; }
   #panel-link:hover { filter: brightness(1.08); }
-  #panel-gource { display: block; text-align: center; text-decoration: none; margin-top: 8px; padding: 10px; border-radius: 8px;
+  #panel-gource { display: block; width: 100%; cursor: pointer; font: inherit; text-align: center; text-decoration: none; margin-top: 8px; padding: 10px; border-radius: 8px;
     font-weight: 600; font-size: 13px; color: var(--purple); border: 1px solid rgba(140, 120, 255, 0.45); background: rgba(140, 120, 255, 0.08); }
   #panel-gource:hover { background: rgba(140, 120, 255, 0.16); }
+  #panel-gource-ext { display: block; text-align: center; margin-top: 6px; font-size: 11px; color: var(--ink-500); text-decoration: none; }
+  #panel-gource-ext:hover { color: var(--ink-300); }
+
+  /* ---------- Gource View player (repo history, in-page) ---------- */
+  #gource-modal { position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center;
+    background: rgba(6, 10, 18, 0.8); padding: 24px; }
+  #gource-modal.open { display: flex; }
+  #gource-modal .gm-card { width: min(1200px, 100%); height: min(780px, 100%); display: flex; flex-direction: column;
+    background: rgba(17, 24, 36, 0.97); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); }
+  #gource-modal .gm-head { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 12px; }
+  #gource-modal .gm-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-100); }
+  #gource-modal .gm-ext { color: var(--purple); text-decoration: none; white-space: nowrap; }
+  #gource-modal .gm-close { background: none; border: none; color: var(--ink-500); font-size: 22px; cursor: pointer; line-height: 1; padding: 0 2px; }
+  #gource-modal .gm-close:hover { color: var(--ink-100); }
+  #gource-modal .gm-frame { flex: 1; position: relative; background: #0b111a; }
+  #gource-modal iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  @media (max-width: 720px) { #gource-modal { padding: 0; } #gource-modal .gm-card { border-radius: 0; height: 100%; } }
   .panel-section { font-family: var(--mono); font-size: 10px; color: var(--ink-500); text-transform: uppercase; letter-spacing: 0.14em; margin: 16px 0 8px; }
   .panel-details { font-family: var(--mono); font-size: 11px; color: var(--ink-300); line-height: 1.8; }
 
