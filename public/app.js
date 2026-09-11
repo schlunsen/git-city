@@ -87,6 +87,7 @@ let weatherMode = 'clear'; // 'clear' | 'rain' | 'snow'
 // `config` is what the city shows: the published file, or a Customize draft
 // while previewing (both normalizeCityConfig() output, or null).
 let cityConfig = null;
+let pinnedRepos = [];   // the profile's pinned repos, when a snapshot knows them (GraphQL needs a token)
 let profileNow = null;     // { user, repos } on screen; the Customize preview rebuilds from it
 let customizer = null;     // customize.js handle
 const viewerLook = { dayMode: null, weather: null }; // the viewer's own choice while a city.json overrides it
@@ -258,7 +259,7 @@ async function loadFixture(login) {
   const fx = await res.json();
   const shift = Date.now() - new Date(fx.fetched_at).getTime();
   const events = (fx.events || []).map(e => ({ ...e, created_at: new Date(new Date(e.created_at).getTime() + shift).toISOString() }));
-  return { user: fx.user, repos: fx.repos, events, fetchedAt: fx.fetched_at };
+  return { user: fx.user, repos: fx.repos, events, fetchedAt: fx.fetched_at, pinned: Array.isArray(fx.pinned) ? fx.pinned : [] };
 }
 
 async function loadUser(login) {
@@ -1844,8 +1845,23 @@ function overviewLeg(bearing) {
   const look = new THREE.Vector3(0, 4, 0);
   return { dur: 7, pos: (u, o) => o.set(Math.cos(bearing + u * 0.6) * 150, 72, Math.sin(bearing + u * 0.6) * 150), look: (u, o) => o.copy(look) };
 }
+// Tour order: the developer's highlights first (city.json "featured", then the
+// profile's pinned repos when known), then carry on with the most-starred rest.
+function tourStops() {
+  const byName = new Map(buildingMeshes.map(b => [String(b.repo.name).toLowerCase(), b]));
+  const picks = [], seen = new Set();
+  const add = (b, highlight) => { if (b && !seen.has(b)) { seen.add(b); picks.push({ b, highlight }); } };
+  for (const n of cfgNow()?.featured || []) add(byName.get(String(n).toLowerCase()), 'featured');
+  for (const n of pinnedRepos) add(byName.get(String(n).toLowerCase()), 'pinned');
+  const want = Math.max(8, picks.length + 4);
+  for (const b of [...buildingMeshes].sort((x, y) => (y.repo.stargazers_count || 0) - (x.repo.stargazers_count || 0))) {
+    if (picks.length >= want) break;
+    add(b, null);
+  }
+  return picks;
+}
 function buildShowcase(start = 0) {
-  if (!tour.stops) tour.stops = [...buildingMeshes].sort((a, b) => (b.repo.stargazers_count || 0) - (a.repo.stargazers_count || 0)).slice(0, 8);
+  if (!tour.stops) { const picks = tourStops(); tour.stops = picks.map(p => p.b); tour.highlights = picks.map(p => p.highlight); }
   const stops = tour.stops;
   if (!stops.length) return null;
   const legs = [];
@@ -1853,13 +1869,13 @@ function buildShowcase(start = 0) {
   let bearing = Math.atan2(camera.position.z, camera.position.x);
   const push = (leg) => {
     const fly = flyLeg(pos, look, leg.pos(0, new THREE.Vector3()), leg.look(0, new THREE.Vector3()), legs.length ? 3.6 : 3);
-    if (leg.repo) Object.assign(fly, { repo: leg.repo, stop: leg.stop, of: leg.of, next: true }); // announce the next repo on the way
+    if (leg.repo) Object.assign(fly, { repo: leg.repo, stop: leg.stop, of: leg.of, highlight: leg.highlight, next: true }); // announce the next repo on the way
     legs.push(fly);
     legs.push(leg);
     pos = leg.pos(1, new THREE.Vector3()); look = leg.look(1, new THREE.Vector3());
   };
   for (let i = start; i < stops.length; i++) {
-    push(Object.assign(orbitLeg(stops[i], bearing), { stop: i + 1, of: stops.length }));
+    push(Object.assign(orbitLeg(stops[i], bearing), { stop: i + 1, of: stops.length, highlight: tour.highlights?.[i] || null }));
     if (i % 3 === 2 && i < stops.length - 1) { bearing += 2.1; push(overviewLeg(bearing)); }
   }
   return legs;
@@ -1915,7 +1931,7 @@ function showcaseCard(leg) {
   const sameRepo = repo && tour.card && tour.card.split('|')[0] === (repo.full_name || repo.name);
   tour.card = key;
   if (!repo) { el.classList.remove('show'); return; }
-  el.querySelector('.sc-kicker').textContent = leg.next ? 'Next stop' : 'Now circling';
+  el.querySelector('.sc-kicker').textContent = (leg.next ? 'Next stop' : 'Now circling') + (leg.highlight ? ` · ${leg.highlight}` : '');
   el.querySelector('.sc-name').textContent = repo.name;
   el.querySelector('.sc-desc').textContent = repo.description || 'No description yet.';
   const days = repo.pushed_at ? Math.max(0, Math.round((Date.now() - Date.parse(repo.pushed_at)) / 86400000)) : null;
@@ -3475,10 +3491,12 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
   try {
     const demo = new URLSearchParams(location.search).has('demo');
     let user, repos, sample = null;
+    pinnedRepos = [];
     // Featured developers ship with a daily-refreshed snapshot: use it while it
     // is fresh (no API budget spent), otherwise go live and keep it as a fallback.
     if (FIXTURES[login]) {
       const fx = await loadFixture(login).catch(() => null);
+      pinnedRepos = fx?.pinned || []; // even a stale snapshot still knows the pins
       if (fx && (demo || Date.now() - Date.parse(fx.fetchedAt) < 48 * 3600e3)) { sample = fx; ({ user, repos } = fx); }
     }
     try {
