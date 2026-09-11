@@ -20,6 +20,7 @@ import { createWorld, roundedRect, roundedRingGeometry } from './world.js';
 import { createExplorer } from './explore.js'; // walk / drive / fly explore modes
 import { fetchNeighbors } from './neighbors.js';
 import { buildRepoSigns } from './repo-signs.js'; // repo names on every building (fascia + tower crowns) // portal gates to the next developer's island
+import { buildWayfinding } from './wayfinding.js'; // repo-named street signs + the explore-mode name tag
 
 // ---------------------------------------------------------------------------
 // Config
@@ -97,6 +98,7 @@ let flyover = true;          // slow idle orbit
 let follow = true;           // orbit target drifts toward the actor while playing
 let camGoal = null;          // { target, position } glide for focusRepo
 let explorer = null;         // explore.js handle (walk / drive / fly); owns the camera while exploring
+let wayfinding = null;       // wayfinding.js handle (street signs + name tag), rebuilt with the buildings
 let swallowTap = false;      // set when a tap only dismissed the compact menu
 let bursts = [];             // transient particle bursts at beamed buildings
 const buildingByName = new Map();
@@ -1166,6 +1168,9 @@ function buildCity(repos, user) {
 
   // Repo names on the buildings, readable from walk / drive / fly.
   buildRepoSigns(THREE, buildingMeshes, (repo) => LANG_COLORS[(repo.language || '').toLowerCase()] ?? FALLBACK_COLOR);
+  // Streets named after the repos along them, and the explore-mode name tag (wayfinding.js).
+  wayfinding?.dispose();
+  wayfinding = buildWayfinding(THREE, { parent: cityGroup, buildings: buildingMeshes, streets: L.streets, cell: CELL, plazaRadius: PLAZA_R, envMat, ink: getOutlineMat() });
   buildDistrictSigns(THREE, slots.assignments);
   buildDistrictBaseplates(THREE, slots.assignments);
 
@@ -2472,12 +2477,62 @@ function openPanel(repo) {
       Size ${fmtBytes(repo.size * 1024)}
     </div>
     <a id="panel-link" href="${repo.html_url}" target="_blank" rel="noopener">Open on GitHub ↗</a>
-    ${repo.full_name ? `<a id="panel-gource" href="${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}" target="_blank" rel="noopener"
-      title="Replay this repository's commit history in Gource View">Watch its history in Gource View ↗</a>` : ''}`;
+    ${repo.full_name ? `<button id="panel-gource" type="button"
+      title="Replay this repository's commit history, Gource-style">▶ Watch its history</button>
+      <a id="panel-gource-ext" href="${gourceUrl(repo)}" target="_blank" rel="noopener">open in Gource View ↗</a>` : ''}`;
+  document.getElementById('panel-gource')?.addEventListener('click', () => openGource(repo));
   panel.classList.add('open');
 }
 function closePanel() {
   document.getElementById('panel').classList.remove('open');
+}
+
+// Gource View in a lightbox: the repo's whole commit history replayed as a
+// growing tree, without leaving the city. The iframe only exists while the
+// player is open, so nothing plays or downloads in the background.
+function gourceUrl(repo) {
+  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000`;
+}
+function openGource(repo) {
+  let box = document.getElementById('gource-modal');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'gource-modal';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.innerHTML = `<div class="gm-card">
+      <div class="gm-head"><span class="gm-title"></span>
+        <a class="gm-ext" target="_blank" rel="noopener">Open in new tab ↗</a>
+        <button class="gm-close" type="button" aria-label="Close">×</button></div>
+      <div class="gm-frame"></div></div>`;
+    box.addEventListener('click', (e) => { if (e.target === box) closeGource(); });
+    box.querySelector('.gm-close').addEventListener('click', closeGource);
+    document.body.appendChild(box);
+  }
+  const url = gourceUrl(repo);
+  box.querySelector('.gm-title').textContent = `${repo.full_name} · commit history`;
+  box.querySelector('.gm-ext').href = url;
+  const frame = document.createElement('iframe');
+  frame.src = url;
+  frame.title = `Gource View: ${repo.full_name}`;
+  frame.allow = 'autoplay; fullscreen';
+  frame.allowFullscreen = true;
+  box.querySelector('.gm-frame').replaceChildren(frame);
+  box.classList.add('open');
+  document.addEventListener('keydown', gourceKeys, true);
+}
+function closeGource() {
+  const box = document.getElementById('gource-modal');
+  if (!box) return;
+  box.classList.remove('open');
+  box.querySelector('.gm-frame').replaceChildren(); // stops playback and downloads
+  document.removeEventListener('keydown', gourceKeys, true);
+}
+function gourceKeys(e) {
+  // While the player is open it owns the keyboard: Esc closes it and nothing
+  // leaks through to the city's shortcuts (Space, T, explore keys).
+  if (e.key === 'Escape') closeGource();
+  e.stopPropagation();
 }
 
 // ---------------------------------------------------------------------------
@@ -2815,6 +2870,7 @@ function animate(timestamp) {
   }
   updateActor(dt);
   world?.update(dt, clock.getElapsed(), camera, controls.target);
+  wayfinding?.update(dt, clock.getElapsed(), camera, dayFactor, explorer?.mode); // street signs dim at night; tag follows explore modes
   if (dust) { dust.update(dt, clock.getElapsed()); dust.setNight(1 - dayFactor); }
   if (skyDome) skyDome.setTime(clock.getElapsed());
 
@@ -2843,6 +2899,7 @@ function animate(timestamp) {
   if (tvOn && crtPass) crtPass.render(clock.getElapsed());
   else if (fxOn && postPass) postPass.render(clock.getElapsed(), dayFactor);
   else renderer.render(scene, camera);
+  explorer?.postRender?.(); // explore.js: full-screen island-travel warp over whichever frame was drawn
 }
 
 // ---------------------------------------------------------------------------
