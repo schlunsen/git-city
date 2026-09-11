@@ -1,20 +1,27 @@
 /*
- * Git City — the sponsor plane: a little prop plane circles the town towing a
- * banner that nudges visitors to support Git City on Buy Me a Coffee. Clicking
+ * Git City — the sponsor plane: like the banner planes over tourist beaches, a
+ * little prop plane tows a banner that nudges visitors to support Git City on
+ * Buy Me a Coffee. It flies across whatever the camera is looking at, then goes
+ * away for a while and comes back the other way. Clicking
  * the plane or its banner opens the Buy Me a Coffee widget (loaded by
  * index.html); without the widget, the page opens in a new tab.
  */
 import * as THREE from 'three';
-import { scene } from './scene.js';
+import { scene, camera, controls } from './scene.js';
 import { toonMat, getOutlineMat, hullOf, noRaycast } from './toon.js';
 
 const SUPPORT_URL = 'https://buymeacoffee.com/schlunsen';
 const TEXT = 'Enjoying Git City?  Buy me a coffee ☕';
-const R = 108, Y = 46, LAP = 75;            // flight circle radius, height, seconds per lap
-const SCALE = 1.5;                          // the plane model is ~5 units long before scaling
-const BANNER_W = 22, BANNER_H = 2.9, SEGS = 28, GAP = 7; // banner size, cloth segments, tow-rope length
+// Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
+const CROSS = 22;                           // seconds to cross the view
+const REST_MIN = 16, REST_VAR = 18;         // seconds out of sight between passes
+const AHEAD = 72, HALF = 130;               // how far in front of the camera it crosses, and half the run
+const FIRST_WAIT = 6;                       // the first pass comes soon after the city is up
+const SCALE = 2.1;                          // the plane model is ~5 units long before scaling
+const BANNER_W = 22, BANNER_H = 2.9, SEGS = 28, GAP = 3.5; // banner size, cloth segments, tow-line length
 
-let rig = null; // { plane, prop, banner, front, back, rope, pickables, t }
+let rig = null; // { plane, prop, banner, front, back, rope, pickables, start, next, flying }
+const now = () => performance.now() / 1000;
 
 function bannerTexture() {
   const c = document.createElement('canvas');
@@ -86,16 +93,25 @@ export function buildBannerPlane() {
   back.rotation.y = Math.PI;
   const banner = new THREE.Group();
   banner.add(front, back);
-  const ropeGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-  const rope = new THREE.Line(ropeGeo, new THREE.LineBasicMaterial({ color: 0x2f3542 }));
+  // The leading pole the banner hangs from (a weight at its foot keeps it upright) ...
+  const rigMat = toonMat({ color: 0x2f3542 });
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, BANNER_H + 0.7, 8), rigMat);
+  pole.position.x = BANNER_W / 2 + 0.12;
+  const weight = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), rigMat);
+  weight.position.set(BANNER_W / 2 + 0.12, -(BANNER_H + 0.7) / 2, 0);
+  banner.add(pole, weight);
+  // ... and the tow line from the plane's tail to the middle of that pole: a thin rope you can see.
+  const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 6).translate(0, 0.5, 0), rigMat);
   rope.frustumCulled = false;
   rope.raycast = noRaycast;
   scene.add(plane, banner, rope);
-  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], t: Math.random() * LAP };
+  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT, side: 1, from: new THREE.Vector3(), to: new THREE.Vector3() };
   updateBannerPlane(0, 0, false);
 }
 
-const _p = new THREE.Vector3(), _b = new THREE.Vector3(), _tail = new THREE.Vector3();
+const _p = new THREE.Vector3(), _b = new THREE.Vector3(), _tail = new THREE.Vector3(), _lead = new THREE.Vector3(), _dir = new THREE.Vector3();
+const _f = new THREE.Vector3(), _side = new THREE.Vector3(), _mid = new THREE.Vector3(), _dirXZ = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
 // Flutter: a travelling wave that grows toward the free end of the banner.
 function flutter(mesh, time, sign) {
   const pos = mesh.geometry.attributes.position;
@@ -107,35 +123,66 @@ function flutter(mesh, time, sign) {
   mesh.geometry.computeVertexNormals();
 }
 
+// A pass: a straight run across the view, planned from where the camera looks now.
+function planPass() {
+  _f.set(controls.target.x - camera.position.x, 0, controls.target.z - camera.position.z);
+  if (_f.lengthSq() < 1e-4) _f.set(0, 0, -1);
+  _f.normalize();
+  _side.set(-_f.z, 0, _f.x).multiplyScalar(rig.side); // across the view, alternating each time
+  const d = AHEAD * (0.85 + Math.random() * 0.45);
+  const y = Math.min(80, Math.max(44, camera.position.y * 0.42 + 10)); // over the rooftops, under the clouds
+  _mid.set(camera.position.x + _f.x * d, y, camera.position.z + _f.z * d);
+  rig.from.copy(_mid).addScaledVector(_side, -HALF);
+  rig.to.copy(_mid).addScaledVector(_side, HALF);
+  rig.start = now();
+  rig.flying = true;
+  rig.side = -rig.side;
+}
+
 export function updateBannerPlane(dt, elapsed, hidden) {
   if (!rig) return;
-  rig.plane.visible = rig.banner.visible = rig.rope.visible = !hidden;
-  if (hidden) return;
-  rig.t += dt;
-  const th = (rig.t / LAP) * Math.PI * 2;
-  const bob = Math.sin(rig.t * 0.6) * 1.5;
-  _p.set(Math.cos(th) * R, Y + bob, Math.sin(th) * R);
+  if (hidden) { rig.plane.visible = rig.banner.visible = rig.rope.visible = false; return; }
+  if (!rig.flying) { // out of sight between passes
+    rig.plane.visible = rig.banner.visible = rig.rope.visible = false;
+    if (now() < rig.next) return;
+    planPass();
+  }
+  const age = now() - rig.start, u = age / CROSS;
+  if (u >= 1) { // gone by: rest, then come back the other way
+    rig.flying = false;
+    rig.next = now() + REST_MIN + Math.random() * REST_VAR;
+    rig.plane.visible = rig.banner.visible = rig.rope.visible = false;
+    return;
+  }
+  rig.plane.visible = rig.banner.visible = rig.rope.visible = true;
+  const bob = Math.sin(age * 0.7) * 0.9;
+  _p.lerpVectors(rig.from, rig.to, u);
+  _p.y += bob;
   rig.plane.position.copy(_p);
+  _dirXZ.subVectors(rig.to, rig.from).setY(0).normalize();
+  const yaw = Math.atan2(_dirXZ.z, -_dirXZ.x) + Math.PI / 2; // nose along the run (the model faces +x)
   rig.plane.rotation.set(0, 0, 0);
-  rig.plane.rotateY(-(th + Math.PI / 2)); // nose along the direction of travel (counter-clockwise from above)
-  rig.plane.rotateX(-0.22);               // bank into the turn
+  rig.plane.rotateY(yaw);
+  rig.plane.rotateZ(Math.sin(age * 0.5) * 0.05); // a lazy roll
   rig.prop.rotation.x += dt * 38;
-  // The banner trails GAP units of rope behind the tail, tangent to the circle at its own centre.
-  const lag = (SCALE * 2.6 + GAP + BANNER_W / 2) / R;
-  const tb = th - lag;
-  _b.set(Math.cos(tb) * R, Y + bob - 1.2, Math.sin(tb) * R);
+  // The banner trails a tow line behind the tail, along the run.
+  const lag = SCALE * 2.6 + GAP + BANNER_W / 2;
+  _b.copy(_p).addScaledVector(_dirXZ, -lag);
+  _b.y -= 2.2; // the tow line angles down to it
   rig.banner.position.copy(_b);
-  rig.banner.rotation.set(0, -(tb + Math.PI / 2), 0);
-  flutter(rig.front, rig.t, 1);
-  flutter(rig.back, rig.t, -1);
-  // Rope from the plane's tail to the banner's leading edge.
-  _tail.set(-2.4, 0, 0).applyMatrix4(rig.plane.matrixWorld);
+  rig.banner.rotation.set(0, yaw, 0);
+  flutter(rig.front, age, 1);
+  flutter(rig.back, age, -1);
+  // The tow line: from the plane's tail to the middle of the banner's leading pole.
   rig.plane.updateMatrixWorld();
-  const lead = new THREE.Vector3(BANNER_W / 2, 0, 0).applyMatrix4(rig.banner.updateMatrixWorld() || rig.banner.matrixWorld);
-  const rp = rig.rope.geometry.attributes.position;
-  rp.setXYZ(0, _tail.x, _tail.y, _tail.z);
-  rp.setXYZ(1, lead.x, lead.y, lead.z);
-  rp.needsUpdate = true;
+  rig.banner.updateMatrixWorld();
+  _tail.set(-2.5, 0, 0).applyMatrix4(rig.plane.matrixWorld);
+  _lead.set(BANNER_W / 2 + 0.12, 0, 0).applyMatrix4(rig.banner.matrixWorld);
+  _dir.subVectors(_lead, _tail);
+  const len = _dir.length();
+  rig.rope.position.copy(_tail);
+  rig.rope.quaternion.setFromUnitVectors(_up, _dir.divideScalar(len || 1));
+  rig.rope.scale.set(1, len, 1);
 }
 
 // Is the pointer ray on the plane or its banner?
