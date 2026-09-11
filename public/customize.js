@@ -1,5 +1,5 @@
 /*
- * Git City — the Customize panel.
+ * Gitilla — the Customize panel.
  *
  * Edits a draft .git-city/city.json for the profile on screen, previews it on
  * the island (the draft goes through the same validator and build path as a

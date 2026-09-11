@@ -1,4 +1,4 @@
-# Making new art for Git City
+# Making new art for Gitilla
 
 All the art in `public/assets/` comes from one pipeline:
 - the paper-cutout trees, houses, props and landmarks

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Git City cutout art with an image model (Atlas Cloud's generateImage API).
+"""Generate Gitilla cutout art with an image model (Atlas Cloud's generateImage API).
 
 Every sheet in public/assets/ came from one of the prompts in JOBS below: a
 shared house STYLE, a subject, and a flat magenta background that key.py

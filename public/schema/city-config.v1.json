@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
-  "title": "Git City config (v1)",
-  "description": "Customises the Git City island generated from a GitHub profile. Publish it as .git-city/city.json in your profile repository (<login>/<login>). Data only: Git City validates every field, ignores unknown keys and never loads URLs from it. Git City is more lenient than this schema: over-long text is shortened and out-of-range numbers are clamped instead of rejected. See https://github.com/schlunsen/git-city/blob/main/docs/city-config.md",
+  "$id": "https://gitilla.com/schema/city-config.v1.json",
+  "title": "Gitilla config (v1)",
+  "description": "Customises the Gitilla island generated from a GitHub profile. Publish it as .git-city/city.json in your profile repository (<login>/<login>). Data only: Gitilla validates every field, ignores unknown keys and never loads URLs from it. Gitilla is more lenient than this schema: over-long text is shortened and out-of-range numbers are clamped instead of rejected. See https://github.com/schlunsen/git-city/blob/main/docs/city-config.md",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "$schema": {
       "type": "string",
-      "description": "Editor hint only; Git City never loads it."
+      "description": "Editor hint only; Gitilla never loads it."
     },
     "version": {
       "const": 1,

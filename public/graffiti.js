@@ -1,5 +1,5 @@
 /*
- * Git City — spray-painted graffiti for building walls (city.json /
+ * Gitilla — spray-painted graffiti for building walls (city.json /
  * building.json "graffiti"). Paints validated text onto a transparent canvas
  * with canvas fillText / strokeText only: an outline, the fill, overspray and
  * a few drips. Deterministic per seed, so a building always wears the same

@@ -1,7 +1,7 @@
 /*
- * Git City: the "Customize your city" guide page (customize.html).
+ * Gitilla: the "Customize your city" guide page (customize.html).
  * Example tabs, copy buttons, and the field reference tables, generated from
- * the JSON Schemas so the page can't drift from what Git City accepts.
+ * the JSON Schemas so the page can't drift from what Gitilla accepts.
  * DOM text only (textContent); no innerHTML.
  */
 

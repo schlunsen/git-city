@@ -1,5 +1,5 @@
 /*
- * Git City — procedural attractions + landmark objects for the island.
+ * Gitilla — procedural attractions + landmark objects for the island.
  *
  * No bare imports: the host passes THREE in through `kit`, so this module works in
  * any module context (and in attractions-preview.html) without a bare "three".

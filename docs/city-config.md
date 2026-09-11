@@ -1,6 +1,6 @@
 # Customize your city: `.git-city/city.json`
 
-Git City builds your island automatically from your GitHub profile: the login
+Gitilla builds your island automatically from your GitHub profile: the login
 seeds the coastline, your top language picks the biome, stars decide the
 attractions. With **one file in your profile repository** you take over the
 parts you care about: the island's name, a welcome message, the landmarks,
@@ -10,7 +10,7 @@ neighbours, the look, the player's soundtrack and your plane.
 Every field is optional. Anything you leave out stays automatic.
 
 Prefer a web page? The same guide, with copy buttons and live examples, is at
-**[schlunsen.github.io/git-city/customize.html](https://schlunsen.github.io/git-city/customize.html)**.
+**[gitilla.com/customize.html](https://gitilla.com/customize.html)**.
 Maintainers styling a single repository's building: see
 [building-config.md](building-config.md).
 
@@ -26,14 +26,14 @@ Maintainers styling a single repository's building: see
 
    ```json
    {
-     "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+     "$schema": "https://gitilla.com/schema/city-config.v1.json",
      "version": 1,
      "island": { "name": "Octo Isle", "biome": "tropical" },
      "welcome": "Welcome to my city!"
    }
    ```
 
-3. **Reload your city** (`https://schlunsen.github.io/git-city/?user=<login>`)
+3. **Reload your city** (`https://gitilla.com/?user=<login>`)
    after about **5 minutes**. GitHub's CDN caches the file for up to 5 minutes.
 
 Or skip the typing: open your city, press **Customize**, and **Publish**
@@ -76,10 +76,10 @@ typo never breaks your city; it just doesn't do anything.
 
 More details:
 
-- **Repository names** must be your own (public, as Git City loads them) and
+- **Repository names** must be your own (public, as Gitilla loads them) and
   are matched case-insensitively. `repos` holds at most 100 entries. Forks and
   archived repositories never get a building.
-- **Text is free-form**: any language, emoji, punctuation. Git City only trims
+- **Text is free-form**: any language, emoji, punctuation. Gitilla only trims
   it, turns line breaks into spaces, removes invisible control and
   text-direction characters, and shortens it to the limit.
 - **Colours** are exactly `#` plus six hex digits (`#8c78ff`). Names like `red`
@@ -111,7 +111,7 @@ Every building can be styled. The fields under `repos.<name>` (`style`,
 sets `roof` and `graffiti` and you set `roof` and `color`, the building gets
 your roof and colour and the repository's graffiti.
 
-Git City reads `building.json` lazily: for the 16 most-starred buildings of a
+Gitilla reads `building.json` lazily: for the 16 most-starred buildings of a
 city when it loads, and for any building someone clicks. Each file is limited
 to 3 seconds and 16 KB, and cached for the visit.
 
@@ -150,7 +150,7 @@ Everything:
 
 ```json
 {
-  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "$schema": "https://gitilla.com/schema/city-config.v1.json",
   "version": 1,
   "island": { "name": "Schlunsen Isle", "biome": "tropical", "shape": "round" },
   "welcome": "Welcome to the island of broken builds",
@@ -184,7 +184,7 @@ it was loaded, ignored or partly ignored. Then:
    will see. The JSON below updates as you go, with any warnings. *Revert*
    drops the draft. If you close the panel while previewing, a small "Previewing
    your unpublished draft" bar stays at the top until you reload or revert.
-3. **Publish**: no tokens, no OAuth. Git City only ever opens GitHub's own
+3. **Publish**: no tokens, no OAuth. Gitilla only ever opens GitHub's own
    editor in a new tab:
    - **No `city.json` yet**: *Publish on GitHub* opens
      `https://github.com/<login>/<login>/new/<branch>?filename=.git-city/city.json&value=…`,
@@ -210,7 +210,7 @@ islands) and its public activity. Everything on this page applies to it.
 
 The one difference is where the file lives. Organizations have no repository
 named after themselves; their profile repository is **`.github`**, so the
-config is `<org>/.github/.git-city/city.json`. Git City looks for
+config is `<org>/.github/.git-city/city.json`. Gitilla looks for
 `<org>/<org>/.git-city/city.json` first and falls back to `.github`, and the
 Customize panel points its Publish button at whichever one applies.
 
@@ -221,7 +221,7 @@ an org        Lunar-Rails/.github/.git-city/city.json
 
 ## Caching and updates
 
-- Git City reads `https://raw.githubusercontent.com/<login>/<login>/HEAD/.git-city/city.json`
+- Gitilla reads `https://raw.githubusercontent.com/<login>/<login>/HEAD/.git-city/city.json`
   (your default branch), and for an organization
   `https://raw.githubusercontent.com/<org>/.github/HEAD/.git-city/city.json`. It doesn't use the GitHub API, so it never eats into
   the 60-requests-per-hour budget.
@@ -231,11 +231,11 @@ an org        Lunar-Rails/.github/.git-city/city.json
 - Your city waits at most **4 seconds** for the file. If it's slower than that
   (a slow network, or a slow device still warming up its graphics), the
   automatic city appears first and your settings are applied as soon as the
-  file arrives. After 12 seconds Git City gives up for that visit.
+  file arrives. After 12 seconds Gitilla gives up for that visit.
 - Pinned `neighbours` apply immediately. Only the automatic top-up is cached
   in the visitor's browser for a week.
 
-## How Git City treats the file (security model)
+## How Gitilla treats the file (security model)
 
 `city.json` is **data, never code**, and other people's cities load it into
 your browser, so it is handled defensively:
@@ -253,7 +253,7 @@ your browser, so it is handled defensively:
 - **Text is free-form but inert**: it reaches the page only through canvas
   `fillText` (boards, signs, the plane) or DOM `textContent` (profile card,
   Customize panel). It's never parsed as HTML.
-- **No URLs**: v1 has no URL fields, and Git City never loads an image, font,
+- **No URLs**: v1 has no URL fields, and Gitilla never loads an image, font,
   frame or link named by a config. (`$schema` is an editor hint and is never
   fetched.) Neighbour avatars come from `github.com/<login>.png`, built from a
   validated login.
@@ -270,7 +270,7 @@ your browser, so it is handled defensively:
   Styles allow `'unsafe-inline'` because the app uses inline `<style>` and
   style attributes; inline scripts are not allowed.
 
-There is no content moderation: your text is yours. Git City only makes sure
+There is no content moderation: your text is yours. Gitilla only makes sure
 it fits on the signs and can't do anything but be text.
 
 ## Editor support
@@ -278,8 +278,8 @@ it fits on the signs and can't do anything but be text.
 Add the `$schema` line (as in the examples) and editors like VS Code validate
 the file and autocomplete every field as you type. The schema is
 [`public/schema/city-config.v1.json`](../public/schema/city-config.v1.json).
-It is a little stricter than Git City itself: the editor flags an over-long
-text, while Git City just shortens it.
+It is a little stricter than Gitilla itself: the editor flags an over-long
+text, while Gitilla just shortens it.
 
 ## Troubleshooting
 
@@ -300,4 +300,4 @@ text, while Git City just shortens it.
   (see *Landmarks are best effort* above). Try a different biome, fewer
   landmarks, or swap one for another.
 - **A featured repository isn't there**: forks and archived repositories don't
-  get buildings, and Git City shows at most 100 repositories.
+  get buildings, and Gitilla shows at most 100 repositories.

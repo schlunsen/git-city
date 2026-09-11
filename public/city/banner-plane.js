@@ -1,6 +1,6 @@
 /*
- * Git City — the sponsor plane: like the banner planes over tourist beaches, a
- * little prop plane tows a banner that nudges visitors to support Git City on
+ * Gitilla — the sponsor plane: like the banner planes over tourist beaches, a
+ * little prop plane tows a banner that nudges visitors to support Gitilla on
  * Buy Me a Coffee. It flies across whatever the camera is looking at, then goes
  * away for a while and comes back the other way. Clicking
  * the plane or its banner opens the Buy Me a Coffee widget (loaded by
@@ -11,7 +11,7 @@ import { scene, camera, controls } from './scene.js';
 import { toonMat, getOutlineMat, hullOf, noRaycast } from './toon.js';
 
 const SUPPORT_URL = 'https://buymeacoffee.com/schlunsen';
-const TEXT = 'Enjoying Git City?  Buy me a coffee ☕';
+const TEXT = 'Enjoying Gitilla?  Buy me a coffee ☕';
 // Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
 const CROSS = 22;                           // seconds to cross the view
 const REST_MIN = 16, REST_VAR = 18;         // seconds out of sight between passes

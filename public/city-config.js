@@ -1,9 +1,9 @@
 /*
- * Git City: the developer-controlled city config.
+ * Gitilla: the developer-controlled city config.
  *
  * A developer publishes ONE file in their profile repo:
  *   <login>/<login>/.git-city/city.json
- * and Git City reads it from raw.githubusercontent.com (no API budget, CORS *,
+ * and Gitilla reads it from raw.githubusercontent.com (no API budget, CORS *,
  * ~5 minutes of CDN cache). A 404 means "no config": the automatic city.
  * A repository can also style its own building with
  *   <owner>/<repo>/.git-city/building.json
@@ -403,7 +403,7 @@ const copyBuilding = (b) => ({ ...b, ...(b.graffiti ? { graffiti: { ...b.graffit
  */
 export function serializeCityConfig(c, { schema = true } = {}) {
   const out = {};
-  if (schema) out.$schema = 'https://schlunsen.github.io/git-city/schema/city-config.v1.json';
+  if (schema) out.$schema = 'https://gitilla.com/schema/city-config.v1.json';
   out.version = CONFIG_VERSION;
   if (c) {
     if (Object.keys(c.island).length) out.island = { ...c.island };
@@ -419,7 +419,7 @@ export function serializeCityConfig(c, { schema = true } = {}) {
 }
 /** A building entry as the text of a repository's .git-city/building.json. */
 export function serializeBuildingConfig(b) {
-  return `${JSON.stringify({ $schema: 'https://schlunsen.github.io/git-city/schema/building-config.v1.json', version: CONFIG_VERSION, ...copyBuilding(b || {}) }, null, 2)}\n`;
+  return `${JSON.stringify({ $schema: 'https://gitilla.com/schema/building-config.v1.json', version: CONFIG_VERSION, ...copyBuilding(b || {}) }, null, 2)}\n`;
 }
 
 /**

@@ -1,5 +1,5 @@
 /*
- * Git City attractions: the funfair rides (roller coaster, carousel, big-top
+ * Gitilla attractions: the funfair rides (roller coaster, carousel, big-top
  * circus tent, drop tower). Contract and kit: see ../attractions.js and ./kit.js.
  */
 

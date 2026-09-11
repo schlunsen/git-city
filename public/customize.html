@@ -4,8 +4,8 @@
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Customize your city · Git City</title>
-<meta name="description" content="How GitHub users customize their Git City island (city.json in the profile repo) and how maintainers style a repository's building (building.json)." />
+<title>Customize your city · Gitilla</title>
+<meta name="description" content="How GitHub users customize their Gitilla island (city.json in the profile repo) and how maintainers style a repository's building (building.json)." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -110,7 +110,7 @@
   <div class="hero">
     <div class="eyebrow">Guide</div>
     <h1>Customize your <span>city</span></h1>
-    <p class="lead">Git City builds an island from every GitHub profile automatically. With one small JSON file you take over the parts you care about. Developers set up the island in their <b>profile repository</b>, organizations in their <b><code>.github</code></b> repository. Maintainers style a repository's <b>building</b> in the repository itself.</p>
+    <p class="lead">Gitilla builds an island from every GitHub profile automatically. With one small JSON file you take over the parts you care about. Developers set up the island in their <b>profile repository</b>, organizations in their <b><code>.github</code></b> repository. Maintainers style a repository's <b>building</b> in the repository itself.</p>
     <div class="grid2" style="margin-top: 26px">
       <div class="card level">
         <div class="eyebrow">Profile level</div>
@@ -137,7 +137,7 @@
     <p>The file lives in your <b>profile repository</b>: the public repository named exactly like your login (the one that shows your profile README). An <b>organization</b> keeps it in its <code>.github</code> repository instead &mdash; <code>&lt;org&gt;/.github/.git-city/city.json</code> &mdash; and everything on this page works the same way.</p>
     <ol class="steps">
       <li><b>Have a profile repository.</b> Create a public repository named exactly <code>&lt;your login&gt;</code> if you don't have one yet (for an organization: a public repository named <code>.github</code>). <a href="https://docs.github.com/en/account-and-profile/how-tos/profile-customization/managing-your-profile-readme" rel="noopener">GitHub's guide</a>.</li>
-      <li><b>Add <code>.git-city/city.json</code></b> on its default branch. Start with the minimal example below, or press <b>Customize</b> in your city and let Git City write it for you.</li>
+      <li><b>Add <code>.git-city/city.json</code></b> on its default branch. Start with the minimal example below, or press <b>Customize</b> in your city and let Gitilla write it for you.</li>
       <li><b>Reload your city after about 5 minutes</b> (<code>?user=&lt;login&gt;</code>). GitHub's CDN caches the file for up to 5 minutes.</li>
     </ol>
     <div class="tabs" role="tablist" aria-label="city.json examples">
@@ -148,7 +148,7 @@
       <p class="file">.git-city/city.json</p>
       <button class="btn copy" type="button" data-copy="city-min-code">Copy</button>
 <pre id="city-min-code">{
-  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "$schema": "https://gitilla.com/schema/city-config.v1.json",
   "version": 1,
   "island": { "name": "Octo Isle", "biome": "tropical" },
   "welcome": "Welcome to my city!",
@@ -159,7 +159,7 @@
       <p class="file">.git-city/city.json</p>
       <button class="btn copy" type="button" data-copy="city-full-code">Copy</button>
 <pre id="city-full-code">{
-  "$schema": "https://schlunsen.github.io/git-city/schema/city-config.v1.json",
+  "$schema": "https://gitilla.com/schema/city-config.v1.json",
   "version": 1,
   "island": { "name": "Schlunsen Isle", "biome": "tropical", "shape": "round" },
   "welcome": "Welcome to the island of broken builds",
@@ -189,9 +189,9 @@
   <section id="repo" class="repo-steps">
     <div class="eyebrow" style="color: var(--pink)">Repo level</div>
     <h2>A building: <code>building.json</code></h2>
-    <p>Maintainers can give a repository's building some personality from inside the repository. It appears in the owner's city, and Git City reads it for the 16 most-starred buildings on screen, and for any building someone clicks.</p>
+    <p>Maintainers can give a repository's building some personality from inside the repository. It appears in the owner's city, and Gitilla reads it for the 16 most-starred buildings on screen, and for any building someone clicks.</p>
     <ol class="steps">
-      <li><b>Add <code>.git-city/building.json</code></b> to the repository's default branch (example below). In Git City, <b>Customize</b> › Repositories › <i>edit</i> › <b>Copy as building.json</b> writes one for you.</li>
+      <li><b>Add <code>.git-city/building.json</code></b> to the repository's default branch (example below). In Gitilla, <b>Customize</b> › Repositories › <i>edit</i> › <b>Copy as building.json</b> writes one for you.</li>
       <li><b>Commit it.</b> The repository must be public, not a fork and not archived (those don't get buildings).</li>
       <li><b>Open the owner's city</b> after about 5 minutes and look for the building (clicking it also fetches the file straight away).</li>
     </ol>
@@ -203,7 +203,7 @@
       <p class="file">.git-city/building.json</p>
       <button class="btn copy" type="button" data-copy="bld-min-code">Copy</button>
 <pre id="bld-min-code">{
-  "$schema": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
+  "$schema": "https://gitilla.com/schema/building-config.v1.json",
   "version": 1,
   "graffiti": { "text": "ship it!" }
 }</pre>
@@ -212,7 +212,7 @@
       <p class="file">.git-city/building.json</p>
       <button class="btn copy" type="button" data-copy="bld-full-code">Copy</button>
 <pre id="bld-full-code">{
-  "$schema": "https://schlunsen.github.io/git-city/schema/building-config.v1.json",
+  "$schema": "https://gitilla.com/schema/building-config.v1.json",
   "version": 1,
   "graffiti": { "text": "ship it!", "color": "#ff5ab4", "style": "bubble" },
   "roof": "garden",
@@ -235,7 +235,7 @@
     <ol class="steps">
       <li><b>Open your city</b> and press <b>Customize</b> in the toolbar (in the ☰ menu on phones). The panel says whether your <code>city.json</code> was found, loaded or partly ignored.</li>
       <li><b>Edit and watch.</b> With <i>Live preview</i> on, every change is applied to the island around you. The draft goes through exactly the same validation as a published file, and the JSON updates below the form, with any warnings. <i>Revert</i> drops the draft.</li>
-      <li><b>Publish.</b> Git City opens <b>GitHub's own editor</b> in a new tab. It never uses tokens or OAuth. With no file yet, you get GitHub's "new file" page with <code>.git-city/city.json</code> already filled in. If the file exists, GitHub can't pre-fill it: press <b>Copy JSON</b>, then <b>Edit city.json on GitHub</b>, paste over the contents, and commit.</li>
+      <li><b>Publish.</b> Gitilla opens <b>GitHub's own editor</b> in a new tab. It never uses tokens or OAuth. With no file yet, you get GitHub's "new file" page with <code>.git-city/city.json</code> already filled in. If the file exists, GitHub can't pre-fill it: press <b>Copy JSON</b>, then <b>Edit city.json on GitHub</b>, paste over the contents, and commit.</li>
     </ol>
     <p class="note">Anyone can open the panel on any city and try ideas; only someone who can commit to the profile repository (or the organization's <code>.github</code>) can save the result.</p>
   </section>
@@ -243,12 +243,12 @@
   <section id="reference">
     <div class="eyebrow">Reference</div>
     <h2>Every field</h2>
-    <p>These tables are generated from the JSON Schemas Git City ships (<a href="./schema/city-config.v1.json">city-config.v1.json</a>, <a href="./schema/building-config.v1.json">building-config.v1.json</a>), so they always match what Git City accepts. Git City is a little more forgiving than the schema: over-long text is shortened and out-of-range numbers are clamped rather than rejected.</p>
+    <p>These tables are generated from the JSON Schemas Gitilla ships (<a href="./schema/city-config.v1.json">city-config.v1.json</a>, <a href="./schema/building-config.v1.json">building-config.v1.json</a>), so they always match what Gitilla accepts. Gitilla is a little more forgiving than the schema: over-long text is shortened and out-of-range numbers are clamped rather than rejected.</p>
     <h3>city.json (profile level)</h3>
     <div class="tablewrap"><table id="ref-city"><thead><tr><th>Field</th><th>Allowed</th><th>What it does</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>
     <h3>building.json (repo level), also <code>city.json</code> → <code>repos["&lt;name&gt;"]</code></h3>
     <div class="tablewrap"><table id="ref-building"><thead><tr><th>Field</th><th>Allowed</th><th>What it does</th></tr></thead><tbody><tr><td colspan="3">Loading…</td></tr></tbody></table></div>
-    <p class="note">Text is free-form: any language, emoji, punctuation. Git City trims it, turns line breaks into spaces, removes invisible control and text-direction characters, and shortens it to the limit. Colours are exactly <code>#</code> plus six hex digits. <code>?biome=</code> and <code>?city=</code> in the page URL override <code>island.biome</code> / <code>island.shape</code> for previews.</p>
+    <p class="note">Text is free-form: any language, emoji, punctuation. Gitilla trims it, turns line breaks into spaces, removes invisible control and text-direction characters, and shortens it to the limit. Colours are exactly <code>#</code> plus six hex digits. <code>?biome=</code> and <code>?city=</code> in the page URL override <code>island.biome</code> / <code>island.shape</code> for previews.</p>
   </section>
 
   <section id="caching">
@@ -281,15 +281,15 @@
 
   <section id="security">
     <div class="eyebrow">Security &amp; privacy</div>
-    <h2>What Git City does with your file</h2>
+    <h2>What Gitilla does with your file</h2>
     <div class="callout safe">
       <ul style="margin: 0; padding-left: 18px">
         <li><b>Data only, never code.</b> The files are read with <code>JSON.parse</code> and nothing else. No scripts, no templates, no HTML.</li>
         <li><b>A strict whitelist.</b> Only the fields above are read. Names come from fixed lists, colours must be <code>#rrggbb</code>, numbers are clamped, logins and repository names are checked, and files over 32 KB (<code>city.json</code>) or 16 KB (<code>building.json</code>) are ignored unread.</li>
         <li><b>Your text is yours, and it stays text.</b> There is no content moderation. Text only ever reaches the page as painted pixels (signs, graffiti, the plane) or plain text (the profile card), never as HTML.</li>
-        <li><b>No external URLs.</b> No field is a URL, and Git City never loads an image, font, frame or link named in a config. Avatars come from <code>github.com</code>. Pictures shown from a repository's README during the tour are only taken from GitHub's own image hosts (<code>raw.githubusercontent.com</code>, <code>user-images</code>, <code>private-user-images</code>, <code>camo.githubusercontent.com</code>, <code>github.com</code>).</li>
-        <li><b>Defence in depth.</b> The app runs under a strict Content-Security-Policy. Scripts come only from Git City itself and the three.js CDN, and data only from GitHub.</li>
-        <li><b>Nothing is written for you.</b> Publishing opens GitHub's own editor; Git City never sees a token, and you commit the file yourself.</li>
+        <li><b>No external URLs.</b> No field is a URL, and Gitilla never loads an image, font, frame or link named in a config. Avatars come from <code>github.com</code>. Pictures shown from a repository's README during the tour are only taken from GitHub's own image hosts (<code>raw.githubusercontent.com</code>, <code>user-images</code>, <code>private-user-images</code>, <code>camo.githubusercontent.com</code>, <code>github.com</code>).</li>
+        <li><b>Defence in depth.</b> The app runs under a strict Content-Security-Policy. Scripts come only from Gitilla itself and the three.js CDN, and data only from GitHub.</li>
+        <li><b>Nothing is written for you.</b> Publishing opens GitHub's own editor; Gitilla never sees a token, and you commit the file yourself.</li>
       </ul>
     </div>
   </section>
@@ -297,7 +297,7 @@
 
 <footer>
   <div class="wrap">
-    <a href="./">← Back to Git City</a>
+    <a href="./">← Back to Gitilla</a>
     <a href="https://github.com/schlunsen/git-city/blob/main/docs/city-config.md" rel="noopener">docs/city-config.md</a>
     <a href="https://github.com/schlunsen/git-city/blob/main/docs/building-config.md" rel="noopener">docs/building-config.md</a>
     <a href="./schema/city-config.v1.json">city-config.v1.json</a>

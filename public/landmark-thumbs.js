@@ -1,5 +1,5 @@
 /*
- * Git City — little rendered pictures of the 3D landmarks, for the Customize
+ * Gitilla — little rendered pictures of the 3D landmarks, for the Customize
  * panel's landmark picker.
  *
  * Each attraction (attractions.js) is built once in a small offscreen scene,

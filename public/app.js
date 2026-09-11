@@ -1,5 +1,5 @@
 /*
- * Git City — render a GitHub profile as a 3D voxel metropolis.
+ * Gitilla — render a GitHub profile as a 3D voxel metropolis.
  * Buildings = repos (height/footprint scale with stars, walls colored by language).
  * Central plaza holds an avatar monument; streets run between blocks; cars loop
  * the main boulevard; a 60s day/night cycle lights the windows.
@@ -246,7 +246,7 @@ function doHover(cx, cy) {
   if (bannerPlaneHit(raycaster)) { // the sponsor plane and its banner
     if (hovered !== 'plane') {
       hovered = 'plane';
-      tip.textContent = '\u2615 Enjoying Git City? Click to fly alongside';
+      tip.textContent = '\u2615 Enjoying Gitilla? Click to fly alongside';
       tip.classList.add('show');
       document.body.style.cursor = 'pointer';
     }
