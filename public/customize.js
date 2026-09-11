@@ -440,7 +440,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     repoInfo.set(key, { exists: null, branch: 'HEAD' });
     try {
       const res = await ghFetch(`https://api.github.com/repos/${repo.split('/').map(encodeURIComponent).join('/')}`,
-        { headers: { Accept: 'application/vnd.github+json' }, credentials: 'omit' });
+        { headers: { Accept: 'application/vnd.github+json' }, credentials: 'omit' }, { fresh: true });
       if (res.status === 404) repoInfo.set(key, { exists: false, branch: 'HEAD' });
       else if (res.ok) {
         const d = await res.json();

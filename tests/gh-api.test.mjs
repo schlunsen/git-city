@@ -35,45 +35,72 @@ test('a spent quota is told apart from an ordinary refusal', () => {
   assert.equal(isQuotaRefusal({ status: 200, headers: headers() }), false);
 });
 
-test('the mirror is used only once GitHub refuses on quota', async () => {
+test('the mirror answers first, and GitHub covers what it cannot', async () => {
   const calls = [];
   const stub = (result) => async (url) => { calls.push(url); return result(url); };
 
-  // Happy path: GitHub answers, the mirror is never touched.
-  globalThis.fetch = stub(() => ({ ok: true, status: 200, headers: headers() }));
-  await ghFetch('https://api.github.com/users/torvalds');
-  assert.deepEqual(calls, ['https://api.github.com/users/torvalds']);
+  // Warm mirror: GitHub is never touched, so the visitor spends no quota.
+  globalThis.fetch = stub(() => ({ ok: true, status: 200, headers: headers(), mirrored: true }));
+  const hit = await ghFetch('https://api.github.com/users/torvalds');
+  assert.equal(hit.mirrored, true);
+  assert.deepEqual(calls, [`${M}/users/torvalds`]);
 
-  // Quota gone: the mirror answers instead.
+  // Mirror down: GitHub still answers.
   calls.length = 0;
+  globalThis.fetch = stub((url) => url.startsWith(M)
+    ? { ok: false, status: 503, headers: headers() }
+    : { ok: true, status: 200, headers: headers(), live: true });
+  assert.equal((await ghFetch('https://api.github.com/users/torvalds')).live, true);
+  assert.deepEqual(calls, [`${M}/users/torvalds`, 'https://api.github.com/users/torvalds']);
+
+  // Not mirrored at all (page 2): straight to GitHub.
+  calls.length = 0;
+  globalThis.fetch = stub(() => ({ ok: true, status: 200, headers: headers() }));
+  await ghFetch('https://api.github.com/users/torvalds/events/public?page=2');
+  assert.deepEqual(calls, ['https://api.github.com/users/torvalds/events/public?page=2']);
+
+  // { fresh: true } skips the mirror: a remembered 404 must not decide "Create".
+  calls.length = 0;
+  await ghFetch('https://api.github.com/repos/a/b', {}, { fresh: true });
+  assert.deepEqual(calls, ['https://api.github.com/repos/a/b']);
+});
+
+test('with the mirror bypassed, a spent GitHub quota still falls back to it', async () => {
+  const calls = [];
+  const stub = (result) => async (url) => { calls.push(url); return result(url); };
+
+  // fresh: true goes to GitHub; GitHub is out of quota; the mirror rescues it.
   globalThis.fetch = stub((url) => url.startsWith('https://api.github.com')
     ? { ok: false, status: 403, headers: headers({ 'x-ratelimit-remaining': '0' }) }
     : { ok: true, status: 200, headers: headers(), mirrored: true });
-  const res = await ghFetch('https://api.github.com/users/torvalds');
+  const res = await ghFetch('https://api.github.com/users/torvalds', {}, { fresh: true });
   assert.equal(res.mirrored, true);
   assert.deepEqual(calls, ['https://api.github.com/users/torvalds', `${M}/users/torvalds`]);
 
-  // A 404 is GitHub's real answer and must survive untouched.
+  // A 404 is GitHub's real answer: it must survive, not be papered over.
   calls.length = 0;
   globalThis.fetch = stub(() => ({ ok: false, status: 404, headers: headers() }));
-  assert.equal((await ghFetch('https://api.github.com/users/nope')).status, 404);
+  assert.equal((await ghFetch('https://api.github.com/users/nope', {}, { fresh: true })).status, 404);
   assert.equal(calls.length, 1, 'no mirror call for a 404');
 });
 
 test('a broken mirror never masks what GitHub said', async () => {
+  // Mirror errors, GitHub refuses on quota: the caller sees GitHub's response,
+  // not the mirror's 502.
   globalThis.fetch = async (url) => url.startsWith('https://api.github.com')
     ? { ok: false, status: 403, headers: headers({ 'x-ratelimit-remaining': '0' }), original: true }
     : { ok: false, status: 502, headers: headers() };
   const res = await ghFetch('https://api.github.com/users/torvalds');
-  assert.equal(res.original, true, 'GitHub response is returned when the mirror fails');
+  assert.equal(res.original, true);
 
-  // And when the network itself is down, the mirror is still tried.
-  let tried = [];
+  // Mirror throws, GitHub answers: the live answer comes through.
   globalThis.fetch = async (url) => {
-    tried.push(url);
-    if (url.startsWith('https://api.github.com')) throw new Error('offline');
-    return { ok: true, status: 200, headers: headers(), mirrored: true };
+    if (!url.startsWith('https://api.github.com')) throw new Error('mirror unreachable');
+    return { ok: true, status: 200, headers: headers(), live: true };
   };
-  assert.equal((await ghFetch('https://api.github.com/users/torvalds')).mirrored, true);
-  assert.equal(tried.length, 2);
+  assert.equal((await ghFetch('https://api.github.com/users/torvalds')).live, true);
+
+  // Both down and the endpoint is mirrored: the original error surfaces.
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  await assert.rejects(() => ghFetch('https://api.github.com/users/torvalds'), /offline/);
 });
