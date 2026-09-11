@@ -20,6 +20,7 @@
 // ---------------------------------------------------------------------------
 
 import { LANE_OFFSET } from './city/layout.js'; // the boulevard's car lanes (drive mode spawns on the outer one)
+import { bumpTrafficCars } from './city/cars.js'; // drive mode barges the traffic aside
 import { createBombRun } from './game.js'; // the bomb-run mini game (fly mode)
 import { injectStyle, WARP_FRAG, injectTravelStyle } from './explore-style.js'; // CSS + travel-warp shader
 
@@ -415,7 +416,7 @@ export function createExplorer(THREE, deps = {}) {
   let blend = null;       // { t, dur, pos, quat, fov } camera transition start
   const want = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: 50, look: new THREE.Vector3() };
   const walker = { p: new THREE.Vector3(), v: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, grounded: true, bob: 0, fov: 70 };
-  const car = { p: new THREE.Vector3(), v: new THREE.Vector2(), yaw: 0, y: 0, pitch: 0, roll: 0, steer: 0, lean: 0, squat: 0, spin: 0, bump: 0, vf: 0, vl: 0, lastVf: 0, puffT: 0 };
+  const car = { p: new THREE.Vector3(), v: new THREE.Vector2(), yaw: 0, y: 0, pitch: 0, roll: 0, steer: 0, lean: 0, squat: 0, spin: 0, bump: 0, vf: 0, vl: 0, lastVf: 0, puffT: 0, smokeT: 0 };
   const plane = { p: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, speed: 26, throttle: 0.45, prop: 0, puffT: 0, bump: 0 };
   const chase = { pos: new THREE.Vector3(), look: new THREE.Vector3(), yaw: 0, pitch: 0, idle: 9, zoom: { drive: 1, fly: 1 }, shake: 0 };
 
@@ -884,6 +885,22 @@ export function createExplorer(THREE, deps = {}) {
         if (collide(_c, CAR.R, c.y + 0.1, c.y + 1.6)) { c.p.x += _c.x - bx; c.p.z += _c.z - bz; hx += hitN.x; hz += hitN.z; hit = true; }
       }
     }
+    // Traffic: we are the heavier car, so they are shunted and we hardly feel it.
+    const shunt = bumpTrafficCars(c.p.x, c.p.z, c.v.x, c.v.y, CAR.R + 0.5);
+    if (shunt) {
+      c.v.x += shunt.x; c.v.y += shunt.z;
+      const jolt = Math.min(0.9, 0.22 + shunt.power * 0.09);
+      c.bump = Math.max(c.bump, jolt);
+      chase.shake = Math.max(chase.shake, jolt);
+      if (shunt.power > 1.5 && c.smokeT <= 0) { // a cloud of smoke where we caught them
+        c.smokeT = 0.18;
+        for (let i = 0; i < 8; i++) {
+          puff(shunt.ix + (Math.random() - 0.5) * 1.6, c.y + 0.5 + Math.random(), shunt.iz + (Math.random() - 0.5) * 1.6,
+            (Math.random() - 0.5) * 5, 1.4 + Math.random() * 1.6, (Math.random() - 0.5) * 5, 0.6, 0xf6efe1, 0.9);
+        }
+      }
+    }
+    c.smokeT -= dt;
     if (hit) {
       const l = Math.hypot(hx, hz) || 1, nx = hx / l, nz = hz / l, vn = c.v.x * nx + c.v.y * nz;
       if (vn < 0) {

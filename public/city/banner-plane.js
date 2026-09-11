@@ -85,10 +85,10 @@ export function buildBannerPlane() {
   const tex = bannerTexture();
   const mat = toonMat({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25 }); // readable at dusk too
   const front = new THREE.Mesh(new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 1), mat);
-  // The back face carries mirrored uvs, so the text reads the right way round from both sides.
+  // A second face for the other side. Turning it round already reverses it for a
+  // viewer over there, so its uvs stay as they are: mirroring them too would
+  // flip the text back and it would read backwards from that side.
   const backGeo = new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 1);
-  const uv = backGeo.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
   const back = new THREE.Mesh(backGeo, mat);
   back.rotation.y = Math.PI;
   const banner = new THREE.Group();
@@ -105,12 +105,13 @@ export function buildBannerPlane() {
   rope.frustumCulled = false;
   rope.raycast = noRaycast;
   scene.add(plane, banner, rope);
-  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT, side: 1, from: new THREE.Vector3(), to: new THREE.Vector3() };
+  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT, side: 1, cross: CROSS, from: new THREE.Vector3(), to: new THREE.Vector3() };
   updateBannerPlane(0, 0, false);
 }
 
 const _p = new THREE.Vector3(), _b = new THREE.Vector3(), _tail = new THREE.Vector3(), _lead = new THREE.Vector3(), _dir = new THREE.Vector3();
 const _f = new THREE.Vector3(), _side = new THREE.Vector3(), _mid = new THREE.Vector3(), _dirXZ = new THREE.Vector3();
+const _vf = new THREE.Vector3(), _vs = new THREE.Vector3(), _vc = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 // Flutter: a travelling wave that grows toward the free end of the banner.
 function flutter(mesh, time, sign) {
@@ -129,12 +130,15 @@ function planPass() {
   if (_f.lengthSq() < 1e-4) _f.set(0, 0, -1);
   _f.normalize();
   _side.set(-_f.z, 0, _f.x).multiplyScalar(rig.side); // across the view, alternating each time
-  const d = AHEAD * (0.85 + Math.random() * 0.45);
+  // Cross whatever you are looking at: usually straight over the city, sometimes just past it.
+  const reach = Math.hypot(controls.target.x - camera.position.x, controls.target.z - camera.position.z) || AHEAD;
+  const d = Math.min(180, Math.max(30, reach * (0.6 + Math.random() * 0.75)));
   const y = Math.min(80, Math.max(44, camera.position.y * 0.42 + 10)); // over the rooftops, under the clouds
   _mid.set(camera.position.x + _f.x * d, y, camera.position.z + _f.z * d);
   rig.from.copy(_mid).addScaledVector(_side, -HALF);
   rig.to.copy(_mid).addScaledVector(_side, HALF);
   rig.start = now();
+  rig.cross = CROSS; // a click can lengthen this pass
   rig.flying = true;
   rig.side = -rig.side;
 }
@@ -147,7 +151,7 @@ export function updateBannerPlane(dt, elapsed, hidden) {
     if (now() < rig.next) return;
     planPass();
   }
-  const age = now() - rig.start, u = age / CROSS;
+  const age = now() - rig.start, u = age / rig.cross;
   if (u >= 1) { // gone by: rest, then come back the other way
     rig.flying = false;
     rig.next = now() + REST_MIN + Math.random() * REST_VAR;
@@ -160,7 +164,9 @@ export function updateBannerPlane(dt, elapsed, hidden) {
   _p.y += bob;
   rig.plane.position.copy(_p);
   _dirXZ.subVectors(rig.to, rig.from).setY(0).normalize();
-  const yaw = Math.atan2(_dirXZ.z, -_dirXZ.x) + Math.PI / 2; // nose along the run (the model faces +x)
+  // Nose along the run. The model faces +x, and rotateY(a) sends +x to (cos a, 0, -sin a),
+  // so the heading (dx, dz) needs a = atan2(-dz, dx).
+  const yaw = Math.atan2(-_dirXZ.z, _dirXZ.x);
   rig.plane.rotation.set(0, 0, 0);
   rig.plane.rotateY(yaw);
   rig.plane.rotateZ(Math.sin(age * 0.5) * 0.05); // a lazy roll
@@ -188,6 +194,27 @@ export function updateBannerPlane(dt, elapsed, hidden) {
 // Is the pointer ray on the plane or its banner?
 export function bannerPlaneHit(raycaster) {
   return !!rig && rig.plane.visible && raycaster.intersectObjects(rig.pickables, false).length > 0;
+}
+
+// Where to put the camera to read the banner: off to one side of it, a little above.
+const VIEW_SIDE = 30, VIEW_BACK = 4, VIEW_UP = 2.5;
+export function bannerPlaneView(eye, look) {
+  if (!rig || !rig.flying) return false;
+  rig.banner.updateMatrixWorld();
+  look.setFromMatrixPosition(rig.banner.matrixWorld);
+  _vf.set(1, 0, 0).applyQuaternion(rig.banner.quaternion); // along the run
+  _vs.set(-_vf.z, 0, _vf.x);
+  if (_vs.dot(_vc.subVectors(camera.position, look)) < 0) _vs.negate(); // stay on the side you are already on
+  eye.copy(look).addScaledVector(_vs, VIEW_SIDE).addScaledVector(_vf, -VIEW_BACK);
+  eye.y = look.y + VIEW_UP;
+  return true;
+}
+
+// Clicking the plane: leave enough of the pass to read the banner during the flight over.
+export function holdBannerPass(sec = 12) {
+  if (!rig || !rig.flying) return false;
+  rig.cross = Math.max(rig.cross, (now() - rig.start) + sec);
+  return true;
 }
 
 // Open the Buy Me a Coffee widget (index.html loads it); the page itself if it's unavailable.

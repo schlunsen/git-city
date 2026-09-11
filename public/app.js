@@ -60,7 +60,7 @@ import { carKit, buildCars, updateCars } from './city/cars.js';
 import { gourceUrl, gourceCovering, openGource, closeGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
-import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
+import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
 
 // ---------------------------------------------------------------------------
 // App state (what the city modules own lives with them)
@@ -93,6 +93,7 @@ let follow = true;           // orbit target drifts toward the actor while playi
 let explorer = null;         // explore.js handle (walk / drive / fly); owns the camera while exploring
 let wayfinding = null;       // wayfinding.js handle (street signs + name tag), rebuilt with the buildings
 let swallowTap = false;      // set when a tap only dismissed the compact menu
+let planeCam = null;         // clicking the sponsor plane: fly alongside it, read the banner, then the widget
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3();
 
 function onResize() {
@@ -244,7 +245,7 @@ function doHover(cx, cy) {
   if (bannerPlaneHit(raycaster)) { // the sponsor plane and its banner
     if (hovered !== 'plane') {
       hovered = 'plane';
-      tip.textContent = '\u2615 Enjoying Git City? Click to buy me a coffee';
+      tip.textContent = '\u2615 Enjoying Git City? Click to fly alongside';
       tip.classList.add('show');
       document.body.style.cursor = 'pointer';
     }
@@ -297,11 +298,51 @@ function positionTooltip(cx, cy) {
 }
 
 function onPointerDown(e) {
+  if (planeCam) releasePlaneCam(); // a drag hands the camera straight back
   // Only treat as a click if not a drag: we approximate by checking that the
   // pointer hasn't moved much since the last move event (OrbitControls also
   // handles drags). We just raycast on pointerup with a small delta guard.
   onPointerDown._sx = e.clientX; onPointerDown._sy = e.clientY;
 }
+// Fly alongside the sponsor plane so its banner can be read, then offer the coffee.
+const PLANE_WATCH_MAX = 14;
+const _pcEye = new THREE.Vector3(), _pcLook = new THREE.Vector3();
+function watchPlane() {
+  if (explorer?.ownsCamera) { openSupport(); return; }   // walk / drive / fly own the camera
+  openSupport();                                        // the coffee panel opens straight away ...
+  if (!holdBannerPass(12)) return;                      // ... and if the pass is over, that is all
+  endTour();
+  if (!planeCam) planeCam = { home: { position: camera.position.clone(), target: controls.target.clone(), autoRotate: controls.autoRotate }, t: 0, phase: 'watch' };
+  controls.autoRotate = false;
+}
+function releasePlaneCam() {
+  if (!planeCam) return;
+  controls.autoRotate = planeCam.home.autoRotate;
+  planeCam = null;
+}
+function updatePlaneCam(dt) {
+  const pc = planeCam;
+  pc.t += dt;
+  const live = bannerPlaneView(_pcEye, _pcLook);
+  if (pc.phase === 'watch' && (!live || pc.t > PLANE_WATCH_MAX)) { // the pass is over: drift home
+    pc.phase = 'back';
+    pc.t = 0;
+    pc.fromPos = camera.position.clone();
+    pc.fromTgt = controls.target.clone();
+  }
+  if (pc.phase === 'back') {
+    const u = Math.min(1, pc.t / 1.6), e = u * u * (3 - 2 * u);
+    camera.position.lerpVectors(pc.fromPos, pc.home.position, e);
+    controls.target.lerpVectors(pc.fromTgt, pc.home.target, e);
+    if (u >= 1) releasePlaneCam();
+    return true;
+  }
+  const k = 1 - Math.exp(-dt * (pc.t < 1.2 ? 2.8 : 6)); // swing in, then hold station beside it
+  camera.position.lerp(_pcEye, k);
+  controls.target.lerp(_pcLook, k);
+  return true;
+}
+
 function onPointerUp(e) {
   if (swallowTap) { swallowTap = false; onPointerDown._sx = null; return; }
   if (onPointerDown._sx == null || e.button !== 0) return;
@@ -311,7 +352,7 @@ function onPointerUp(e) {
   pointerNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointerNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointerNDC, camera);
-  if (bannerPlaneHit(raycaster)) { openSupport(); return; } // the sponsor plane: Buy Me a Coffee
+  if (bannerPlaneHit(raycaster)) { watchPlane(); return; } // the sponsor plane: fly alongside, then the coffee
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
   if (hits.length > 0) {
@@ -654,11 +695,14 @@ function animate(timestamp) {
   // Explore modes (explore.js) drive the camera while active (and while gliding
   // back to orbit): the tour, click flights, follow and controls.update() stand down.
   const exploring = explorer ? explorer.update(dt, clock.getElapsed()) : false;
+  if (exploring && planeCam) releasePlaneCam(); // explore modes own the camera
+  const watching = !exploring && !!planeCam && updatePlaneCam(dt); // flying alongside the sponsor plane
   // Cinematic fly-through (drives the camera; OrbitControls paused while active)
   const touring = tour.active && !tour.paused;
-  if (touring && !exploring) updateTour(dt);
+  if (watching) { /* the plane camera placed it this frame */ }
+  else if (touring && !exploring) updateTour(dt);
   else if (cine && !exploring) updateCine(dt); // click-a-building flight in / out
-  const scripted = touring || !!cine;
+  const scripted = touring || !!cine || watching;
 
   if (exploring) { /* explore.js placed the camera this frame */ }
   else if (!scripted) {
