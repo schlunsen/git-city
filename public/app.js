@@ -214,7 +214,7 @@ function applyDayFactor(t) {
   // Streetlamps + plaza neon flare up at night; their light cones fade in too.
   if (lampGroup) {
     for (const l of lampGroup.children) l.userData.mat.emissiveIntensity = 0.1 + glow * 2.2;
-    for (const cm of (lampGroup.userData.cones || [])) cm.opacity = glow * 0.22;
+    for (const cm of (lampGroup.userData.cones || [])) cm.opacity = glow * (cm.userData.peak ?? 0.22);
   }
   const beacon = cityGroup.userData.beacon;
   if (beacon) beacon.material.emissiveIntensity = 0.6 + glow * 1.2;
