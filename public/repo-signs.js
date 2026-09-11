@@ -37,7 +37,7 @@ function fitText(g, text, weight, size, min, maxW) {
 }
 
 // Ground-floor fascia: dark enamel, language stripe, name + gold star count.
-function paintFascia(g, repo, color) {
+function paintFascia(g, repo, color, sign) {
   const { w, h } = FASCIA, pad = 6;
   g.fillStyle = '#172033';
   g.beginPath(); g.roundRect(pad, pad, w - pad * 2, h - pad * 2, 16); g.fill();
@@ -54,13 +54,13 @@ function paintFascia(g, repo, color) {
     g.fillStyle = '#ffcf5a'; g.textAlign = 'right';
     g.fillText(s, w - 22, h / 2 + 1);
   }
-  const text = fitText(g, repo.name || '', 800, 50, 20, w - 58 - starW);
+  const text = fitText(g, sign || repo.name || '', 800, 50, 20, w - 58 - starW);
   g.fillStyle = '#f7f2e6'; g.textAlign = 'left';
   g.fillText(text, 36, h / 2 + 2);
 }
 
 // Rooftop board: bright cream billboard with a band in the language colour.
-function paintRoof(g, repo, color) {
+function paintRoof(g, repo, color, sign) {
   const { w, h } = ROOF, pad = 6;
   g.fillStyle = '#f7efd9';
   g.beginPath(); g.roundRect(pad, pad, w - pad * 2, h - pad * 2, 20); g.fill();
@@ -73,7 +73,7 @@ function paintRoof(g, repo, color) {
   const bits = [`★ ${fmtStars(repo.stargazers_count || 0)}`];
   if (repo.language) bits.push(repo.language);
   g.fillStyle = '#2f7f6b';
-  g.fillText(fitText(g, bits.join(' · '), 700, 32, 16, w - 60), w / 2, 124);
+  g.fillText(fitText(g, sign || bits.join(' · '), 700, 32, 16, w - 60), w / 2, 124);
 }
 
 function makeAtlas(THREE, cell) {
@@ -122,17 +122,20 @@ function ringOfQuads(out, cx, cy, cz, half, w, h, uv) {
  * @param THREE
  * @param {Array} buildings  the host's building entries ({ mesh, bodies, repo })
  * @param {(repo) => number} colorFor  language colour for a repo
+ * @param {{ signFor?: (repo) => string|undefined }} [opts]
+ *   signFor: the developer's own sign text (city.json repos[name].sign): it
+ *   replaces the name on the shop fascias and the stats line on the roof board.
  */
-export function buildRepoSigns(THREE, buildings, colorFor = () => 0x64dedb) {
+export function buildRepoSigns(THREE, buildings, colorFor = () => 0x64dedb, { signFor } = {}) {
   for (const a of atlases) { a.tex.dispose(); a.mat.dispose(); }
   atlases = [];
   const fascias = [], roofs = [];
   for (const b of buildings) {
     const bodies = b.bodies || (b.body ? [b.body] : []);
     if (!bodies.length) continue;
-    const color = colorFor(b.repo);
-    const F = place(THREE, fascias, FASCIA, (g) => paintFascia(g, b.repo, color));
-    const R = place(THREE, roofs, ROOF, (g) => paintRoof(g, b.repo, color));
+    const color = colorFor(b.repo), sign = signFor?.(b.repo) || '';
+    const F = place(THREE, fascias, FASCIA, (g) => paintFascia(g, b.repo, color, sign));
+    const R = place(THREE, roofs, ROOF, (g) => paintRoof(g, b.repo, color, sign));
     const fo = { pos: [], uv: [], idx: [] }, ro = { pos: [], uv: [], idx: [] };
 
     // Ground-floor fascia on all four sides, at eye level.
@@ -170,10 +173,10 @@ export function buildRepoSigns(THREE, buildings, colorFor = () => 0x64dedb) {
     geo.setIndex([...fo.idx, ...ro.idx.map((i) => i + off)]);
     geo.addGroup(0, fo.idx.length, 0);
     geo.addGroup(fo.idx.length, ro.idx.length, 1);
-    const sign = new THREE.Mesh(geo, [F.a.mat, R.a.mat]);
-    sign.name = 'repo-sign';
-    sign.raycast = () => {}; // clicks still hit the building
-    b.mesh.add(sign);
+    const signMesh = new THREE.Mesh(geo, [F.a.mat, R.a.mat]);
+    signMesh.name = 'repo-sign';
+    signMesh.raycast = () => {}; // clicks still hit the building
+    b.mesh.add(signMesh);
   }
   for (const a of atlases) a.tex.needsUpdate = true;
 }
