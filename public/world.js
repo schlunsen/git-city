@@ -26,10 +26,15 @@
  *
  * THREE is passed in by the host so this module works with its import map.
  */
+import { LOT_KIND } from './city/lots.js';
 
 // How many sprites each sheet was split into (scripts/assets/, docs/assets.md).
-export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
+export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 16, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5, BUS_SHELTER: 6, TRASH_BIN: 7, NEWS_STAND: 8, BIKE_RACK: 9 };
+// Quantized day tints for lot decals (city/lots.js plans tint 0..3) — a few
+// paper shades so identical tiles don't read as copies, and the material
+// cache stays bounded.
+export const LOT_TINTS = [0xffffff, 0xeaf4e0, 0xf4efe0, 0xe8ecef];
 export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROCKET: 4 };
 // What stands on the far horizon. 'hills' is the original painted ridge; the
 // rest are their own strips. Each biome has a default, city.json can override.
@@ -335,12 +340,14 @@ export function createWorld(THREE, scene, deps) {
     return mesh;
   }
   // A flat top-down decal (lots, roofs). `size` is the square side length.
+  // `tint` picks a quantized paper tint for the day colour — kept to a few
+  // values so the material cache stays small.
   // `own`: a private material copy the caller can fade per mesh (the tour-focus
   // fade ghosts one building's roof without touching the shared sprite material).
   // The clone skips the day/night tint list and is disposed with its owner.
-  function decal(name, size, { own = false } = {}) {
+  function decal(name, size, { tint = 0, own = false } = {}) {
     const entry = getTex(name);
-    let mat = cutoutMat(name, { night: 0x3b4660, day: 0xffffff });
+    let mat = cutoutMat(name, { night: 0x3b4660, day: LOT_TINTS[tint] ?? 0xffffff });
     if (own) {
       mat = mat.clone();
       mat.alphaTest = 0.05; // below the fade floor, so opacity eases smoothly instead of popping out at 0.5
@@ -1884,20 +1891,74 @@ export function createWorld(THREE, scene, deps) {
   // If the host never hands us a profile, still show an island.
   setTimeout(() => { if (!land) setProfile({}); }, 4000);
 
-  // ---- per-user decals: empty lots ------------------------------------------
+  // ---- per-user decals: the planned vacant lots -----------------------------
+  // plan comes from city/lots.js planLots(): every vacant cell gets a themed
+  // decal (rotated, flipped, scaled, tinted) plus a few cutout props. Squares
+  // arrive as four quarters whose lamps and centrepiece face the intersection.
   let lotGroup = null;
-  function setLots(cells) {
-    if (lotGroup) { scene.remove(lotGroup); lotGroup = null; }
-    lotGroup = new THREE.Group();
-    for (const c of cells) {
-      const r = seededRandom(c.seed);
-      if (r() > 0.6) continue; // leave some lots plain so the district stays airy
-      const d = decal(`lots-${Math.floor(r() * SPRITE_COUNTS.lots)}`, CELL - streetW - 0.6); // an empty lot between its streets
-      d.position.set(c.x, 0.035, c.z);
-      d.rotation.y = Math.floor(r() * 4) * Math.PI / 2;
-      lotGroup.add(d);
+  const LOT_PROP_SPRITE = {
+    bench: `props-${PROP.BENCH}`, lamp: `props-${PROP.LAMP}`, cart: `props-${PROP.CART}`,
+    'news-stand': `props-${PROP.NEWS_STAND}`, 'bike-rack': `props-${PROP.BIKE_RACK}`, fountain: 'props-fountain',
+  };
+  function setLots(plan) {
+    if (lotGroup) { // per-call instance buffers + glow geometry die with the group; shared assets survive
+      scene.remove(lotGroup);
+      lotGroup.traverse((o) => { if (o.isInstancedMesh) o.dispose(); else if (o.isPoints) o.geometry.dispose(); });
+      lotGroup = null;
     }
-    scene.add(lotGroup);
+    const g = new THREE.Group();
+    lotGroup = g;
+    const B = BIOMES[land?.traits?.biome] || BIOMES.meadow; // trees/bushes match the island's biome
+    const batches = new Map(); // sprite name -> [{ x, y, z, h }]
+    const shadowSpots = [];
+    const glowSpots = [];
+    for (const lot of plan?.lots || []) {
+      const kind = LOT_KIND[lot.kind];
+      const idx = kind && kind.sprite < SPRITE_COUNTS.lots ? kind.sprite : (kind?.fallback ?? 0); // works with any tile count
+      const d = decal(`lots-${idx}`, (CELL - streetW - 0.6) * lot.scale, { tint: lot.tint });
+      d.position.set(lot.x, 0.035, lot.z);
+      d.rotation.y = lot.rot;
+      if (lot.flipX) d.scale.x *= -1;
+      if (lot.flipZ) d.scale.z *= -1;
+      g.add(d);
+      for (const p of lot.props) {
+        const name = p.p === 'tree' ? `trees-${B.trees[p.v % B.trees.length]}`
+          : p.p === 'bush' ? `bushes-${B.bushes[p.v % B.bushes.length]}`
+          : LOT_PROP_SPRITE[p.p];
+        if (!name) continue;
+        const x = lot.x + p.dx, z = lot.z + p.dz;
+        if (!batches.has(name)) batches.set(name, []);
+        batches.get(name).push({ x, y: 0.02, z, h: p.h });
+        shadowSpots.push({ x, y: 0.045, z, w: p.h * 0.55 });
+        if (p.p === 'lamp') glowSpots.push(x, 0.02 + p.h * 0.9, z);
+      }
+    }
+    // One InstancedMesh per sprite — the island's own cutout recipe; matrices
+    // once the texture's aspect is known, dropped if the profile changed first.
+    for (const [name, list] of batches) {
+      getTex(name).ready.then((entry) => {
+        if (lotGroup !== g) return;
+        const mesh = new THREE.InstancedMesh(unitPlane, billboardMat(name), list.length);
+        const m = new THREE.Matrix4();
+        list.forEach((p, i) => { m.makeScale(p.h * entry.aspect, p.h, 1).setPosition(p.x, p.y, p.z); mesh.setMatrixAt(i, m); });
+        mesh.frustumCulled = false; // vertices move in the shader
+        g.add(mesh);
+      });
+    }
+    if (shadowSpots.length) {
+      const shadows = new THREE.InstancedMesh(shadowGeo, shadowMat, shadowSpots.length);
+      const m = new THREE.Matrix4();
+      shadowSpots.forEach((s, i) => { m.makeScale(s.w, 1, s.w * 0.55).setPosition(s.x, s.y, s.z); shadows.setMatrixAt(i, m); });
+      g.add(shadows);
+    }
+    if (glowSpots.length) { // lamp glows: setDay fades glowMats[0] in at night
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(glowSpots, 3));
+      const pts = new THREE.Points(geo, glowMats[0]);
+      pts.frustumCulled = false;
+      g.add(pts);
+    }
+    scene.add(g);
   }
   function roofDecal(k, size, opts) { return decal(`roofs-${k % SPRITE_COUNTS.roofs}`, size, opts); }
 

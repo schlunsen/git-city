@@ -32,6 +32,7 @@ import { createCustomizer, showToast } from './customize.js'; // Customize panel
 import { API, DEFAULT_USER, FIXTURES, MAX_BUILDINGS, DAY_CYCLE_SECONDS, LANG_COLORS, FALLBACK_COLOR } from './city/constants.js';
 import { $, escapeHtml, fmtNum, fmtBytes, setLoadStatus, disposeObject, readPref, writePref, hexNum, prefersReducedMotion } from './city/util.js';
 import { getOutlineMat, envPalette, envMat, hashStr } from './city/toon.js';
+import { planLots } from './city/lots.js';
 import {
   CELL, SLAB_HALF, SLAB_R, RING_R, RING_CORNER, PLAZA_R, chooseCityShape, makeCityLayout, starsToHeight, starsToFootprint,
   worldForCell, assignDistricts,
@@ -159,17 +160,18 @@ function buildCity(repos, user) {
   buildDistrictSigns(THREE, slots.assignments);
   buildDistrictBaseplates(THREE, slots.assignments);
 
-  // Vacant cells get a top-down decal (park, parking, court, site) so a small
-  // profile still looks like a lived-in town instead of an empty grid.
-  // The ragged edge of a curved footprint gets them too, wherever a decal fits.
+  // Vacant cells are planned by city/lots.js: themed zones, little squares
+  // around intersections, decals + props — so a small profile still looks
+  // like a lived-in town instead of an empty grid. The ragged edge of a
+  // curved footprint gets lots too, wherever a decal fits.
   const used = new Set(slots.assignments.map(a => `${a.gx},${a.gz}`));
-  const lots = [];
+  const vacant = [];
   for (const c of L.cells) {
     if (!c.lot || used.has(`${c.gx},${c.gz}`)) continue;
     // Seeded by corner-based cell coords, as before, so a square city keeps its lots.
-    lots.push({ x: c.x, z: c.z, seed: hashStr(`${user.login}:${c.gx + L.hx},${c.gz + L.hz}`) });
+    vacant.push({ gx: c.gx, gz: c.gz, x: c.x, z: c.z, seed: hashStr(`${user.login}:${c.gx + L.hx},${c.gz + L.hz}`) });
   }
-  world?.setLots(lots);
+  world?.setLots(planLots(vacant, user.login));
 
   buildAvatar(user);
   buildCars(user);

@@ -5,6 +5,9 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { hashStr, seededRandom } from './prng.js';
+
+export { hashStr, seededRandom }; // canonical home is prng.js (pure); re-exported for existing importers
 
 // ---------------------------------------------------------------------------
 // Toon look: cel-shaded materials on a shared 4-step ramp, black inverted-hull
@@ -90,22 +93,6 @@ export function envMat(night, day, extra = {}) {
   return m;
 }
 
-export function hashStr(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
-// mulberry32 — rooftop props are deterministic per repo so a city looks the
-// same every time it is loaded.
-export function seededRandom(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 export function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
