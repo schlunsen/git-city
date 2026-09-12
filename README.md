@@ -35,8 +35,10 @@ skyline — beaming pushes, pull requests and stars onto the rooftops.
 | 🔥 Public activity (90 days) | Gource-style playback: the avatar flies to each repo and beams it — teal pushes, purple PRs and reviews, blue issues, orange stars and releases |
 | 📅 Daily activity | A heatmap ring of bricks around the plaza |
 
-Small profiles still get a lived-in town: empty lots fill with parks, courts,
-parking and construction sites.
+Small profiles still get a lived-in town: empty lots are planned into themed
+blocks — green belts, sports corners, civic rows — with little squares around
+the intersections (fountain plazas, markets, gardens) and trees, benches and
+lamps dressing the parks.
 
 ## Gallery
 

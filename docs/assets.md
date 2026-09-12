@@ -59,6 +59,14 @@ The scenery-accents batch (`props-fountain`, `props-dock`, `scenery-autumn-tree`
 - **`trees2` → `trees-5` … `trees-9`:** weeping willow, white birch, acacia, baobab, apple.
 - **`plants2` → `bushes-5` … `bushes-9`:** sunflowers, cactus, reeds, mossy stump, fern.
 
+The vacant-lot round (jobs `lots2`, `lots3`, `lots4`, `grid` mode) grew the lot decal set from 4 to 16 — the index of each tile matches its `sprite` in `LOT_KINDS` (`public/city/lots.js`):
+- **`lots2` → `lots-4` … `lots-7`:** mowed lawn with a footpath, paved plaza, tennis court, soccer pitch.
+- **`lots3` → `lots-8` … `lots-11`:** playground, community garden, market square, fountain plaza.
+- **`lots4` → `lots-12` … `lots-15`:** skate park, dog park, running track, open-air amphitheater.
+- **`construction2` → `lots-2` (redraw, `row` mode):** a busier construction site (foundation pit, tower crane from above, steel beams, pipes, barriers) replacing the nearly bare original grid tile. Single-tile prompts must say "strict top-down … no isometric angle" or the model draws a 3D block.
+
+Grid sheets must keep the gaps between tiles plain flat magenta: any numbers, labels or grid lines the model paints into the gaps break `key.py`'s empty-column splitting, so the prompts say so explicitly.
+
 Most of them join the biome lists in `BIOMES`: acacias, baobabs and cacti make the savanna, birches the alpine and lakeland woods. Willows and reeds are placed along the lakes and rivers instead.
 
 ## 1. Setup
