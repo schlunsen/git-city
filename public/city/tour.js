@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { camera, controls } from './scene.js';
-import { buildingMeshes, buildingByName } from './buildings.js';
+import { buildingMeshes, buildingByName, setFocusedBuilding } from './buildings.js';
 import { readmeExcerpt, readmeKnown } from './readme.js';
 import { langHex } from './constants.js';
 import { fmtNum } from './util.js';
@@ -23,18 +23,31 @@ export function initTour(d) { deps = { ...deps, ...d }; }
 
 const _tp = new THREE.Vector3(), _tl = new THREE.Vector3();
 const smootherstep = (u) => u * u * u * (u * (u * 6 - 15) + 10);
+// Which way the rooftop board faces. repo-signs.js puts it on the roof edge
+// pointing away from the plaza, snapped to the nearest cardinal face normal —
+// so a camera on this bearing reads the sign square on, and the tour lands
+// there. Matching the snap matters: the raw outward bearing is up to 45° off
+// the board, which is what left stops looking at it edge-on.
+function signBearing(b, fallback) {
+  const top = b.bodies?.[b.bodies.length - 1] || b.body;
+  const gx = b.mesh.position.x + (top?.position.x || 0);
+  const gz = b.mesh.position.z + (top?.position.z || 0);
+  if (Math.hypot(gx, gz) <= 1) return fallback; // dead centre: no outward face to prefer
+  return Math.abs(gx) > Math.abs(gz) ? (gx > 0 ? 0 : Math.PI) : (gz >= 0 ? Math.PI / 2 : -Math.PI / 2);
+}
 // A leg is { dur, pos(u, out), look(u, out), repo? } with u running 0..1.
-function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 1.4, loop = false } = {}) {
+function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 0.9, loop = false } = {}) {
   const cx = b.mesh.position.x, cz = b.mesh.position.z, h = b.h || 8;
   const r = Math.max(20, h * 0.8 + 16);
   // Stay above the neighbouring rooftops so a dense city never clips the camera.
   let roof = 0;
   for (const o of buildingMeshes) if (o !== b && Math.hypot(o.mesh.position.x - cx, o.mesh.position.z - cz) < r + 8) roof = Math.max(roof, o.h || 0);
   const y = Math.max(10, h * 0.6 + 6, roof + 6);
-  const out = Math.hypot(cx, cz) > 1 ? Math.atan2(cz, cx) : fallbackBearing; // start on the side facing out of town
-  const a0 = out - sweep / 2;
+  // Start square in front of the rooftop board and drift from there, so the
+  // stop always opens on a readable sign instead of a corner of the building.
+  const a0 = signBearing(b, fallbackBearing);
   return {
-    dur, loop, repo: b.repo,
+    dur, loop, repo: b.repo, b,
     pos: (u, o) => o.set(cx + Math.cos(a0 + sweep * u) * r, y + (loop ? 0 : Math.sin(u * Math.PI) * 2), cz + Math.sin(a0 + sweep * u) * r),
     look: (u, o) => o.set(cx, h * 0.55, cz),
   };
@@ -77,7 +90,7 @@ function buildShowcase(start = 0) {
   let bearing = Math.atan2(camera.position.z, camera.position.x);
   const push = (leg) => {
     const fly = flyLeg(pos, look, leg.pos(0, new THREE.Vector3()), leg.look(0, new THREE.Vector3()), legs.length ? 3.6 : 3);
-    if (leg.repo) Object.assign(fly, { repo: leg.repo, stop: leg.stop, of: leg.of, highlight: leg.highlight, next: true }); // announce the next repo on the way
+    if (leg.repo) Object.assign(fly, { repo: leg.repo, b: leg.b, stop: leg.stop, of: leg.of, highlight: leg.highlight, next: true }); // announce the next repo on the way
     legs.push(fly);
     legs.push(leg);
     pos = leg.pos(1, new THREE.Vector3()); look = leg.look(1, new THREE.Vector3());
@@ -104,6 +117,7 @@ export function updateTour(dt) {
   camera.position.copy(leg.pos(u, _tp));
   controls.target.copy(leg.look(u, _tl));
   showcaseCard(leg.repo ? leg : null);
+  setFocusedBuilding(leg.repo ? leg.b || null : null); // the city fades back behind the stop in focus
 }
 // Jump the showcase to the next (+1) / previous (-1) repo, or back to the
 // current one (0, after the user looked around): fly there from wherever the camera is.
@@ -201,6 +215,7 @@ export function startTour() {
 export function endTour() {
   tour.active = false; tour.paused = false; tour.legs = null; tour.stops = null;
   showcaseCard(null);
+  setFocusedBuilding(null);
   document.getElementById('tour-btn')?.classList.remove('on');
 }
 
@@ -243,6 +258,7 @@ export function returnToOrbit() {
 // The user grabbed the camera: the tour pauses where it is, and any flight stops.
 export function pauseTourForUser() {
   if (tour.active) tour.paused = true; // look around; the tour picks up again when you let go
+  setFocusedBuilding(null); // the camera is yours: the city comes back to full
   if (tourResumeTimer) clearTimeout(tourResumeTimer);
   cine = null;
 }

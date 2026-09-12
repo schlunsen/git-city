@@ -43,7 +43,7 @@ import {
 } from './city/scene.js';
 import { cityLayout, setCityLayout, buildEnvironment } from './city/block.js';
 import { plazaFx, updatePlaza } from './city/plaza.js';
-import { buildingMeshes, buildingByName, resetBuildings, createBuilding } from './city/buildings.js';
+import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus, focusGlowScale, refocusAfterRebuild } from './city/buildings.js';
 import {
   districtSigns, clearPerUserEnhancements, buildRingFromEvents, buildDistrictSigns, buildDistrictBaseplates, buildCommitShuttles,
   buildForkBeams, updateShuttles, updateBeams,
@@ -213,7 +213,9 @@ function applyDayFactor(t) {
   // Lit panes come from each facade's emissive mask; a beam hit flares them.
   for (const b of buildingMeshes) {
     const flick = 0.92 + Math.sin(clock.getElapsed() * 0.7 + b.flicker) * 0.08;
-    const inten = glow * flick * 1.15 + (b.pulse || 0) * 1.8;
+    // …and drops away on tour-ghosted buildings, so lit panes don't blaze
+    // through the fade (emissive is added on top of the faded albedo).
+    const inten = (glow * flick * 1.15 + (b.pulse || 0) * 1.8) * focusGlowScale(b);
     for (const m of b.bodyMats) m.emissiveIntensity = inten;
   }
   // Streetlamps + plaza neon flare up at night; their light cones fade in too.
@@ -732,6 +734,7 @@ function animate(timestamp) {
   if (watching) { /* the plane camera placed it this frame */ }
   else if (touring && !exploring) updateTour(dt);
   else if (cine && !exploring) updateCine(dt); // click-a-building flight in / out
+  tickBuildingFocus(dt); // ease the tour focus fade even while the user holds the camera
   const scripted = touring || !!cine || watching;
 
   if (exploring) { /* explore.js placed the camera this frame */ }
@@ -852,6 +855,7 @@ function refreshBuildings(repos) {
     billboards ||= !!buildingFile(r)?.billboard;
   }
   decorateBuildings();
+  refocusAfterRebuild(); // the tour may be mid-stop: its focus just got disposed
   explorer?.resetColliders();
   if (billboards && profileNow) world.setProfile({ ...profileNow, config: worldConfig() }, cityLayout.city);
 }

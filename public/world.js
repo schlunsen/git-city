@@ -342,9 +342,24 @@ export function createWorld(THREE, scene, deps) {
   // A flat top-down decal (lots, roofs). `size` is the square side length.
   // `tint` picks a quantized paper tint for the day colour — kept to a few
   // values so the material cache stays small.
-  function decal(name, size, { tint = 0 } = {}) {
+  // `own`: a private material copy the caller can fade per mesh (the tour-focus
+  // fade ghosts one building's roof without touching the shared sprite material).
+  // The clone skips the day/night tint list and is disposed with its owner.
+  function decal(name, size, { tint = 0, own = false } = {}) {
     const entry = getTex(name);
-    const mesh = new THREE.Mesh(unitDecal, cutoutMat(name, { night: 0x3b4660, day: LOT_TINTS[tint] ?? 0xffffff }));
+    let mat = cutoutMat(name, { night: 0x3b4660, day: LOT_TINTS[tint] ?? 0xffffff });
+    if (own) {
+      mat = mat.clone();
+      mat.alphaTest = 0.05; // below the fade floor, so opacity eases smoothly instead of popping out at 0.5
+      mat.userData = { tinted: true }; // not shared: disposed with its owner (the texture stays shared)
+      // The clone misses the registration cutoutMat() did for the original, so
+      // register it too — otherwise the roof decal freezes at the tint it was
+      // cloned under and never follows day/night again.
+      const t = { mat, night: new THREE.Color(0x3b4660), day: new THREE.Color(LOT_TINTS[tint] ?? 0xffffff) };
+      tints.push(t);
+      mat.addEventListener('dispose', () => { const i = tints.indexOf(t); if (i >= 0) tints.splice(i, 1); });
+    }
+    const mesh = new THREE.Mesh(unitDecal, mat);
     mesh.scale.set(size, 1, size);
     mesh.visible = false;
     mesh.raycast = () => {};
@@ -1951,7 +1966,7 @@ export function createWorld(THREE, scene, deps) {
     }
     scene.add(g);
   }
-  function roofDecal(k, size) { return decal(`roofs-${k % SPRITE_COUNTS.roofs}`, size); }
+  function roofDecal(k, size, opts) { return decal(`roofs-${k % SPRITE_COUNTS.roofs}`, size, opts); }
 
   // ---- per-frame -------------------------------------------------------------
   let cloudOpacity = 0.95;
@@ -1960,7 +1975,11 @@ export function createWorld(THREE, scene, deps) {
   function setDay(day) {
     const lit = day + (1 - day) * MOON_FLOOR; // moonlight keeps a share of the day colours
     litNow = lit;
-    for (const t of tints) t.mat.color.copy(t.night).lerp(t.day, lit);
+    for (const t of tints) {
+      t.mat.color.copy(t.night).lerp(t.day, lit);
+      const k = t.mat.userData.focusK; // tour-focus dim, applied by its own writer
+      if (k !== undefined) t.mat.color.multiplyScalar(k);
+    }
     if (land) for (const t of land.tints) t.mat.color.copy(t.night).lerp(t.day, lit);
     cloudOpacity = 0.55 + day * 0.4;
     const night = smooth(0.55, 0.12, day);
