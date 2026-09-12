@@ -125,14 +125,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .kv .row.repo .nm { display: flex; align-items: center; gap: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kv .row.repo .sw { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 
-/* ---------- Right: timeline clock + activity feed ---------- */
-#clock { position: fixed; top: 76px; right: 20px; z-index: 15; padding: 10px 16px 10px 14px; border-left: 3px solid var(--accent); min-width: 210px; }
-#clock .date { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
-#clock .day { font-family: var(--mono); font-size: 26px; font-weight: 600; }
-#clock .mon { font-family: var(--mono); font-size: 26px; font-weight: 600; color: var(--accent); }
-#clock .yr { font-family: var(--mono); font-size: 26px; font-weight: 600; margin-left: auto; }
-#clock .sub { font-family: var(--mono); font-size: 10px; color: var(--ink-500); margin-top: 2px; }
-#feed { position: fixed; top: 168px; right: 20px; z-index: 15; width: 250px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+/* ---------- Right: activity feed ---------- */
+#feed { position: fixed; top: 76px; right: 20px; z-index: 15; width: 250px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
 .feed-card {
   --c: var(--accent);
   position: relative; overflow: hidden; padding: 10px 14px 10px 18px;
@@ -322,7 +316,7 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
 #transport .rg.on { color: var(--accent); border-color: var(--accent-dim); }
 
 /* ---------- Showcase flight: a small TV set with the repo being toured ---------- */
-#showcase-card { position: fixed; left: 50%; bottom: calc(var(--transport-h, 90px) + 16px); z-index: 18; width: min(380px, 88vw);
+#showcase-card { position: fixed; left: 50%; bottom: calc(var(--transport-h, 90px) + 16px); z-index: 48; width: min(380px, 88vw);
   transform: translate(-50%, 14px) scale(0.96); opacity: 0; pointer-events: none; transition: opacity 0.45s ease, transform 0.45s ease;
   padding: 9px 9px 6px; border-radius: 18px; background: linear-gradient(160deg, #2b3244, #171c28 55%, #10141c);
   border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
@@ -349,11 +343,33 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
 #showcase-card .sc-ch:hover { color: var(--accent); }
 #showcase-card .sc-read { pointer-events: auto; cursor: pointer; padding: 5px 9px; border-radius: 6px;
   border: 1px solid rgba(100, 222, 219, 0.35); background: rgba(100, 222, 219, 0.08); color: var(--accent);
-  font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; }
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; transition: opacity 0.25s, background 0.15s, border-color 0.15s; }
 #showcase-card .sc-read:hover { background: rgba(100, 222, 219, 0.16); border-color: var(--accent-dim); }
-#showcase-card .sc-readme { margin-top: 9px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.1); font-size: 12px; line-height: 1.5;
+#showcase-card .sc-readme-panel { position: relative; overflow: hidden; margin-top: 11px; padding-top: 8px;
+  border-top: 1px solid rgba(100, 222, 219, 0.24); }
+/* The screenshot and excerpt play on the approach too, the way they always have;
+   only the "live" signal light waits for the camera to land. */
+#showcase-card:not(.landed) .sc-readme-signal b { visibility: hidden; }
+#showcase-card .sc-readme-signal { display: flex; align-items: center; gap: 8px; margin-bottom: 7px;
+  font-family: var(--mono); font-size: 8px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+#showcase-card .sc-readme-signal i { flex: 1; height: 1px; opacity: 0.5;
+  background: repeating-linear-gradient(90deg, var(--accent) 0 5px, transparent 5px 9px); }
+#showcase-card .sc-readme-signal b { color: #9ef590; font-size: 7px; letter-spacing: 0.12em; }
+#showcase-card .sc-readme-signal b::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 5px;
+  border-radius: 50%; background: #8df47d; box-shadow: 0 0 7px #8df47d; vertical-align: 1px; }
+#showcase-card .sc-readme { font-size: 12px; line-height: 1.5;
   color: var(--ink-300); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-#showcase-card .sc-readme:empty { display: none; }
+#showcase-card.readme-in .sc-readme-panel { animation: sc-readme-land 0.85s cubic-bezier(0.16, 1, 0.3, 1) both; }
+#showcase-card.readme-in .sc-readme-panel::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: var(--accent); box-shadow: 0 0 14px 4px rgba(100, 222, 219, 0.45); pointer-events: none;
+  animation: sc-readme-scan 0.85s ease-out both; }
+#showcase-card.readme-ready .sc-readme { animation: sc-readme-copy 0.45s ease-out both; }
+@keyframes sc-readme-land {
+  from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(12px); filter: brightness(2); }
+  to { opacity: 1; clip-path: inset(0); transform: none; filter: none; }
+}
+@keyframes sc-readme-scan { from { transform: translateY(0); opacity: 1; } to { transform: translateY(260px); opacity: 0; } }
+@keyframes sc-readme-copy { from { opacity: 0.15; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 /* The README's first picture plays on the set's screen (scanlines sit on top). */
 #showcase-card .sc-pic { display: none; margin: 8px 0 2px; height: 130px; border-radius: 8px; overflow: hidden; background: #04070c; }
 #showcase-card .sc-pic { position: relative; }
@@ -378,7 +394,6 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
   #showcase-card.pic-in .sc-pic img { animation: none; opacity: 1; }
 }
 #showcase-card.has-pic .sc-pic { display: block; }
-#showcase-card .sc-readme::before { content: "README · "; font-family: var(--mono); font-size: 9px; letter-spacing: 0.14em; color: var(--accent); }
 /* Desktop: a bigger set in the bottom-left corner, clear of the building being circled. */
 @media (min-width: 1100px) {
   #showcase-card { width: min(560px, 40vw); left: 20px; transform: translate(0, 14px) scale(0.96); transform-origin: left bottom; }
@@ -390,6 +405,49 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
 }
 @media (max-width: 720px) { #showcase-card .sc-hint { display: none; } #showcase-card .sc-name { font-size: 19px; } #showcase-card .sc-readme { -webkit-line-clamp: 2; } #showcase-card .sc-pic { height: 90px; } }
 @media (prefers-reduced-motion: reduce) { #showcase-card.flip .sc-screen { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #showcase-card.readme-in .sc-readme-panel, #showcase-card.readme-in .sc-readme-panel::after,
+  #showcase-card.readme-ready .sc-readme { animation: none; }
+}
+
+/* ---------- Tour: the commit-history mini screen in the card's corner ---------- */
+/* It loads invisibly behind the showcase card and, once Gource View reports its
+   first frame, takes the corner while the card bows out. */
+#gource-mini { position: fixed; left: 20px; bottom: calc(var(--transport-h, 90px) + 16px); z-index: 49;
+  width: min(560px, 40vw); display: flex; flex-direction: column; gap: 8px;
+  padding: 9px 9px 6px; border-radius: 18px; background: linear-gradient(160deg, #2b3244, #171c28 55%, #10141c);
+  border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08); }
+#gource-mini[hidden] { display: none; }
+#gource-mini.loading { opacity: 0; pointer-events: none; } /* rendering, but not yet on air */
+#gource-mini .gn-screen { position: relative; aspect-ratio: 16 / 10; border-radius: 12px / 14px; overflow: hidden; background: #04070c;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), inset 0 0 40px rgba(0, 0, 0, 0.75); }
+#gource-mini .gn-frame, #gource-mini .gn-crt { position: absolute; inset: 0; border-radius: inherit; }
+/* The frame is loaded with &chrome=0, so Gource View draws the replay alone —
+   no control bar, no keyboard capture. The head row below supplies the controls. */
+#gource-mini iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+#gource-mini .gn-crt { pointer-events: none;
+  background: repeating-linear-gradient(rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.5)); }
+#gource-mini .gn-head { display: flex; align-items: center; gap: 8px; padding: 0 4px; min-height: 22px;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-500); }
+#gource-mini .gn-led { width: 6px; height: 6px; flex: none; border-radius: 50%; background: #ff5a4f; box-shadow: 0 0 6px #ff5a4f; }
+#gource-mini .gn-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-300); letter-spacing: 0.04em; }
+#gource-mini .gn-ch { width: 22px; height: 22px; flex: none; border-radius: 50%; cursor: pointer; line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.04); color: var(--ink-300); font: inherit; font-size: 12px; }
+#gource-mini .gn-ch:hover, #gource-mini .gn-close:hover { color: var(--accent); }
+#gource-mini .gn-ext { color: var(--purple); text-decoration: none; white-space: nowrap; }
+#gource-mini .gn-close { flex: none; width: 22px; height: 22px; border: 0; background: none; cursor: pointer;
+  color: var(--ink-500); font-size: 15px; line-height: 1; }
+/* Power on out of the card's own corner, the way the big player does. */
+#gource-mini.ready { animation: gn-on 0.62s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: left bottom; }
+#gource-mini.ready .gn-screen > * { animation: gn-tube 0.6s 0.12s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes gn-on { from { opacity: 0; transform: translateY(16px) scale(0.9); } to { opacity: 1; transform: none; } }
+@keyframes gn-tube { 0% { clip-path: inset(49.5% 0); filter: brightness(3); } 55% { clip-path: inset(0); filter: brightness(1.6); } 100% { clip-path: inset(0); filter: none; } }
+/* The showcase card hands the corner over while the replay is on air. */
+body.gource-mini-on #showcase-card, body.gource-mini-on #showcase-card.show {
+  opacity: 0; transform: translate(0, 14px) scale(0.96); pointer-events: none; }
+@media (max-width: 1099px), (max-height: 639px) { #gource-mini { display: none !important; } }
+@media (prefers-reduced-motion: reduce) { #gource-mini.ready, #gource-mini.ready .gn-screen > * { animation: none; } }
 
 /* ---------- Error ---------- */
 #error {
@@ -433,14 +491,13 @@ body.tv::after {
    transport, and repository details as a bottom sheet. */
 #menu { display: contents; }
 .menu-btn, .profile-toggle { display: none; }
-#support-btn { display: none; }
 #scene { touch-action: none; }
 /* The page itself never scrolls or rubber-bands on touch devices: the body is
    pinned, bars refuse page pans, and only the menu / profile / repo sheet
    scroll — inside themselves. */
 html, body { overscroll-behavior: none; }
 body { position: fixed; inset: 0; }
-#topbar, #transport, #clock, #feed, #legend, #loading { touch-action: none; }
+#topbar, #transport, #feed, #legend, #loading { touch-action: none; }
 #search-input { touch-action: manipulation; }
 #menu, #explorer, #panel-body { overscroll-behavior: contain; touch-action: pan-y; }
 @media (hover: none) { #tooltip { display: none; } }
@@ -479,8 +536,6 @@ body { position: fixed; inset: 0; }
     background: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
   }
   #menu .tb { min-height: 44px; padding: 8px 4px; font-size: 11px; white-space: normal; background: var(--panel2); border-radius: 8px; }
-  #menu #support-btn { display: block; }
-
   #explorer {
     display: block; top: auto; right: auto; left: max(10px, env(safe-area-inset-left));
     bottom: calc(var(--transport-h, 90px) + 8px); width: min(320px, calc(100vw - 20px));
@@ -503,14 +558,6 @@ body { position: fixed; inset: 0; }
   #explorer.open .kv { display: block; margin: 8px 0 0; }
   #explorer.open { max-height: calc(100dvh - var(--topbar-h, 58px) - var(--transport-h, 90px) - 70px); overflow-y: auto; }
   #explorer .kv .row.repo { padding: 9px 6px; }
-
-  #clock {
-    top: calc(var(--topbar-h, 58px) + 8px); left: max(10px, env(safe-area-inset-left)); right: auto;
-    min-width: 0; padding: 6px 12px 6px 10px;
-  }
-  #clock .eyebrow, #clock .sub { display: none; }
-  #clock .date { margin: 0; gap: 6px; }
-  #clock .day, #clock .mon, #clock .yr { font-size: 15px; }
 
   #feed {
     display: flex; top: calc(var(--topbar-h, 58px) + 8px); right: max(10px, env(safe-area-inset-right));
@@ -554,19 +601,14 @@ body { position: fixed; inset: 0; }
   #explorer { width: 250px; }
 }
 
-/* Buy Me a Coffee (index.html loads its widget; the sponsor plane opens it too).
-   Keep the desktop launcher deliberately quieter than the vendor default. Compact
-   layouts expose Support in the menu instead, leaving the city and touch controls clear. */
-#bmc-wbtn {
-  bottom: calc(var(--transport-h, 120px) + 14px) !important;
-  width: 44px !important; height: 44px !important; border-radius: 50% !important;
-  background: rgba(19, 27, 40, 0.9) !important; border: 1px solid var(--line);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28) !important; opacity: 0.78;
-}
-#bmc-wbtn:hover, #bmc-wbtn:focus-visible { opacity: 1; }
-#bmc-wbtn img { width: 24px !important; height: 24px !important; }
-@media (max-width: 900px), (max-height: 500px) { #bmc-wbtn { display: none !important; } }
+/* The widget supplies the payment panel, while its launcher stays out of the scene:
+   the toolbar button and sponsor plane open it programmatically. */
+#bmc-wbtn { display: none !important; }
 @media (min-width: 480px) {
-  #bmc-iframe { bottom: calc(var(--transport-h, 120px) + 66px) !important;
-    min-height: 0 !important; max-height: calc(100vh - var(--transport-h, 120px) - 90px) !important; } /* the panel fits above it */
+  #bmc-iframe {
+    left: auto !important; right: max(20px, env(safe-area-inset-right)) !important;
+    bottom: calc(var(--transport-h, 120px) + 14px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - var(--topbar-h, 58px) - var(--transport-h, 120px) - 28px) !important;
+  }
 }

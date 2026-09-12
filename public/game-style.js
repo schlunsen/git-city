@@ -110,7 +110,7 @@ export function injectGameStyle() {
   .gbr-leave { background: rgba(255, 255, 255, 0.08); color: var(--ink-100, #f1f4f9); }
   .gbr-actions button:hover { filter: brightness(1.08); }
   /* While playing: the city's cards step aside, the explore HUD offers no travel. */
-  body.gbr-on #showcase-card, body.gbr-on #feed, body.gbr-on #legend, body.gbr-on #clock, body.gbr-on #explorer, body.gbr-on #tooltip { visibility: hidden !important; }
+  body.gbr-on #showcase-card, body.gbr-on #feed, body.gbr-on #legend, body.gbr-on #explorer, body.gbr-on #tooltip { visibility: hidden !important; }
   .gcx-game { flex: none; font: inherit; border: 0; cursor: pointer; border-radius: 999px; padding: 6px 11px; background: rgba(255, 160, 58, 0.16); color: #ffb45c; }
   .gcx-game:hover { background: rgba(255, 160, 58, 0.28); }
   .gcx-hud.gcx-gaming .gcx-game, .gcx-hud.gcx-gaming .gcx-next-hud, body.gbr-on .gcx-next { display: none; }

@@ -1481,9 +1481,18 @@ export function createExplorer(THREE, deps = {}) {
     /** True while a mode (or the glide back to orbit) is driving the camera. */
     get ownsCamera() { return mode !== 'orbit' || exiting; },
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
-    wantsKey(e) { return repoInspector.open || (mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'); },
+    wantsKey(e) {
+      // The field guide is a panel, not a mode: it claims only the keys it uses
+      // (R, E, Esc) so the city keeps ← → T space and the rest while it is open.
+      if (repoInspector.open) return e.code === 'KeyR' || e.code === 'KeyE' || e.key === 'Escape';
+      return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V';
+    },
     update, postRender, dispose, resetColliders, flyToNext, travelTo,
     inspectRepo(repo, options) { return repoInspector.inspect(repo, options); },
+    closeInspector() { repoInspector.close(); },
+    /** Tour hop: hold the field guide open (veiled) while the camera flies to the next repo. */
+    transitInspector(repo) { return repoInspector.transit(repo); },
+    get inspectorOpen() { return repoInspector.open; },
     startGame, get game() { return game; },
     groundAt, setLivery,
     /** Debug / test hooks: collider count, box list, and teleporting the active walker / car. */

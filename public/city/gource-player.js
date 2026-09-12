@@ -1,5 +1,5 @@
 import { GOURCE_VIEW } from './constants.js';
-import { cine } from './tour.js';
+import { cine, tourJump } from './tour.js';
 
 // Gource View in a lightbox: the repo's whole commit history replayed as a
 // growing tree, without leaving the city. The iframe only exists while the
@@ -7,9 +7,12 @@ import { cine } from './tour.js';
 // video=1 opens Gource View's clean "▶ Video" composition as soon as the
 // history has loaded, instead of the full app UI; embed=1 hides its scrubber
 // and has it tell this page when the video opens / closes (postMessage).
-export function gourceUrl(repo, { video = true } = {}) {
+// chrome=0 asks Gource View for the picture alone: no control bar, no keyboard
+// shortcuts and no focus grab inside the frame — the tour's mini screen supplies
+// its own controls, and the city keeps its own keys.
+export function gourceUrl(repo, { video = true, chrome = true } = {}) {
   // music=none: the embedded player plays without music.
-  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=none' : ''}`;
+  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=none' : ''}${chrome ? '' : '&chrome=0'}`;
 }
 // The player loads hidden: a small chip shows progress at the clicked
 // building, and once Gource View's video is ready the player morphs out of that
@@ -107,8 +110,74 @@ export function closeGource(animated = false) {
   box.querySelector('.gm-frame').replaceChildren(); // stops playback and downloads
   document.removeEventListener('keydown', gourceKeys, true);
 }
+// ---------------------------------------------------------------------------
+// The tour's mini screen: the same replay, docked where the showcase card sits.
+// It loads out of sight behind the card and only takes the corner once Gource
+// View says its first frame is up — so the stop is never a blank black box.
+// Desktop only: on a phone the card and the touch controls need that corner.
+// ---------------------------------------------------------------------------
+const MINI_OK = '(min-width: 1100px) and (min-height: 640px) and (hover: hover)';
+let miniRepo = '';
+export function tuneGource(repo) {
+  if (!repo?.full_name || !matchMedia(MINI_OK).matches) { stopGource(); return; }
+  if (miniRepo === repo.full_name) return;
+  stopGource();
+  miniRepo = repo.full_name;
+  const box = miniBox();
+  box.querySelector('.gn-title').textContent = `${repo.name} · commit history`;
+  box.querySelector('.gn-ext').href = gourceUrl(repo);
+  const frame = document.createElement('iframe');
+  frame.src = gourceUrl(repo, { chrome: false });
+  frame.title = `Gource View: ${repo.full_name}`;
+  frame.allow = 'autoplay';
+  box.querySelector('.gn-frame').replaceChildren(frame);
+  box.hidden = false;
+  box.classList.add('loading');
+}
+export function stopGource() {
+  miniRepo = '';
+  const box = document.getElementById('gource-mini');
+  if (!box) return;
+  box.classList.remove('loading', 'ready');
+  document.body.classList.remove('gource-mini-on');
+  box.querySelector('.gn-frame').replaceChildren(); // stops playback and downloads
+  box.hidden = true;
+}
+function miniBox() {
+  let box = document.getElementById('gource-mini');
+  if (box) return box;
+  box = document.createElement('div');
+  box.id = 'gource-mini';
+  box.hidden = true;
+  box.innerHTML = `<div class="gn-screen"><div class="gn-frame"></div><div class="gn-crt"></div></div>
+    <div class="gn-head"><span class="gn-led"></span><span class="gn-title"></span>
+      <button class="gn-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button>
+      <button class="gn-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
+      <a class="gn-ext" target="_blank" rel="noopener">Open ↗</a>
+      <button class="gn-close" type="button" aria-label="Back to the repo card">×</button></div>`;
+  box.querySelectorAll('.gn-ch').forEach((b) => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
+  box.querySelector('.gn-close').addEventListener('click', stopGource);
+  document.body.appendChild(box);
+  return box;
+}
+function revealMini() {
+  const box = document.getElementById('gource-mini');
+  if (!box?.classList.contains('loading')) return;
+  box.classList.remove('loading');
+  box.classList.add('ready');
+  document.body.classList.add('gource-mini-on'); // the showcase card steps aside
+  box.querySelector('iframe')?.contentWindow?.postMessage({ source: 'git-city', type: 'play' }, GOURCE_ORIGIN);
+}
+
 window.addEventListener('message', (e) => {
   if (e.origin !== GOURCE_ORIGIN || e.data?.source !== 'gource-view') return;
+  // The mini screen and the full player each answer only for their own frame.
+  const mini = document.querySelector('#gource-mini iframe');
+  if (mini && e.source === mini.contentWindow) {
+    if (e.data.type === 'video-ready') revealMini();
+    else if (e.data.type === 'video-close' || e.data.type === 'error') stopGource();
+    return;
+  }
   // 'video-ready' arrives once the first frame is on screen; 'video-open' (the
   // view has mounted) only arms a short fallback in case 'ready' never comes.
   if (e.data.type === 'video-ready') revealGource();

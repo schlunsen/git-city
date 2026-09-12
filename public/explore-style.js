@@ -50,7 +50,7 @@ export function injectStyle() {
     .gcx-seg button, .gcx-exit { padding: 6px 9px; }
     .gcx-exit kbd { display: none; }
     /* Touch controls need the corners: tuck the host's floating cards away while exploring. */
-    body.gcx-on #explorer, body.gcx-on #clock, body.gcx-on #feed, body.gcx-on #legend { visibility: hidden; }
+    body.gcx-on #explorer, body.gcx-on #feed, body.gcx-on #legend { visibility: hidden; }
   }`;
   document.head.append(s);
 }

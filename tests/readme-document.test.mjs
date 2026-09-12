@@ -27,3 +27,11 @@ test('README download tries filename casing, caches success and retries failure'
   assert.equal((await readmeDocument({full_name:'test/missing'})).status,'missing');
  } finally {globalThis.fetch=original;}
 });
+test('README reader keeps pictures out of raw HTML runs, with their links and prose', () => {
+ const blocks = readmeBlocks('<p align="center">\n  <a href="https://ci"><img src="https://img.shields.io/badge/ci-green.svg" alt="build"></a>\n  <img src="./docs/shot.png" alt="Screenshot" />\n  <em>A tiny tool.</em>\n</p>\n\nPlain prose.');
+ assert.deepEqual(blocks.map(b => b.type), ['image', 'image', 'paragraph', 'paragraph']);
+ assert.deepEqual(blocks[0], { type: 'image', src: 'https://img.shields.io/badge/ci-green.svg', alt: 'build', href: 'https://ci' });
+ assert.equal(blocks[1].src, './docs/shot.png');
+ assert.equal(blocks[2].text, 'A tiny tool.');
+ assert.equal(blocks[3].text, 'Plain prose.');
+});

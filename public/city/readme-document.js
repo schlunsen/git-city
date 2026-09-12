@@ -61,7 +61,15 @@ export function readmeBlocks(markdown) {
     const item = line.match(/^\s*(?:[-*+] |\d+\. )(.+)/);
     if (item) { blocks.push({ type: 'item', text: item[1], ordered: /^\s*\d/.test(line) }); i++; continue; }
     if (/^\s*>/.test(line)) { blocks.push({ type:'quote', text:line.replace(/^\s*>\s?/, '') }); i++; continue; }
-    // Raw HTML formatting is omitted, while its visible prose is retained.
+    // A raw HTML run (centred logos, badge strips, <picture> screenshots): read it
+    // whole, because its tags wrap over several lines. Pictures become image blocks
+    // in document order; the formatting goes, the visible prose stays.
+    if (/^\s*</.test(line)) {
+      const html = [];
+      while (i < lines.length && lines[i].trim()) html.push(lines[i++]);
+      for (const block of htmlBlocks(html.join('\n'))) blocks.push(block);
+      continue;
+    }
     const text = line.replace(/<[^>]*>/g, '').trim();
     if (text) {
       const prev = blocks.at(-1);
@@ -70,5 +78,26 @@ export function readmeBlocks(markdown) {
     }
     i++;
   }
+  return blocks;
+}
+
+// Pull the pictures (and the links wrapped around them) out of a raw HTML run,
+// keeping them in order with whatever prose sits between them.
+const IMG_TAG = /(?:<a\b[^>]*?\bhref\s*=\s*["']([^"']+)["'][^>]*>\s*)?<img\b([^>]*?)\/?>/gi;
+const attr = (tag, name) => tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, 'i'))?.[1] || '';
+export function htmlBlocks(html) {
+  const blocks = [];
+  const prose = (raw) => {
+    const text = raw.replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (text) blocks.push({ type: 'paragraph', text });
+  };
+  let end = 0;
+  for (const match of html.matchAll(IMG_TAG)) {
+    prose(html.slice(end, match.index));
+    end = match.index + match[0].length;
+    const src = attr(match[2], 'src');
+    if (src) blocks.push({ type: 'image', src, alt: attr(match[2], 'alt'), href: match[1] || '' });
+  }
+  prose(html.slice(end));
   return blocks;
 }

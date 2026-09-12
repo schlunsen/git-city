@@ -59,7 +59,7 @@ import {
 } from './city/tour.js';
 import { actor, initActor, buildActor, buildAvatar, updateActor } from './city/actor.js';
 import { carKit, buildCars, updateCars } from './city/cars.js';
-import { gourceUrl, gourceCovering, openGource, closeGource } from './city/gource-player.js';
+import { gourceUrl, gourceCovering, openGource, closeGource, tuneGource, stopGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
 import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
@@ -451,7 +451,7 @@ function closePanel() {
 }
 
 // ---------------------------------------------------------------------------
-// HUD: timeline clock + transport, menus, FX / TV / day-night settings, wiring
+// HUD: transport, menus, FX / TV / day-night settings, wiring
 // ---------------------------------------------------------------------------
 function focusRepo(fullName) {
   const b = buildingByName.get(fullName);
@@ -460,17 +460,12 @@ function focusRepo(fullName) {
   flyToBuilding(b);
 }
 
-function updateClock(step, index) {
+function updateClock(step) {
   if (!step) {
-    $('clk-day').textContent = '—'; $('clk-mon').textContent = '—'; $('clk-year').textContent = '';
-    const days = timeline?.days || activity.days;
-    $('clk-sub').textContent = timeline?.steps.length ? `press play to replay the last ${days} days` : `no public activity in the last ${days} days`;
     $('play-date').textContent = '—';
     return;
   }
   const d = dateParts(step.ts);
-  $('clk-day').textContent = d.day; $('clk-mon').textContent = d.month; $('clk-year').textContent = d.year;
-  $('clk-sub').textContent = `${d.weekday} · event ${index + 1} of ${timeline.steps.length}`;
   $('play-date').textContent = d.iso;
 }
 
@@ -1119,6 +1114,10 @@ function main() {
   initTour({
     featured: () => cfgNow()?.featured || [], pinned: () => pinnedRepos, openPanel, prefetch: ensureBuildingConfig,
     inspect: (repo, options) => explorer?.inspectRepo(repo, options) || false,
+    closeInspect: () => explorer?.closeInspector(),
+    transitInspect: (repo) => explorer?.transitInspector(repo) || false,
+    guideOpen: () => !!explorer?.inspectorOpen,
+    tuneGource, stopGource, // the tour's commit-history mini screen (desktop)
     explorer: () => explorer, flyover: () => flyover,
   });
   initActor({ version: () => cityVersion, playback: () => ({ timeline, play }), onStep: announceStep, onClock: updateClock });

@@ -40,3 +40,13 @@ test('markdownExcerpt caps the excerpt at two paragraphs and ~460 characters', (
 test('readmeExcerpt without a repo name resolves empty (no network)', async () => {
   assert.deepEqual(await readmeExcerpt({ name: 'x' }), { text: '', image: '' });
 });
+
+// The full reader (public/readme-reader.js) is deliberately more permissive than the
+// showcase TV: badges and third-party screenshots are shown, scripts and http are not.
+test('readmeAsset resolves README pictures and rejects anything that is not https', async () => {
+  const { readmeAsset } = await import('../public/readme-reader.js');
+  assert.equal(readmeAsset('./docs/logo.png', 'o/r'), 'https://raw.githubusercontent.com/o/r/HEAD/docs/logo.png');
+  assert.equal(readmeAsset('https://img.shields.io/badge/ci-green.svg', 'o/r'), 'https://img.shields.io/badge/ci-green.svg');
+  assert.equal(readmeAsset('https://github.com/o/r/blob/main/a.gif', 'o/r'), 'https://raw.githubusercontent.com/o/r/main/a.gif');
+  for (const bad of ['javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'http://example.com/a.png', '']) assert.equal(readmeAsset(bad, 'o/r'), '');
+});

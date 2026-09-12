@@ -13,7 +13,8 @@ export const tour = { active: false, paused: false, t: 0, legs: null, leg: 0, ca
 // What the tour needs from app.js, handed over once (initTour): the city.json
 // featured list and the profile's pinned repos (tour order), the repo panel, the
 // building.json prefetch, the explorer (it may own the camera) and the idle-orbit setting.
-let deps = { featured: () => [], pinned: () => [], openPanel() {}, prefetch() {}, inspect: () => false, explorer: () => null, flyover: () => true };
+let deps = { featured: () => [], pinned: () => [], openPanel() {}, prefetch() {}, inspect: () => false, closeInspect() {},
+  transitInspect: () => false, guideOpen: () => false, tuneGource() {}, stopGource() {}, explorer: () => null, flyover: () => true };
 export function initTour(d) { deps = { ...deps, ...d }; }
 
 // Showcase flight — the default way into a city. The camera flies from
@@ -36,7 +37,7 @@ function signBearing(b, fallback) {
   return Math.abs(gx) > Math.abs(gz) ? (gx > 0 ? 0 : Math.PI) : (gz >= 0 ? Math.PI / 2 : -Math.PI / 2);
 }
 // A leg is { dur, pos(u, out), look(u, out), repo? } with u running 0..1.
-function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 0.9, loop = false } = {}) {
+function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 0.9, loop = false, from = null } = {}) {
   const cx = b.mesh.position.x, cz = b.mesh.position.z, h = b.h || 8;
   const r = Math.max(20, h * 0.8 + 16);
   // Stay above the neighbouring rooftops so a dense city never clips the camera.
@@ -45,7 +46,7 @@ function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 0.9, loop = false } =
   const y = Math.max(10, h * 0.6 + 6, roof + 6);
   // Start square in front of the rooftop board and drift from there, so the
   // stop always opens on a readable sign instead of a corner of the building.
-  const a0 = signBearing(b, fallbackBearing);
+  const a0 = from == null ? signBearing(b, fallbackBearing) : from;
   return {
     dur, loop, repo: b.repo, b,
     pos: (u, o) => o.set(cx + Math.cos(a0 + sweep * u) * r, y + (loop ? 0 : Math.sin(u * Math.PI) * 2), cz + Math.sin(a0 + sweep * u) * r),
@@ -106,7 +107,13 @@ export function updateTour(dt) {
   if (!tour.legs) { endTour(); return; }
   tour.t += dt;
   let leg = tour.legs[tour.leg];
-  while (leg && tour.t >= leg.dur) { tour.t -= leg.dur; leg = tour.legs[++tour.leg]; }
+  while (leg && tour.t >= leg.dur) {
+    tour.t -= leg.dur;
+    // A stop being read about circles for as long as the guide is on air: its
+    // leg is a whole turn, so wrapping back to u=0 is the same camera.
+    if (leg.hold && deps.guideOpen()) break;
+    leg = tour.legs[++tour.leg];
+  }
   if (!leg) { tour.legs = null; tour.t = 0; return; } // loop: the next frame plans a new round from here
   if (!leg.next && leg.repo && !leg.planned) {
     leg.planned = true; // entering this stop: stay longer if its README has a picture to show
@@ -118,17 +125,69 @@ export function updateTour(dt) {
   controls.target.copy(leg.look(u, _tl));
   showcaseCard(leg.repo ? leg : null);
   setFocusedBuilding(leg.repo ? leg.b || null : null); // the city fades back behind the stop in focus
+  // Bring the full field guide on-air as the approach finishes, once the
+  // building is framed. The following orbit leg shares the same visit and
+  // must not open it a second time after the visitor continues the tour.
+  // A guide already on air (a hop between stops) re-tunes as soon as the new
+  // leg starts, so the reader is never left staring at the last repo.
+  const atBuilding = leg.repo && (!leg.next || u >= (warping ? 0.12 : 0.78));
+  if (atBuilding && !leg.autoInspected && openTourReadme(leg.repo)) {
+    leg.autoInspected = true; warping = false;
+    const orbit = leg.next ? tour.legs[tour.leg + 1] : null;
+    // The approach carries on to the building; the shot it lands in becomes a
+    // whole slow turn around it, held for as long as the guide is on air.
+    if (orbit?.repo === leg.repo) tour.legs[tour.leg + 1] = holdLeg(orbit, null);
+    else if (leg.b) {
+      tour.legs[tour.leg] = holdLeg(leg, Math.atan2(camera.position.z - leg.b.mesh.position.z, camera.position.x - leg.b.mesh.position.x));
+      tour.t = 0; // picked up from the camera's own bearing, so nothing jumps
+    }
+  }
+}
+// The circling shot a stop holds while its field guide is open: a whole turn at
+// a steady height, so the camera never stops and never jumps when it comes round.
+function holdLeg(leg, from) {
+  return Object.assign(orbitLeg(leg.b, 0, { dur: 64, sweep: Math.PI * 2, loop: true, from }),
+    { stop: leg.stop, of: leg.of, highlight: leg.highlight, autoInspected: true, planned: true, hold: true });
+}
+// Closing the guide lets the held stop go: the tour moves on from the next frame.
+function releaseHold() {
+  const leg = tour.legs?.[tour.leg];
+  if (leg?.hold) { leg.hold = false; tour.t = leg.dur; }
 }
 // Jump the showcase to the next (+1) / previous (-1) repo, or back to the
 // current one (0, after the user looked around): fly there from wherever the camera is.
+let warping = false; // the field guide is on air, waiting for the next stop to arrive
 export function tourJump(dir) {
   if (!tour.active) return;
   if (!tour.stops) buildShowcase(); // fixes the stop list
   const n = tour.stops?.length || 0;
   if (!n) return;
-  tour.legs = buildShowcase(((tour.stop || 0) + dir + n) % n);
+  const next = ((tour.stop || 0) + dir + n) % n;
+  // Keep an open field guide on air and warp it across to the next repo (the
+  // way an island hop does) rather than tearing it down and building it again.
+  deps.stopGource(); // the last stop's replay ends with its stop
+  warping = deps.transitInspect(tour.stops[next]?.repo);
+  if (!warping) deps.closeInspect();
+  tour.legs = buildShowcase(next);
   tour.leg = 0; tour.t = 0; tour.paused = false;
   controls.autoRotate = false;
+}
+function openTourReadme(repo) {
+  if (!repo) return false;
+  // The tour never stops for the guide: the camera keeps circling the building
+  // being read about until the guide is closed or the visitor moves on.
+  const opened = deps.inspect(repo, {
+    status: 'TOUR · CIRCLING',
+    resumeLabel: 'Continue tour ',
+    note: 'The camera keeps circling while you read.',
+    modal: false,
+    onClose: () => { releaseHold(); deps.stopGource(); },
+  });
+  if (!opened) return false;
+  // Start this repo's history replay too: it loads out of sight and swaps itself
+  // in for the showcase card in the opposite corner once its first frame is up.
+  deps.tuneGource(repo);
+  return true;
 }
 // A small TV set for the showcase: which repo the camera is heading to or
 // circling, what it is, and how popular. It flickers like a CRT on each change.
@@ -139,32 +198,32 @@ function showcaseCard(leg) {
     el.id = 'showcase-card';
     el.setAttribute('aria-live', 'polite');
     el.innerHTML = `<div class="sc-screen"><div class="sc-kicker"></div><div class="sc-name"></div>
-        <div class="sc-pic"><img alt="" referrerpolicy="no-referrer" decoding="async"></div>
-        <div class="sc-desc"></div><div class="sc-meta"></div><div class="sc-readme"></div></div>
+        <div class="sc-desc"></div><div class="sc-meta"></div>
+        <section class="sc-readme-panel" aria-label="README preview">
+          <div class="sc-readme-signal"><span>README transmission</span><i></i><b>live</b></div>
+          <div class="sc-pic"><img alt="" referrerpolicy="no-referrer" decoding="async"></div>
+          <div class="sc-readme"></div>
+        </section></div>
       <div class="sc-chin"><span class="sc-led"></span>
         <button class="sc-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button><span class="sc-stop"></span>
         <button class="sc-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
-        <button class="sc-read" type="button">Read README</button>
+        <button class="sc-read" type="button">Open full README</button>
         <span class="sc-hint">← → switch · click a building to watch</span></div>`;
     el.querySelectorAll('.sc-ch').forEach(b => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
     el.querySelector('.sc-read').addEventListener('click', () => {
-      const repo = tour.cardRepo;
-      if (!repo) return;
-      const wasPaused = tour.paused;
-      tour.paused = true;
-      if (!deps.inspect(repo, {
-        status: 'TOUR · PAUSED',
-        onClose: () => { if (tour.active) tour.paused = wasPaused; },
-      })) tour.paused = wasPaused;
+      openTourReadme(tour.cardRepo);
     });
     document.body.appendChild(el);
   }
   const repo = leg?.repo || null, key = repo ? `${repo.full_name || repo.name}|${leg.next ? 'next' : 'here'}` : null;
   if (tour.card === key) return;
   const sameRepo = repo && tour.card && tour.card.split('|')[0] === (repo.full_name || repo.name);
+  const wasLanded = el.classList.contains('landed');
   tour.card = key;
   tour.cardRepo = repo;
-  if (!repo) { el.classList.remove('show'); return; }
+  if (!repo) { el.classList.remove('show', 'landed', 'readme-in', 'readme-ready'); return; }
+  const landed = !leg.next;
+  el.classList.toggle('landed', landed);
   el.querySelector('.sc-kicker').textContent = (leg.next ? 'Next stop' : 'Now circling') + (leg.highlight ? ` · ${leg.highlight}` : '');
   el.querySelector('.sc-name').textContent = repo.name;
   el.querySelector('.sc-read').setAttribute('aria-label', `Read ${repo.name} README`);
@@ -178,10 +237,17 @@ function showcaseCard(leg) {
   // A few lines from the README (plain text only), and the next stop's fetched ahead.
   const readme = el.querySelector('.sc-readme'), pic = el.querySelector('.sc-pic img');
   const stillHere = () => tour.card && tour.card.startsWith(`${repo.full_name || repo.name}|`);
-  if (!sameRepo) { readme.textContent = ''; el.classList.remove('has-pic', 'pic-loading', 'pic-in'); pic.removeAttribute('src'); }
+  if (!sameRepo) {
+    readme.textContent = 'Receiving README…';
+    el.classList.remove('has-pic', 'pic-loading', 'pic-in', 'readme-ready');
+    pic.removeAttribute('src');
+  }
   readmeExcerpt(repo).then(({ text, image }) => {
     if (!stillHere()) return;
-    readme.textContent = text;
+    readme.textContent = text || 'No README signal found for this repository.';
+    if (el.classList.contains('landed')) {
+      el.classList.remove('readme-ready'); void readme.offsetWidth; el.classList.add('readme-ready');
+    }
     if (image && pic.getAttribute('src') !== image) {
       // Reserve the screen at once (a "tuning in" static), then tune the picture in when it arrives.
       el.classList.add('has-pic', 'pic-loading');
@@ -203,6 +269,9 @@ function showcaseCard(leg) {
   // graffiti, roofs and neon are up before the camera arrives.
   deps.prefetch(repo); if (upcoming) deps.prefetch(upcoming);
   el.classList.add('show');
+  if (landed && !wasLanded) {
+    el.classList.remove('readme-in'); void el.offsetWidth; el.classList.add('readme-in');
+  } else if (!landed) el.classList.remove('readme-in');
   if (!sameRepo) { el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip'); } // CRT channel change
 }
 
@@ -227,6 +296,9 @@ export function startTour() {
 }
 export function endTour() {
   tour.active = false; tour.paused = false; tour.legs = null; tour.stops = null;
+  warping = false;
+  deps.stopGource();
+  deps.closeInspect(); // the field guide belongs to the tour: it leaves with it
   showcaseCard(null);
   setFocusedBuilding(null);
   document.getElementById('tour-btn')?.classList.remove('on');
