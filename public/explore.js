@@ -21,6 +21,7 @@
 
 import { LANE_OFFSET } from './city/layout.js'; // the boulevard's car lanes (drive mode spawns on the outer one)
 import { bumpTrafficCars } from './city/cars.js'; // drive mode barges the traffic aside
+import { createRepoInspector } from './repo-inspector.js';
 import { createBombRun } from './game.js'; // the bomb-run mini game (fly mode)
 import { injectStyle, WARP_FRAG, injectTravelStyle } from './explore-style.js'; // CSS + travel-warp shader
 
@@ -435,6 +436,7 @@ export function createExplorer(THREE, deps = {}) {
   const isTyping = (e) => !!e.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
   function onKeyDown(e) {
     if (isTyping(e) || e.metaKey || e.altKey) return;
+    if (repoInspector.key(e) || repoInspector.open) return;
     if (!e.ctrlKey && e.code === 'KeyN') { flyToNext(); e.preventDefault(); return; } // next island
     if (!e.ctrlKey && e.code === 'KeyG' && mode !== 'orbit') { startGame(); e.preventDefault(); return; } // bomb run
     if (!e.ctrlKey && /^Digit[1-4]$/.test(e.code)) {
@@ -541,6 +543,14 @@ export function createExplorer(THREE, deps = {}) {
   touch.hidden = true;
   const stick = touch.querySelector('.gcx-stick'), stickKnob = touch.querySelector('.gcx-knob'), actsEl = touch.querySelector('.gcx-acts');
   document.body.append(hud, menu, cross, touch);
+  const repoInspector = createRepoInspector(THREE, {
+    camera, buildings: () => deps.buildings?.() || [],
+    onOpen: () => {
+      clearInput(); walker.v.set(0, 0, 0); car.v.set(0, 0);
+      car.vf = car.vl = car.lastVf = 0;
+    },
+    onClose: clearInput,
+  });
   const button = deps.button || document.getElementById('explore-btn');
 
   function el(tag, cls, html) { const n = document.createElement(tag); n.className = cls; n.innerHTML = html; return n; }
@@ -595,9 +605,9 @@ export function createExplorer(THREE, deps = {}) {
 
   const coarse = globalThis.matchMedia?.('(pointer: coarse)');
   const HINTS = {
-    walk: () => (locked ? '<b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>Esc</b> free mouse'
-      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · <b>Space</b> jump · <b>click</b> to mouse-look'),
-    drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look',
+    walk: () => (locked ? '<b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>E</b> inspect repo · <b>Esc</b> free mouse'
+      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · <b>Space</b> jump · <b>click</b> to mouse-look · <b>E</b> inspect repo'),
+    drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look · <b>E</b> inspect repo',
     fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle · <b>N</b> next island',
     game: () => '<b>Space</b>/<b>click</b> fire · <b>B</b>/<b>right-click</b> bomb · <b>A/D</b> bank · <b>W/S</b> dive · climb · <b>Esc</b> end',
   };
@@ -755,6 +765,7 @@ export function createExplorer(THREE, deps = {}) {
     if (trip && trip.phase !== 'reveal') return; // mid-hop between islands
     if (game?.active && next !== 'fly') game.exit(); // leaving the plane ends the bomb run (city restored)
     const prev = mode;
+    repoInspector.reset();
     clearInput();
     closeMenu();
     if (prev === 'orbit' && !exiting) {
@@ -1400,7 +1411,8 @@ export function createExplorer(THREE, deps = {}) {
       }
     }
     const input = exiting ? NEUTRAL : readInput();
-    if (sim === 'walk') simWalk(dt, input);
+    if (repoInspector.open) { /* Hold position and camera while reading repo details. */ }
+    else if (sim === 'walk') simWalk(dt, input);
     else if (sim === 'drive') simDrive(dt, input);
     else if (sim === 'fly') { if (planeFrozen) flyCam(dt, false); else simFly(dt, input, elapsed); }
     if (game?.active && sim === 'fly' && !exiting) game.update(dt); // bomb run (game.js)
@@ -1431,10 +1443,12 @@ export function createExplorer(THREE, deps = {}) {
     // (camera -> target line of sight) keeps working.
     if (controls && !exiting) controls.target.copy(want.look);
     if (!exiting) updateGauge(dt);
+    repoInspector.update(dt, exiting ? 'orbit' : mode, mode === 'walk' ? walker.p : car.p);
     return true;
   }
-  function resetColliders() { syncDims(); boxes = null; needUnstick = !!sim; game?.resync(); }
+  function resetColliders() { repoInspector.reset(); syncDims(); boxes = null; needUnstick = !!sim; game?.resync(); }
   function dispose() {
+    repoInspector.dispose();
     game?.dispose();
     canvas.removeEventListener('contextmenu', onCtx);
     travelCleanup();
