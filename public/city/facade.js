@@ -9,13 +9,13 @@ import { roundRect } from './toon.js';
 // ---------------------------------------------------------------------------
 const FACADE_PX = 22;   // texture pixels per world unit
 const FLOOR_H = 2.6;    // world units per storey
-export const WIN_STYLES = ['square', 'arch', 'ribbon'];
+export const WIN_STYLES = ['square', 'arch', 'ribbon', 'slender', 'glass', 'balcony'];
 const _hsl = { h: 0, s: 0, l: 0 };
-export function buildingPalette(hex) {
+export function buildingPalette(hex, variation = 0.5) {
   new THREE.Color(hex).getHSL(_hsl);
   const grey = _hsl.s < 0.12;
   const sat = grey ? _hsl.s : THREE.MathUtils.clamp(_hsl.s, 0.4, 0.62);
-  const lig = THREE.MathUtils.clamp(_hsl.l, 0.58, 0.7);
+  const lig = THREE.MathUtils.clamp(_hsl.l, 0.58, 0.7) + (variation - 0.5) * 0.16;
   return {
     wall: new THREE.Color().setHSL(_hsl.h, sat, lig),
     roof: new THREE.Color().setHSL(_hsl.h, Math.min(1, sat + 0.08), lig * 0.5),
@@ -45,7 +45,18 @@ export function paintFacade(rnd, pal, w, h, { ground = false, style = 'square', 
   a.fillStyle = 'rgba(255,255,255,0.16)'; a.fillRect(0, 0, cw, 0.3 * u);
   a.fillStyle = 'rgba(0,0,0,0.18)'; a.fillRect(0, 0.3 * u, cw, 2);
 
-  const frame = 'rgba(0,0,0,0.38)', paneDark = '#26324c';
+  if (style === 'square') {
+    a.strokeStyle = 'rgba(55,37,28,0.12)'; a.lineWidth = 1;
+    const brickH = 0.23 * u, brickW = 0.65 * u;
+    a.beginPath();
+    for (let row = 0; row * brickH < ch; row++) {
+      const yy = row * brickH;
+      a.moveTo(0, yy); a.lineTo(cw, yy);
+      for (let xx = (row % 2) * brickW / 2; xx < cw; xx += brickW) { a.moveTo(xx, yy); a.lineTo(xx, yy + brickH); }
+    }
+    a.stroke();
+  }
+  const frame = 'rgba(0,0,0,0.38)', paneDark = style === 'glass' ? '#3e7185' : '#26324c';
   const warmths = ['#ffd27a', '#ffe3a6', '#ffc46a', '#fff1c9', '#bfe0ff'];
   const pane = (x0, y0, pw, ph, lit, kind) => {
     a.fillStyle = paneDark; e.fillStyle = lit ? warmths[Math.floor(rnd() * warmths.length)] : '#000';
@@ -61,6 +72,14 @@ export function paintFacade(rnd, pal, w, h, { ground = false, style = 'square', 
       for (const ctx of [a, e]) { roundRect(ctx, x0, y0, pw, ph, rr); ctx.fill(); }
       a.strokeStyle = frame; a.lineWidth = 2.5; roundRect(a, x0, y0, pw, ph, rr); a.stroke();
     }
+    if (style === 'glass') {
+      const reflection = a.createLinearGradient(x0, y0, x0 + pw, y0 + ph);
+      reflection.addColorStop(0, 'rgba(177,225,235,0.5)');
+      reflection.addColorStop(0.48, 'rgba(177,225,235,0.08)');
+      reflection.addColorStop(0.5, 'rgba(177,225,235,0.3)');
+      reflection.addColorStop(1, 'rgba(177,225,235,0.02)');
+      a.fillStyle = reflection; a.fillRect(x0 + 2, y0 + 2, pw - 4, ph - 4);
+    }
     if (kind === 'square') { // mullion cross in the wall colour
       a.fillStyle = wall; e.fillStyle = '#000';
       for (const ctx of [a, e]) { ctx.fillRect(x0 + pw / 2 - 1.5, y0, 3, ph); ctx.fillRect(x0, y0 + ph / 2 - 1.5, pw, 3); }
@@ -71,20 +90,36 @@ export function paintFacade(rnd, pal, w, h, { ground = false, style = 'square', 
     }
   };
 
-  const cols = Math.max(1, Math.round(w / 1.55)), cellW = cw / cols;
+  const cols = Math.max(1, Math.round(w / (style === 'slender' ? 1.05 : 1.55))), cellW = cw / cols;
+  if (style === 'slender' || style === 'glass') {
+    // Continuous vertical piers give these families a different rhythm at city scale.
+    a.fillStyle = style === 'glass' ? '#526f80' : 'rgba(0,0,0,0.13)';
+    for (let c = 0; c < cols; c++) a.fillRect(c * cellW + cellW * 0.15, 0.4 * u, cellW * 0.7, ch - 0.4 * u);
+  }
   for (let fl = ground ? 1 : 0; fl < floors; fl++) {
     const base = fl * FLOOR_H;
-    if (style === 'ribbon') {
-      if (base + 1.75 > h - 0.35) break;
-      const ph = 1.0 * u, y0 = Y(base + 1.75);
+    if (style === 'ribbon' || style === 'glass') {
+      if (base + (style === 'glass' ? 2.4 : 1.75) > h - 0.35) break;
+      const ph = (style === 'glass' ? 2.15 : 1.0) * u, y0 = Y(base + (style === 'glass' ? 2.4 : 1.75));
       pane(0.25 * u, y0, cw - 0.5 * u, ph, rnd() < litProb, 'ribbon');
       a.fillStyle = frame; e.fillStyle = '#000';
       for (let c = 1; c < cols; c++) { a.fillRect(c * cellW - 1, y0, 2, ph); e.fillRect(c * cellW - 1, y0, 2, ph); }
     } else {
-      const pw = Math.min(cellW * 0.58, 1.0 * u), ph = (style === 'arch' ? 1.45 : 1.15) * u;
+      const pw = Math.min(cellW * (style === 'balcony' ? 0.72 : 0.58), 1.0 * u), ph = (style === 'slender' ? 1.85 : style === 'arch' || style === 'balcony' ? 1.45 : 1.15) * u;
       if (base + 0.65 + ph / u > h - 0.35) break;
       for (let c = 0; c < cols; c++) {
-        pane(c * cellW + (cellW - pw) / 2, Y(base + 0.65) - ph, pw, ph, rnd() < litProb, style);
+        const wx = c * cellW + (cellW - pw) / 2, wy = Y(base + 0.65) - ph;
+        pane(wx, wy, pw, ph, rnd() < litProb, style);
+        if (style === 'balcony') {
+          // Painted rails and slab shadows add depth without per-floor meshes.
+          a.fillStyle = 'rgba(0,0,0,0.24)'; a.fillRect(wx - 4, wy + ph, pw + 8, 7);
+          a.fillStyle = '#d6d9ce'; a.fillRect(wx - 4, wy + ph - 2, pw + 8, 3);
+          for (const ctx of [a, e]) {
+            ctx.fillStyle = '#182b38';
+            ctx.fillRect(wx - 3, wy + ph - 10, pw + 6, 2);
+            for (let rail = 0; rail <= 4; rail++) ctx.fillRect(wx - 3 + rail * (pw + 6) / 4, wy + ph - 10, 1.5, 9);
+          }
+        }
       }
     }
   }

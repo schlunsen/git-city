@@ -5,8 +5,10 @@
  */
 import * as THREE from 'three';
 import { cityGroup, world } from './scene.js';
-import { toonMat, getOutlineMat, outlineBox, noRaycast, hashStr, seededRandom } from './toon.js';
-import { buildingPalette, WIN_STYLES, paintFacade } from './facade.js';
+import { toonMat, getOutlineMat, outlineBox, hullOf, noRaycast, hashStr, seededRandom } from './toon.js';
+import { buildingPalette, paintFacade } from './facade.js';
+import { ARCHITECTURES, architectureDetails } from './architecture.js';
+import { skyscraperPlan } from './skyscrapers.js';
 import { hexNum, disposeObject } from './util.js';
 import { paintGraffiti } from '../graffiti.js'; // spray-painted wall text (building configs)
 
@@ -53,7 +55,7 @@ function fadeTo(m, target) {
   faded.set(m, { origOpacity: m.opacity, origTransparent: m.transparent, origDepthWrite: m.depthWrite,
                  origColor: tinted ? null : (m.color?.clone() || null), k: 1, target });
   if (target < m.opacity) {
-    m.transparent = true;   // opacity only blends when transparent
+    if (!m.transparent) { m.transparent = true; m.needsUpdate = true; } // recompile: opaque shaders force alpha to 1
     m.depthWrite = false;   // …and a ghost that writes depth still occludes like a solid box
   }
 }
@@ -73,7 +75,7 @@ const focusSigns = (b, on) => eachMat(b.mesh, (m, o) => {
       // the original colour so stop #2 onward isn't 30% darker than stop #1.
       const f = faded.get(x);
       if (f?.origColor) c.color.copy(f.origColor);
-      c.opacity = 1; c.transparent = true;
+      c.opacity = 1; c.transparent = true; c.depthWrite = true;
       c.userData = { shared: true }; // disposed by focusSigns(false), not disposeObject (the atlas texture is shared)
       return c;
     });
@@ -90,6 +92,8 @@ const focusSigns = (b, on) => eachMat(b.mesh, (m, o) => {
 export const focusGlowScale = (b) => 1 - (b.ghost || 0) * (1 - FOCUS_GLOW);
 
 export function setFocusedBuilding(b) {
+  // Tour legs outlive partial rebuilds: resolve the current mesh, not the disposed one.
+  if (b?.repo?.full_name) b = buildingByName.get(b.repo.full_name) || null;
   if (b === focusEntry) return;
   const outline = getOutlineMat();
   // The previous focus's hulls rejoin the shared outline and its boards the shared atlases…
@@ -103,7 +107,7 @@ export function setFocusedBuilding(b) {
   const seenSign = new Set(); // sign atlas materials are shared: fade or restore them once
   for (const o of buildingMeshes) {
     o.ghostTarget = b && o !== b ? 1 : 0;
-    if (o.ghost === undefined) o.ghost = 0;
+    if (o.ghost === undefined || o === b) o.ghost = 0;
     const casts = !o.ghostTarget;
     o.mesh.traverse((c) => {
       if (!c.isMesh) return;
@@ -122,14 +126,16 @@ export function setFocusedBuilding(b) {
       }
       const f = faded.get(m);
       const orig = f ? f.origOpacity : m.opacity;
-      if (!b || o === b) { if (f) f.target = orig; } // back to full (untrack when it lands)
+      if (o === b) { if (f) { restoreMaterial(m, f); faded.delete(m); } } // the selected building occludes ghosts immediately
+      else if (!b) { if (f) f.target = orig; }
       else fadeTo(m, orig * FOCUS_DIM);
     });
   }
   // …and the new focus gets crisp hulls and boards while the shared ones fade.
   if (b) {
     if (!focusOutline) { focusOutline = outline.clone(); focusOutline.userData = { shared: true }; } // survives disposeObject, like the shared one
-    focusOutline.opacity = 1; focusOutline.transparent = false;
+    focusOutline.opacity = 1; focusOutline.transparent = false; focusOutline.depthWrite = true;
+    focusOutline.needsUpdate = true;
     eachMat(b.mesh, (m, o) => { if (m === outline) o.material = focusOutline; });
     focusSigns(b, true);
   }
@@ -156,10 +162,7 @@ export function tickBuildingFocus(dt) {
     if (Math.abs(f.target - m.opacity) >= 0.01) continue;
     m.opacity = f.target;
     if (f.target === f.origOpacity) { // …and everything is restored on the way back
-      m.transparent = f.origTransparent;
-      m.depthWrite = f.origDepthWrite;
-      if (f.origColor) m.color.copy(f.origColor);
-      else if (m.userData?.tinted) delete m.userData.focusK;
+      restoreMaterial(m, f);
       faded.delete(m);
     }
   }
@@ -170,14 +173,16 @@ export function tickBuildingFocus(dt) {
 // needed for the ones that weren't: a partial rebuild leaves the surviving
 // buildings tracked, and dropping them from `faded` alone would strand them
 // mid-fade forever.
+function restoreMaterial(m, f) {
+  m.opacity = f.origOpacity;
+  if (m.transparent !== f.origTransparent) { m.transparent = f.origTransparent; m.needsUpdate = true; }
+  m.depthWrite = f.origDepthWrite;
+  if (f.origColor) m.color.copy(f.origColor);
+  else if (m.userData?.tinted) delete m.userData.focusK;
+}
+
 function restoreFaded() {
-  for (const [m, f] of faded) {
-    m.opacity = f.origOpacity;
-    m.transparent = f.origTransparent;
-    m.depthWrite = f.origDepthWrite;
-    if (f.origColor) m.color.copy(f.origColor);
-    else if (m.userData?.tinted) delete m.userData.focusK;
-  }
+  for (const [m, f] of faded) restoreMaterial(m, f);
   faded.clear();
 }
 
@@ -189,7 +194,6 @@ function clearFocusState() {
     if (focusOutline) eachMat(focusEntry.mesh, (m, o) => { if (m === focusOutline) o.material = outline; });
     focusSigns(focusEntry, false); // also disposes the private sign clones disposeObject skips
   }
-  outline.transparent = false; outline.opacity = 1;
   restoreFaded();
   for (const o of buildingMeshes) {
     o.ghost = o.ghostTarget = 0;
@@ -221,8 +225,12 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   const form = bcfg?.style;
   const group = new THREE.Group();
   const rnd = seededRandom(hashStr(repo.full_name || repo.name || ''));
-  const pal = buildingPalette(color);
-  const style = WIN_STYLES[Math.floor(rnd() * WIN_STYLES.length)];
+  const detailRnd = seededRandom(hashStr((repo.full_name || repo.name || '') + ':architecture'));
+  const pal = buildingPalette(color, detailRnd());
+  const towerPlan = h >= 28 && !form ? skyscraperPlan(h, f, hashStr((repo.full_name || repo.name || '') + ':skyline') % 5) : null;
+  const architecture = towerPlan ? ARCHITECTURES.find(a => a.name === towerPlan.family) : ARCHITECTURES[Math.floor(detailRnd() * ARCHITECTURES.length)];
+  const style = architecture.windows;
+  const details = architectureDetails(group, architecture.name, pal, detailRnd);
   const litProb = 0.45 + rnd() * 0.4;
 
   // Silhouette: tall towers step back in tiers; small ones may get a hip roof.
@@ -230,6 +238,14 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   if (h >= 28 && rnd() > 0.3) tiers = [{ h: h * 0.46, f }, { h: h * 0.32, f: f * 0.8 }, { h: h * 0.22, f: f * 0.62 }];
   else if (h >= 15 && rnd() > 0.35) tiers = [{ h: h * 0.6, f }, { h: h * 0.4, f: f * 0.74 }];
   else tiers = [{ h, f }];
+  // Keep the ground footprint stable for lot placement and shop signs. Upper
+  // sections vary from broad shoulders to a narrow shaft or a small penthouse.
+  const silhouette = Math.floor(detailRnd() * 5);
+  if (h >= 12 && silhouette === 0) tiers = [{ h: h * 0.22, f }, { h: h * 0.78, f: f * 0.66 }];
+  else if (h >= 12 && silhouette === 1) tiers = [{ h: h * 0.84, f }, { h: h * 0.16, f: f * 0.58 }];
+  else if (h >= 20 && silhouette === 2) tiers = [{ h: h * 0.38, f }, { h: h * 0.28, f: f * 0.86 }, { h: h * 0.21, f: f * 0.7 }, { h: h * 0.13, f: f * 0.54 }];
+  if (architecture.name === 'garden' && h >= 12) tiers = [{ h: h * 0.38, f }, { h: h * 0.34, f: f * 0.73 }, { h: h * 0.28, f: f * 0.46 }];
+  if (architecture.name === 'glass' && h >= 12) tiers = [{ h: h * 0.16, f }, { h: h * 0.84, f: f * 0.88 }];
   let hip = tiers.length === 1 && h < 9 && rnd() > 0.45;
   // city.json style changes the silhouette only (height and footprint still follow
   // the stars); applied after the draws above so the rest of the building is unchanged.
@@ -237,6 +253,7 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   else if (form === 'stepped') { tiers = h >= 8 ? [{ h: h * 0.5, f }, { h: h * 0.3, f: f * 0.78 }, { h: h * 0.2, f: f * 0.6 }] : [{ h: h * 0.62, f }, { h: h * 0.38, f: f * 0.72 }]; hip = false; }
   else if (form === 'cottage') { tiers = [{ h, f }]; hip = true; }
   else if (form === 'block') { tiers = [{ h, f }]; hip = false; }
+  if (towerPlan) { tiers = towerPlan.tiers; hip = false; }
   const neon = bcfg?.neon ? hexNum(bcfg.neon) : 0xffffff; // building config "neon": the lit windows' glow
 
   const roofH = 0.7, over = 0.45;
@@ -246,29 +263,51 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   const bodies = [], bodyMats = [], hulls = [];
   let baseY = 0, topY = 0, topF = f, cx = 0, cz = 0;
   tiers.forEach((t, i) => {
-    const tf = Math.max(2.2, t.f);
-    if (i > 0) {
+    const tf = Math.max(towerPlan ? 0.8 : 2.2, t.f), td = t.depth || tf;
+    if (towerPlan) { baseY = t.base; cx = t.x; cz = t.z; }
+    if (i > 0 && !towerPlan) {
       // Upper tiers sit slightly off-centre so towers aren't perfectly symmetric.
-      const slack = (Math.max(2.2, tiers[i - 1].f) - tf) / 2 * 0.7;
+      const slack = (Math.max(2.2, tiers[i - 1].f) - tf) / 2 * (architecture.name === 'garden' ? 0 : 0.7);
       cx += (rnd() - 0.5) * 2 * slack; cz += (rnd() - 0.5) * 2 * slack;
     }
     const { map, emissiveMap } = paintFacade(rnd, pal, tf, t.h, { ground: i === 0, style, litProb });
     const mat = toonMat({ color: 0xffffff, map, emissive: neon, emissiveMap, emissiveIntensity: 0 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(tf, t.h, tf), mat);
+    let geometry;
+    if (t.shape === 'octagon') {
+      geometry = new THREE.CylinderGeometry(tf * t.taper / 2, tf / 2, t.h, 8, 1, false);
+      // Four facade repeats around the tower, with continuous floor heights.
+      const uv = geometry.attributes.uv;
+      for (let v = 0; v < uv.count; v++) uv.setX(v, uv.getX(v) * 4);
+      map.wrapS = emissiveMap.wrapS = THREE.RepeatWrapping;
+    } else geometry = new THREE.BoxGeometry(tf, t.h, td);
+    const body = new THREE.Mesh(geometry, mat);
+    body.rotation.y = t.rotation || 0;
     body.position.set(cx, baseY + t.h / 2, cz);
     body.castShadow = body.receiveShadow = true;
     group.add(body); bodies.push(body); bodyMats.push(mat);
-    const o = i === 0 ? over : over * 0.6;
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(tf + o, roofH, tf + o), roofMat);
-    cap.position.set(cx, baseY + t.h + roofH / 2, cz);
-    cap.castShadow = true;
-    group.add(cap);
-    const hull = outlineBox(tf + o, t.h + roofH, tf + o, 0.34);
-    hull.position.set(cx, baseY + (t.h + roofH) / 2, cz);
+    if (!t.bare && t.shape !== 'octagon') details.tier({ x: cx, z: cz, y: baseY, w: tf, h: t.h,
+      roofHeight: towerPlan && i < tiers.length - 1 ? 0.18 : roofH, terraces: towerPlan?.name === 'terraces',
+      rotation: t.rotation || 0, nextW: tiers[i + 1] ? Math.max(towerPlan ? 0.8 : 2.2, tiers[i + 1].f) : null });
+    const o = towerPlan ? 0.12 : i === 0 ? over : over * 0.6;
+    const capH = t.cap === false ? 0 : towerPlan && i < tiers.length - 1 ? 0.18 : roofH;
+    if (capH) {
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(tf + o, capH, td + o), roofMat);
+      cap.position.set(cx, baseY + t.h + capH / 2, cz);
+      cap.rotation.y = t.rotation || 0;
+      cap.castShadow = true;
+      group.add(cap);
+    }
+    const hull = t.shape === 'octagon'
+      ? new THREE.Mesh(hullOf(geometry, 0.18), getOutlineMat())
+      : outlineBox(tf + o, t.h + capH, td + o, towerPlan ? 0.15 : 0.34);
+    hull.raycast = noRaycast;
+    hull.rotation.y = t.rotation || 0;
+    hull.position.set(cx, baseY + (t.h + capH) / 2, cz);
     group.add(hull); hulls.push(hull);
-    baseY += t.h + roofH; topY = baseY; topF = tf;
+    baseY += t.h + capH; topY = baseY; topF = tf;
   });
 
+  const designedRoof = !hip && !bcfg?.roof && form !== 'tower' && form !== 'block' && ['deco', 'garden', 'heritage', 'loft'].includes(architecture.name);
   if (hip) {
     const r = (topF + over) * 0.72;
     const pyr = new THREE.Mesh(new THREE.ConeGeometry(r, 1.9, 4), roofMat);
@@ -280,6 +319,8 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
     group.add(pyr, pyrHull, chimney);
   } else if (bcfg?.roof) { // building config "roof" replaces the random decal / props
     buildRoof(group, bcfg.roof, { cx, cz, topY, topF, size: topF + (tiers.length === 1 ? over : over * 0.6), propDark });
+  } else if (designedRoof) {
+    details.roof({ x: cx, z: cz, y: topY, w: topF });
   } else {
     // Half the flat roofs get a painted top-down decal (helipad, garden,
     // gravel + HVAC, solar); the rest keep their 3D props.
@@ -325,6 +366,8 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
     }
   }
 
+  details.finish();
+
   // Building config "graffiti" (ground-floor walls) and "flag" (roof, or the cottage's ridge).
   if (bcfg?.graffiti) addGraffiti(group, bcfg.graffiti, { half: Math.max(2.2, tiers[0].f) / 2, height: tiers[0].h, x, z, seed: repo.full_name || repo.name || '' });
   if (bcfg?.flag) addRoofFlag(group, bcfg.flag, hip ? { x: cx, y: topY + 1.7, z: cz } : { x: cx - topF / 2 + 0.55, y: topY, z: cz + topF / 2 - 0.55 }, propDark);
@@ -335,12 +378,15 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
     beacon = new THREE.Mesh(
       new THREE.SphereGeometry(0.34, 10, 10),
       toonMat({ color: 0xffa03a, emissive: 0xff8a1a, emissiveIntensity: 1.4 }));
-    beacon.position.set(cx + topF / 2 - 0.8, topY + (hip ? 2.1 : 0.4), cz - topF / 2 + 0.8);
+    const crownBeacon = designedRoof && architecture.name === 'deco';
+    const roofRise = designedRoof ? ({ deco: 4.55, heritage: 1.95, garden: 0.85, loft: 0.8 }[architecture.name] || 0.4) : 0.4;
+    beacon.position.set(crownBeacon ? cx : cx + topF / 2 - 0.8, topY + (hip ? 2.1 : roofRise), crownBeacon ? cz : cz - topF / 2 + 0.8);
     group.add(beacon);
   }
 
   group.position.set(x, 0, z);
   group.userData.repo = repo;
+  group.userData.skyscraper = towerPlan?.name || null;
   cityGroup.add(group);
 
   const entry = {
