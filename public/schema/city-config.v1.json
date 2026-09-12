@@ -48,7 +48,7 @@
         "streets": {
           "type": "integer",
           "minimum": 3,
-          "maximum": 6,
+          "maximum": 5,
           "description": "Width of the inner streets in world units (default 4). Wider streets leave a smaller lot, so the buildings on them are slimmer; narrower ones become pavement, never bigger buildings. The city keeps its footprint either way."
         }
       },

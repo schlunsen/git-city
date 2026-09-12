@@ -38,7 +38,11 @@ export const LOT_CLEAR = BOULEVARD_HALF + 0.75; // footprint corners this far in
 // this (setStreetWidth), so both are `let`: every consumer reads them live,
 // which means nothing may cache them at module load.
 export const STREET_DEFAULT = 4;            // a 5-unit lot, 4.1-unit largest building
-export const STREET_RANGE = [3, 6];         // 6 in cells of 9 leaves a 3-unit lot: still buildable
+// Capped at 5, not 6: a cell is 9 wide, so every unit of street comes straight
+// out of the building on the lot. At 6 the largest building is 2.1 units against
+// a default of 4.1 - half its width, which reads as a pencil rather than a
+// tower. 5 costs it a quarter of its width, which still looks like a building.
+export const STREET_RANGE = [3, 5];
 const LOT_MARGIN = 0.45;                    // pavement between a building's edge and the kerb
 // Wider streets leave a smaller lot and so a slimmer building. Narrower ones do
 // NOT grow the building past its default size: a bigger footprint deactivates

@@ -135,7 +135,7 @@ test('street width is clamped to its range, and narrower streets never grow the 
     assert.equal(setStreetWidth(undefined), STREET_DEFAULT);
     const wide = (w) => { setStreetWidth(w); return starsToFootprint(1e6); };
     assert.equal(wide(3), wide(STREET_DEFAULT), 'below the default the extra room is pavement, not building');
-    assert.ok(wide(6) < wide(5) && wide(5) < wide(STREET_DEFAULT), 'above it, wider streets slim the buildings');
+    assert.ok(wide(5) < wide(STREET_DEFAULT), 'above it, wider streets slim the buildings');
   } finally {
     setStreetWidth(STREET_DEFAULT);
   }
