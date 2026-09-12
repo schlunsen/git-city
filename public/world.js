@@ -256,7 +256,7 @@ const BILLBOARD_VERTEX = /* glsl */`
 `;
 
 export function createWorld(THREE, scene, deps) {
-  const { envMat, seededRandom, DISTRICT, CELL, slabHalf, slabRadius, streetW = 3.2, base = './assets/' } = deps;
+  const { envMat, seededRandom, DISTRICT, CELL, slabHalf, slabRadius, streetW = () => 4, base = './assets/' } = deps;
   const rnd = seededRandom(0xC17E); // persistent scenery only (clouds, balloons)
   const loader = new THREE.TextureLoader();
   const tints = [];      // { mat, night, day } — recoloured by setDay
@@ -1921,7 +1921,7 @@ export function createWorld(THREE, scene, deps) {
     for (const lot of plan?.lots || []) {
       const kind = LOT_KIND[lot.kind];
       const idx = kind && kind.sprite < SPRITE_COUNTS.lots ? kind.sprite : (kind?.fallback ?? 0); // works with any tile count
-      const d = decal(`lots-${idx}`, (CELL - streetW - 0.6) * lot.scale, { tint: lot.tint });
+      const d = decal(`lots-${idx}`, (CELL - streetW() - 0.6) * lot.scale, { tint: lot.tint });
       d.position.set(lot.x, 0.035, lot.z);
       d.rotation.y = lot.rot;
       if (lot.flipX) d.scale.x *= -1;

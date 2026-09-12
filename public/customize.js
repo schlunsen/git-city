@@ -19,6 +19,7 @@ import {
 } from './city-config.js';
 import { paintGraffiti } from './graffiti.js';
 import { LANDMARK_SITES } from './world.js';
+import { STREET_RANGE, STREET_DEFAULT } from './city/layout.js';
 import { renderLandmarkThumbs } from './landmark-thumbs.js'; // small rendered pictures of each 3D landmark
 
 // Where each landmark can stand (world.js LANDMARK_SITES), in words for the picker.
@@ -266,18 +267,21 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     });
     return el;
   }
-  function volumeField() {
-    const cur = getIn(draft, ['player', 'volume']);
-    const out = h('output', { text: cur ?? '—' });
-    const range = h('input', { type: 'range', min: 0, max: 100, step: 1, value: cur ?? 20, disabled: cur === undefined, 'aria-label': 'Volume',
-      oninput: () => { out.textContent = range.value; set(['player', 'volume'], Number(range.value)); } });
-    const on = h('input', { type: 'checkbox', checked: cur !== undefined, 'aria-label': 'Set a volume', onchange: () => {
+  // An optional number: a checkbox to set it at all, then a slider. Unchecked
+  // leaves the field out of city.json, so the city keeps its default.
+  function numberField(path, { min, max, step = 1, fallback, label, format = String }) {
+    const cur = getIn(draft, path);
+    const out = h('output', { text: cur === undefined ? '—' : format(cur) });
+    const range = h('input', { type: 'range', min, max, step, value: cur ?? fallback, disabled: cur === undefined, 'aria-label': label,
+      oninput: () => { out.textContent = format(Number(range.value)); set(path, Number(range.value)); } });
+    const on = h('input', { type: 'checkbox', checked: cur !== undefined, 'aria-label': `Set ${label.toLowerCase()}`, onchange: () => {
       range.disabled = !on.checked;
-      out.textContent = on.checked ? range.value : '—';
-      set(['player', 'volume'], on.checked ? Number(range.value) : undefined);
+      out.textContent = on.checked ? format(Number(range.value)) : '—';
+      set(path, on.checked ? Number(range.value) : undefined);
     } });
     return h('span', { class: 'cz-colour' }, on, range, out);
   }
+  const volumeField = () => numberField(['player', 'volume'], { min: 0, max: 100, fallback: 20, label: 'Volume' });
 
   // Repositories: feature (ordered), hide, and per-repo colour / sign / billboard / style.
   function repoSection(ctx) {
@@ -517,6 +521,8 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
           row('Biome', selectField(['island', 'biome'], OPTIONS.biome, LABELS.biome, 'Automatic (top language)')),
           row('Horizon', selectField(['island', 'horizon'], OPTIONS.horizon, LABELS.horizon, 'Automatic (suits the biome)')),
           row('City shape', selectField(['island', 'shape'], OPTIONS.shape, LABELS.shape, 'Automatic (from your login)')),
+          row('Street width', numberField(['island', 'streets'], { min: STREET_RANGE[0], max: STREET_RANGE[1], fallback: STREET_DEFAULT, label: 'Street width',
+            format: (n) => (n === STREET_DEFAULT ? `${n} (default)` : String(n)) })),
           row('Welcome', textField(['welcome'], LIMITS.text, 'Welcome to my city!', true), `Up to ${LIMITS.text} characters, on the welcome boards.`)),
         section('Landmarks', false, h('small', { class: 'cz-note', text: `Pick up to ${LIMITS.landmarks}; they're placed first, then the island tops up as usual.` }), landmarkPicker()),
         section('Look', false,

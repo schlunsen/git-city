@@ -30,7 +30,7 @@ const MONO = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
 const DISPLAY = '"Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif';
 const BLADE_H = 0.32;             // world height of a street-name blade
 const POST_TOP = 2.0;             // blades sit above head height, under the shop fascias' reach
-const ROAD_HALF = STREET_W / 2;   // inner streets (city/layout.js STREET_W, drawn by city/block.js)
+const roadHalf = () => STREET_W / 2; // inner streets (city/layout.js STREET_W, drawn by city/block.js); read live: island.streets moves it
 const noRaycast = () => {};
 
 let postMat = null;               // street-sign green, created once through envMat
@@ -134,7 +134,8 @@ function buildStreetSigns(THREE, opts, lots, group, disposables) {
     if (((i + j) % 2 + 2) % 2) continue;
     let best = null;
     for (const [sx, sz] of [[1, -1], [-1, 1], [1, 1], [-1, -1]]) {
-      for (const d of [ROAD_HALF + 0.35, ROAD_HALF + 0.12]) {
+      const rh = roadHalf();
+      for (const d of [rh + 0.35, rh + 0.12]) {
         const x = a.p + sx * d, z = b.p + sz * d, c = clearance(x, z);
         if (c < 0.3) continue;
         if (!best || c > best.c + 0.05) best = { x, z, c };

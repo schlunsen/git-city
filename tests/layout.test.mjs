@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 // The browser's own layout module: pure math, so no WebGL or network is needed.
 import {
   assignDistricts, worldForCell, makeCityLayout, chooseCityShape, CITY_SHAPE_NAMES, SIDEWALK, LOT_HALF, LOT_CLEAR, CELL,
+  setStreetWidth, STREET_DEFAULT, STREET_RANGE, starsToFootprint,
 } from '../public/city/layout.js';
 
 const reposFor = (languages, n = 100) =>
@@ -85,5 +86,57 @@ test('small profiles never get a bigger block, prolific ones never overflow it',
     assert.ok(makeCityLayout(shape, 1, 7).n <= makeCityLayout(shape, 100, 7).n);
     const L = makeCityLayout(shape, 100, 7);
     assert.equal(assignDistricts(reposFor(['Go', 'Rust'], 100), L).assignments.length, 100);
+  }
+});
+
+// city.json island.streets (layout.js setStreetWidth) moves the street width,
+// which moves the lot and so the building on it. The city must stay the same
+// size whatever it is set to: a wider footprint deactivates cells, which forces
+// a larger grid, which once pushed the block out into the island's water.
+test('street width: every city keeps its footprint and its buildings on their lots', () => {
+  try {
+    const caps = new Map();
+    for (let w = STREET_RANGE[0]; w <= STREET_RANGE[1]; w++) {
+      setStreetWidth(w);
+      const lot = CELL - w;
+      assert.ok(starsToFootprint(1e6) <= lot + 1e-9, `streets ${w}: the largest building fits its lot`);
+      assert.ok(starsToFootprint(0) > 0, `streets ${w}: the smallest building is real`);
+      for (const shape of CITY_SHAPE_NAMES) {
+        const L = makeCityLayout(shape, 100, 7);
+        assert.ok(L.capacity >= 100, `streets ${w} ${shape}: capacity ${L.capacity}`);
+        // Same grid at every width: the city never grows to make room for its
+        // streets. (Capacity may rise - slimmer buildings activate more of the
+        // cells the grid already has - but the block itself must not.)
+        const grid = `${L.cols}x${L.rows}`, was = caps.get(shape);
+        if (was === undefined) caps.set(shape, grid);
+        else assert.equal(grid, was, `streets ${w} ${shape}: grid grew from ${was}`);
+        assert.ok(Math.max(...L.contour(SIDEWALK).map(p => Math.hypot(p.x, p.z))) < 80,
+          `streets ${w} ${shape}: the block leaves room for the island`);
+        for (const a of assignDistricts(reposFor(['Go']), L).assignments) {
+          const { x, z } = worldForCell(a.gx, a.gz);
+          assert.ok(footprintClear(L, x, z), `streets ${w} ${shape}: footprint inside the boulevard`);
+        }
+      }
+    }
+    // The same shape at two widths is two different layouts, never a cache hit.
+    setStreetWidth(4); const four = makeCityLayout('square', 100, 7);
+    setStreetWidth(6); assert.notEqual(makeCityLayout('square', 100, 7), four, 'street width is part of the layout key');
+    setStreetWidth(4); assert.equal(makeCityLayout('square', 100, 7), four, 'and back again is the same layout');
+  } finally {
+    setStreetWidth(STREET_DEFAULT); // module state: leave it as the other tests expect
+  }
+});
+
+test('street width is clamped to its range, and narrower streets never grow the building', () => {
+  try {
+    assert.equal(setStreetWidth(99), STREET_RANGE[1]);
+    assert.equal(setStreetWidth(0), STREET_RANGE[0]);
+    assert.equal(setStreetWidth('nonsense'), STREET_DEFAULT);
+    assert.equal(setStreetWidth(undefined), STREET_DEFAULT);
+    const wide = (w) => { setStreetWidth(w); return starsToFootprint(1e6); };
+    assert.equal(wide(3), wide(STREET_DEFAULT), 'below the default the extra room is pavement, not building');
+    assert.ok(wide(6) < wide(5) && wide(5) < wide(STREET_DEFAULT), 'above it, wider streets slim the buildings');
+  } finally {
+    setStreetWidth(STREET_DEFAULT);
   }
 });

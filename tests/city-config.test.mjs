@@ -16,7 +16,7 @@ const plain = (o) => JSON.parse(JSON.stringify(o));
 
 const EXAMPLE = {
   version: 1,
-  island: { name: 'Schlunsen Isle', biome: 'tropical', shape: 'round' },
+  island: { name: 'Schlunsen Isle', biome: 'tropical', shape: 'round', streets: 5 },
   welcome: 'Welcome to the island of broken builds',
   look: { accent: '#8c78ff', time: 'sunset', weather: 'snow', tv: false, fx: true, timezone: 'Europe/Copenhagen' },
   landmarks: ['rollerCoaster', 'observatory', 'campsite'],
@@ -524,4 +524,16 @@ test('every biome draws its horizon from a pool of real horizons', () => {
     for (const h of pool) assert.ok(HORIZON_NAMES.includes(h), `${biome} names an unknown horizon: ${h}`);
     assert.ok(new Set(pool).size >= 2, `${biome} would always show the same horizon`);
   }
+});
+
+test('island.streets: clamped to its range, rounded, and non-numbers warn', () => {
+  assert.equal(norm({ version: 1, island: { streets: 6 } }).config.island.streets, 6);
+  assert.equal(norm({ version: 1, island: { streets: 99 } }).config.island.streets, 6);
+  assert.equal(norm({ version: 1, island: { streets: 1 } }).config.island.streets, 3);
+  assert.equal(norm({ version: 1, island: { streets: 4.4 } }).config.island.streets, 4);
+  const bad = norm({ version: 1, island: { streets: 'wide' } });
+  assert.equal(bad.config.island.streets, undefined);
+  assert.equal(bad.warnings.length, 1);
+  // Left out entirely, the city keeps the default width.
+  assert.equal(norm({ version: 1, island: {} }).config.island.streets, undefined);
 });

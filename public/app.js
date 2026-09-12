@@ -35,6 +35,7 @@ import { getOutlineMat, envPalette, envMat, hashStr } from './city/toon.js';
 import { planLots } from './city/lots.js';
 import {
   CELL, SLAB_HALF, SLAB_R, RING_R, RING_CORNER, PLAZA_R, chooseCityShape, makeCityLayout, starsToHeight, starsToFootprint,
+  setStreetWidth, STREET_DEFAULT,
   worldForCell, assignDistricts,
 } from './city/layout.js';
 import { fetchJSON, loadFixture, loadUser } from './city/data.js';
@@ -115,8 +116,12 @@ const CITY_SHAPE_BY_PROFILE = true; // false: every city is square unless ?city=
 function cityLayoutFor(user, repos) {
   const need = Math.max(1, rankRepos(repos).length); // repos hidden by city.json need no lot
   const seed = hashStr(`city-v1:${String(user?.login || '').toLowerCase()}:${String(user?.created_at || '').slice(0, 4)}`);
-  const override = new URLSearchParams(location.search).get('city') || cfgNow()?.island.shape; // ?city= preview, then city.json
+  const q = new URLSearchParams(location.search);
+  const override = q.get('city') || cfgNow()?.island.shape; // ?city= preview, then city.json
   const shape = CITY_SHAPE_BY_PROFILE ? chooseCityShape(seed, override) : chooseCityShape(seed, override || 'square');
+  // Street width decides the lot size and so which cells can hold a building:
+  // it has to land before the layout is planned, not after.
+  setStreetWidth(q.get('streets') ?? cfgNow()?.island.streets ?? STREET_DEFAULT);
   return makeCityLayout(shape, need, seed);
 }
 

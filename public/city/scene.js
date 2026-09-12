@@ -94,6 +94,6 @@ export function initScene(hooks = {}) { // hooks: onControlStart / onControlEnd 
 
 // The island (world.js): built once, re-dressed per profile by world.setProfile().
 export function initWorld() {
-  world = createWorld(THREE, scene, { envMat, seededRandom, DISTRICT, CELL, slabHalf: SLAB_HALF, slabRadius: SLAB_R, streetW: STREET_W });
+  world = createWorld(THREE, scene, { envMat, seededRandom, DISTRICT, CELL, slabHalf: SLAB_HALF, slabRadius: SLAB_R, streetW: () => STREET_W });
   return world;
 }

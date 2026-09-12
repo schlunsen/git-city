@@ -87,6 +87,7 @@ export const LIMITS = Object.freeze({
   landmarks: 6,
   repos: 100,
   volume: [0, 100],
+  streets: [3, 6],  // island.streets, in world units (city/layout.js STREET_RANGE)
 });
 
 export const HEX_RE = /^#[0-9a-f]{6}$/i;
@@ -97,7 +98,7 @@ const REPO_RE = /^[A-Za-z0-9._-]{1,100}$/;
 const STRIP_RE = /[\u0000-\u001f\u007f-\u009f\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g;
 const TOP_KEYS = ['$schema', 'version', 'island', 'welcome', 'look', 'landmarks', 'neighbours', 'featured', 'hide', 'repos', 'player', 'plane'];
 export const BUILDING_KEYS = Object.freeze(['style', 'color', 'sign', 'billboard', 'graffiti', 'roof', 'neon', 'flag']);
-const DID_YOU_MEAN = { neighbors: 'neighbours', landmark: 'landmarks', feature: 'featured', hidden: 'hide', music: 'player.music', accent: 'look.accent', name: 'island.name', biome: 'island.biome', shape: 'island.shape', colour: 'color' };
+const DID_YOU_MEAN = { street: 'island.streets', roads: 'island.streets', neighbors: 'neighbours', landmark: 'landmarks', feature: 'featured', hidden: 'hide', music: 'player.music', accent: 'look.accent', name: 'island.name', biome: 'island.biome', shape: 'island.shape', colour: 'color' };
 
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const at = (o, k) => (own(o, k) ? o[k] : undefined); // own properties only: nothing inherited is ever read
@@ -283,15 +284,17 @@ export function normalizeCityConfig(raw, ctx = {}) {
   // island
   const island = object(at(raw, 'island'), 'island');
   if (island) {
-    unknown(island, ['name', 'biome', 'shape', 'horizon'], 'island');
+    unknown(island, ['name', 'biome', 'shape', 'horizon', 'streets'], 'island');
     const name = text(at(island, 'name'), 'island.name', LIMITS.name);
     const biome = pick(at(island, 'biome'), 'island.biome', OPTIONS.biome);
     const shape = pick(at(island, 'shape'), 'island.shape', OPTIONS.shape);
     const horizon = pick(at(island, 'horizon'), 'island.horizon', OPTIONS.horizon);
+    const streets = number(at(island, 'streets'), 'island.streets', LIMITS.streets);
     if (name) config.island.name = name;
     if (biome) config.island.biome = biome;
     if (shape) config.island.shape = shape;
     if (horizon) config.island.horizon = horizon;
+    if (streets !== undefined) config.island.streets = streets;
   }
   const welcome = text(at(raw, 'welcome'), 'welcome', LIMITS.text);
   if (welcome) config.welcome = welcome;

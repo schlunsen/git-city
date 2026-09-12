@@ -51,6 +51,7 @@ typo never breaks your city; it just doesn't do anything.
 | `island.biome` | name | `meadow`, `alpine`, `tropical`, `savanna`, `lakeland` | Ground palette, relief, trees, beaches. Default: from your top language. |
 | `island.shape` | name | `square`, `wide`, `tall`, `round`, `plus`, `octagon`, `blob` | Footprint of the paved city block. Default: from your login. |
 | `island.horizon` | one of `hills`, `peaks`, `mesas`, `isles`, `pines`, `skyline`, `volcano`, `dunes`, `glacier`, `farmland`, `canyon` | What stands on the far horizon. Left out, the island draws one that suits its biome — alpine leans to snowy peaks and glaciers, savanna to mesas, dunes and canyons, tropical to islands and volcanoes — so two cities in the same biome rarely look out on the same thing. |
+| `island.streets` | number | `3`–`6` (default `4`) | Width of the inner streets, in world units. Wider streets leave a smaller lot, so the buildings standing on them are slimmer. Narrower ones turn the extra room into pavement rather than bigger buildings, so your city always keeps the same footprint. |
 | `welcome` | text | ≤ 120 characters | Your message on the welcome boards where the roads leave town (wrapped to 4 lines). |
 | `look.accent` | colour | `#rrggbb` | Glow colour of the plaza monument and its inlays. |
 | `look.time` | name | `auto`, `day`, `sunset`, `night`, `cycle` | How the light starts: viewer's clock, fixed day, fixed low sun, fixed night, or the 60 s cycle. |
@@ -91,8 +92,9 @@ More details:
   the toolbar buttons. Their toggles last for the visit and don't change their
   saved TV / FX preference for other cities. A city without these fields
   keeps the visitor's own choices.
-- **Preview parameters win**: `?biome=` and `?city=` in the URL override
-  `island.biome` / `island.shape`, so you can try looks without editing.
+- **Preview parameters win**: `?biome=`, `?city=` and `?streets=` in the URL
+  override `island.biome` / `island.shape` / `island.streets`, so you can try
+  looks without editing.
 - **Landmarks are best effort.** Each needs a free site of the right kind
   (the roller coaster needs the big fairground, wind turbines a hillside, the
   campsite a coast or wild spot). If the island has no room, it's skipped.
