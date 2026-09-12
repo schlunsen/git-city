@@ -245,6 +245,7 @@ export function returnToOrbit() {
 // The user grabbed the camera: the tour pauses where it is, and any flight stops.
 export function pauseTourForUser() {
   if (tour.active) tour.paused = true; // look around; the tour picks up again when you let go
+  setFocusedBuilding(null); // the camera is yours: the city comes back to full
   if (tourResumeTimer) clearTimeout(tourResumeTimer);
   cine = null;
 }

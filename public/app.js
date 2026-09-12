@@ -43,7 +43,7 @@ import {
 } from './city/scene.js';
 import { cityLayout, setCityLayout, buildEnvironment } from './city/block.js';
 import { plazaFx, updatePlaza } from './city/plaza.js';
-import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus } from './city/buildings.js';
+import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus, focusGlowScale } from './city/buildings.js';
 import {
   districtSigns, clearPerUserEnhancements, buildRingFromEvents, buildDistrictSigns, buildDistrictBaseplates, buildCommitShuttles,
   buildForkBeams, updateShuttles, updateBeams,
@@ -213,7 +213,9 @@ function applyDayFactor(t) {
   // Lit panes come from each facade's emissive mask; a beam hit flares them.
   for (const b of buildingMeshes) {
     const flick = 0.92 + Math.sin(clock.getElapsed() * 0.7 + b.flicker) * 0.08;
-    const inten = glow * flick * 1.15 + (b.pulse || 0) * 1.8;
+    // …and drops away on tour-ghosted buildings, so lit panes don't blaze
+    // through the fade (emissive is added on top of the faded albedo).
+    const inten = (glow * flick * 1.15 + (b.pulse || 0) * 1.8) * focusGlowScale(b);
     for (const m of b.bodyMats) m.emissiveIntensity = inten;
   }
   // Streetlamps + plaza neon flare up at night; their light cones fade in too.

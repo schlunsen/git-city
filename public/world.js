@@ -351,7 +351,13 @@ export function createWorld(THREE, scene, deps) {
     if (own) {
       mat = mat.clone();
       mat.alphaTest = 0.05; // below the fade floor, so opacity eases smoothly instead of popping out at 0.5
-      mat.userData = {};    // not shared: disposed with its owner (the texture stays shared)
+      mat.userData = { tinted: true }; // not shared: disposed with its owner (the texture stays shared)
+      // The clone misses the registration cutoutMat() did for the original, so
+      // register it too — otherwise the roof decal freezes at the tint it was
+      // cloned under and never follows day/night again.
+      const t = { mat, night: new THREE.Color(0x3b4660), day: new THREE.Color(LOT_TINTS[tint] ?? 0xffffff) };
+      tints.push(t);
+      mat.addEventListener('dispose', () => { const i = tints.indexOf(t); if (i >= 0) tints.splice(i, 1); });
     }
     const mesh = new THREE.Mesh(unitDecal, mat);
     mesh.scale.set(size, 1, size);
@@ -1969,7 +1975,11 @@ export function createWorld(THREE, scene, deps) {
   function setDay(day) {
     const lit = day + (1 - day) * MOON_FLOOR; // moonlight keeps a share of the day colours
     litNow = lit;
-    for (const t of tints) t.mat.color.copy(t.night).lerp(t.day, lit);
+    for (const t of tints) {
+      t.mat.color.copy(t.night).lerp(t.day, lit);
+      const k = t.mat.userData.focusK; // tour-focus dim, applied by its own writer
+      if (k !== undefined) t.mat.color.multiplyScalar(k);
+    }
     if (land) for (const t of land.tints) t.mat.color.copy(t.night).lerp(t.day, lit);
     cloudOpacity = 0.55 + day * 0.4;
     const night = smooth(0.55, 0.12, day);

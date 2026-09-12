@@ -32,11 +32,12 @@ export function resetBuildings() {
 // shared outline material can't fade per building, so the focused building's
 // hulls get a crisp full-opacity clone while the shared one fades with the city.
 // ---------------------------------------------------------------------------
-const FOCUS_DIM = 0.3;   // opacity of unfocused buildings while one has the focus
-const FOCUS_DARK = 0.7;  // …and a colour multiplier, so the ghosts don't wash out pale
+const FOCUS_DIM = 0.10;  // opacity of unfocused buildings while one has the focus
+const FOCUS_DARK = 0.55; // …and a colour multiplier, so the ghosts don't wash out pale
+const FOCUS_GLOW = 0.08; // …and a window-glow multiplier: lit panes drop to a faint ember
 const FOCUS_EASE = 4.5;  // fade lerp rate (per second)
-const faded = new Map(); // material -> { origOpacity, origTransparent, origColor, k, target }
-let focusEntry = null, focusOutline = null;
+const faded = new Map(); // material -> { origOpacity, origTransparent, origDepthWrite, origColor, k, target }
+let focusEntry = null, focusOutline = null, ghosting = false;
 
 const eachMat = (root, fn) => root.traverse((o) => {
   if (!o.isMesh || !o.material) return;
@@ -46,8 +47,15 @@ const eachMat = (root, fn) => root.traverse((o) => {
 function fadeTo(m, target) {
   const f = faded.get(m);
   if (f) { f.target = target; return; }
-  faded.set(m, { origOpacity: m.opacity, origTransparent: m.transparent, origColor: m.color?.clone() || null, k: 1, target });
-  if (target < m.opacity) m.transparent = true; // opacity only blends when transparent
+  // Day/night-tinted materials are recoloured every frame by their own writer,
+  // so a snapshot here would be stale: they dim via userData.focusK instead.
+  const tinted = m.userData?.tinted;
+  faded.set(m, { origOpacity: m.opacity, origTransparent: m.transparent, origDepthWrite: m.depthWrite,
+                 origColor: tinted ? null : (m.color?.clone() || null), k: 1, target });
+  if (target < m.opacity) {
+    m.transparent = true;   // opacity only blends when transparent
+    m.depthWrite = false;   // …and a ghost that writes depth still occludes like a solid box
+  }
 }
 
 // Repo signs share atlas materials across buildings (repo-signs.js), so fading
@@ -61,6 +69,10 @@ const focusSigns = (b, on) => eachMat(b.mesh, (m, o) => {
     o.userData.signMats = o.material;
     o.material = o.material.map((x) => {
       const c = x.clone();
+      // The shared atlas may already be mid-fade; the private copy starts from
+      // the original colour so stop #2 onward isn't 30% darker than stop #1.
+      const f = faded.get(x);
+      if (f?.origColor) c.color.copy(f.origColor);
       c.opacity = 1; c.transparent = true;
       c.userData = { shared: true }; // disposed by focusSigns(false), not disposeObject (the atlas texture is shared)
       return c;
@@ -72,6 +84,11 @@ const focusSigns = (b, on) => eachMat(b.mesh, (m, o) => {
   }
 });
 
+// Window glow is re-applied every frame by app.js from the day/night curve, so
+// the fade can't just write emissiveIntensity once. Each building carries an
+// eased `ghost` level (0 = full, 1 = fully ghosted) and app.js scales by this.
+export const focusGlowScale = (b) => 1 - (b.ghost || 0) * (1 - FOCUS_GLOW);
+
 export function setFocusedBuilding(b) {
   if (b === focusEntry) return;
   const outline = getOutlineMat();
@@ -82,8 +99,17 @@ export function setFocusedBuilding(b) {
   }
   focusEntry = b || null;
   fadeTo(outline, b ? FOCUS_DIM : 1);
+  ghosting = true; // let the tick ease every building's glow to its new level
   const seenSign = new Set(); // sign atlas materials are shared: fade or restore them once
   for (const o of buildingMeshes) {
+    o.ghostTarget = b && o !== b ? 1 : 0;
+    if (o.ghost === undefined) o.ghost = 0;
+    const casts = !o.ghostTarget;
+    o.mesh.traverse((c) => {
+      if (!c.isMesh) return;
+      if (c.userData.casts0 === undefined) c.userData.casts0 = c.castShadow; // only ever re-enable real casters
+      c.castShadow = casts && c.userData.casts0;
+    });
     eachMat(o.mesh, (m, mesh) => {
       if (m === outline || m === focusOutline) return; // hulls are handled per mesh
       if (mesh.name === 'repo-sign') {
@@ -110,18 +136,30 @@ export function setFocusedBuilding(b) {
 }
 
 export function tickBuildingFocus(dt) {
-  if (!faded.size) return;
   const k = Math.min(1, dt * FOCUS_EASE);
+  if (ghosting) {
+    let moving = false;
+    for (const o of buildingMeshes) {
+      const t = o.ghostTarget || 0;
+      o.ghost += (t - (o.ghost || 0)) * k;
+      if (Math.abs(t - o.ghost) < 0.005) o.ghost = t; else moving = true;
+    }
+    if (!moving) ghosting = false;
+  }
+  if (!faded.size) return;
   for (const [m, f] of faded) {
     m.opacity += (f.target - m.opacity) * k;
     // The colour dims alongside (k runs 1 → FOCUS_DARK as the fade comes in)…
     f.k += ((f.target < f.origOpacity ? FOCUS_DARK : 1) - f.k) * k;
     if (f.origColor) m.color.copy(f.origColor).multiplyScalar(f.k);
+    else if (m.userData?.tinted) m.userData.focusK = f.k; // its own writer applies this
     if (Math.abs(f.target - m.opacity) >= 0.01) continue;
     m.opacity = f.target;
     if (f.target === f.origOpacity) { // …and everything is restored on the way back
       m.transparent = f.origTransparent;
+      m.depthWrite = f.origDepthWrite;
       if (f.origColor) m.color.copy(f.origColor);
+      else if (m.userData?.tinted) delete m.userData.focusK;
       faded.delete(m);
     }
   }
