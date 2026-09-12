@@ -36,6 +36,8 @@ export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROC
 export const HORIZON_ASSET = Object.freeze({
   hills: 'hills', peaks: 'horizon-peaks', mesas: 'horizon-mesas',
   isles: 'horizon-isles', pines: 'horizon-pines', skyline: 'horizon-skyline',
+  volcano: 'horizon-volcano', dunes: 'horizon-dunes', glacier: 'horizon-glacier',
+  farmland: 'horizon-farmland', canyon: 'horizon-canyon',
 });
 export const HORIZON_NAMES = Object.freeze(Object.keys(HORIZON_ASSET));
 const BIOME_HORIZON = Object.freeze({ meadow: 'hills', alpine: 'peaks', tropical: 'isles', savanna: 'mesas', lakeland: 'pines' });

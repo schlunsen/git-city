@@ -510,7 +510,7 @@ test('island.horizon picks the far skyline, and only from the known set', () => 
   // Every biome has a default, so leaving it out is the normal case.
   assert.equal(norm({ island: { biome: 'alpine' } }).config.island.horizon, undefined);
   // Anything else is dropped with a warning, like every other named option.
-  for (const bad of ['volcano', 'AUTO', 'Skyline', '', 42, null, ['peaks']]) {
+  for (const bad of ['tundra', 'AUTO', 'Skyline', '', 42, null, ['peaks']]) {
     const r = norm({ island: { horizon: bad } });
     assert.equal(r.config.island.horizon, undefined, String(bad));
     assert.equal(r.warnings.length, 1, String(bad));
