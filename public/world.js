@@ -40,7 +40,17 @@ export const HORIZON_ASSET = Object.freeze({
   farmland: 'horizon-farmland', canyon: 'horizon-canyon',
 });
 export const HORIZON_NAMES = Object.freeze(Object.keys(HORIZON_ASSET));
-const BIOME_HORIZON = Object.freeze({ meadow: 'hills', alpine: 'peaks', tropical: 'isles', savanna: 'mesas', lakeland: 'pines' });
+// Each biome draws from a pool rather than always showing the same ridge:
+// most profiles land in one or two biomes, so a single default per biome meant
+// nearly every island in the world had the same horizon. Repeats in a pool are
+// weights — meadow is usually hills, sometimes farmland.
+export const BIOME_HORIZONS = Object.freeze({
+  meadow: Object.freeze(['hills', 'hills', 'farmland', 'pines', 'skyline']),
+  alpine: Object.freeze(['peaks', 'peaks', 'glacier', 'pines']),
+  tropical: Object.freeze(['isles', 'isles', 'volcano', 'hills', 'skyline']),
+  savanna: Object.freeze(['mesas', 'dunes', 'canyon']),
+  lakeland: Object.freeze(['pines', 'hills', 'glacier']),
+});
 // Attraction sites buildLand() reserves before the terrain: the ground each
 // kind offers (attractions.js tags + footprint radius). farm0..farm3 are the
 // fields by each village, fair2 a second fair lot.
@@ -1828,8 +1838,9 @@ export function createWorld(THREE, scene, deps) {
   function applyHorizon(T, cfg) {
     const q = new URLSearchParams(globalThis.location?.search || '');
     const named = (k) => (typeof k === 'string' && Object.prototype.hasOwnProperty.call(HORIZON_ASSET, k) ? k : null);
-    const want = named(q.get('horizon')) || named(cfg?.island?.horizon) || BIOME_HORIZON[T.biome] || 'hills';
     const hr = seededRandom((T.seed ^ 0x4012) >>> 0); // its own stream: never shifts the shared rnd()
+    const pool = BIOME_HORIZONS[T.biome] || BIOME_HORIZONS.meadow;
+    const want = named(q.get('horizon')) || named(cfg?.island?.horizon) || pool[Math.floor(hr() * pool.length)];
     const tex = getTex(HORIZON_ASSET[want]).tex;
     tex.wrapS = THREE.MirroredRepeatWrapping;
     tex.repeat.set(8 + Math.floor(hr() * 5), 1); // 8-12 wraps: peaks are bigger or smaller per city
