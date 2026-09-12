@@ -399,14 +399,38 @@ function onPointerUp(e) {
   if (bannerPlaneHit(raycaster)) { watchPlane(); return; } // the sponsor plane: fly alongside, then the coffee
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
-  if (hits.length > 0) {
-    // Clicking a building plays its history straight away; the repo panel
-    // opens behind the player so the details are there when you close it.
-    const building = hits[0].object.userData.building, repo = building.repo;
-    openPanel(repo);
-    flyToBuilding(building);
-    if (repo.full_name) openGource(repo, { x: e.clientX, y: e.clientY });
-  } else closePanel();
+  if (hits.length > 0) visitRepo(hits[0].object.userData.building, { x: e.clientX, y: e.clientY });
+  else { closePanel(); if (!tour.active) closeVisit(); }
+}
+
+// Clicking a building is a one-repo tour stop: the camera arcs over and circles
+// it, the field guide arrives on the right, and the corner screen replays its
+// commit history — the same arrival city/tour.js gives a tour stop, and the same
+// guide walking or driving up to a building opens with E.
+let visitChaining = false; // a click straight from one building to the next
+function visitRepo(building, at) {
+  const repo = building.repo;
+  ensureBuildingConfig(repo); // its .git-city/building.json (restyles the building when it lands)
+  if (isCompact()) { setMenu(false); setProfile(false); }
+  // Ends any tour (and so closes an open guide) first, so nothing flies on
+  // mid-read. That close must not also fly back to the orbit we are leaving.
+  visitChaining = true;
+  flyToBuilding(building);
+  visitChaining = false;
+  const opened = explorer?.inspectRepo(repo, {
+    status: 'ORBITING',
+    resumeLabel: 'Back to the city ',
+    note: 'The camera circles this building while you read.',
+    modal: false,
+    onClose: () => { if (!visitChaining) returnToOrbit(); },
+  });
+  // No explorer yet (a very early click): the old side panel and player still work.
+  if (!opened) { openPanel(repo); if (repo.full_name) openGource(repo, at); }
+}
+function closeVisit() {
+  if (!explorer?.inspectorOpen) return false;
+  explorer.closeInspector();
+  return true;
 }
 
 function openPanel(repo) {
@@ -455,9 +479,7 @@ function closePanel() {
 // ---------------------------------------------------------------------------
 function focusRepo(fullName) {
   const b = buildingByName.get(fullName);
-  if (!b) return;
-  openPanel(b.repo);
-  flyToBuilding(b);
+  if (b) visitRepo(b);
 }
 
 function updateClock(step) {
@@ -675,7 +697,7 @@ function wireUI() {
     if (tour.active && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); tourJump(e.key === 'ArrowRight' ? 1 : -1); return; }
     if (e.key === 't' || e.key === 'T') { tour.active ? endTour() : startTour(); }
     else if (e.key === ' ') { e.preventDefault(); setPlaying(!play.playing); }
-    else if (e.key === 'Escape') { endTour(); closePanel(); setMenu(false); setProfile(false); }
+    else if (e.key === 'Escape') { endTour(); closePanel(); closeVisit(); setMenu(false); setProfile(false); }
     else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn, { remember: cfgNow()?.look.tv === undefined }); }
   });
   hookCoffeeButton(); // the Buy Me a Coffee button flies you to the plane too
@@ -1117,7 +1139,7 @@ function main() {
     closeInspect: () => explorer?.closeInspector(),
     transitInspect: (repo) => explorer?.transitInspector(repo) || false,
     guideOpen: () => !!explorer?.inspectorOpen,
-    tuneGource, stopGource, // the tour's commit-history mini screen (desktop)
+    stopGource, // the corner history screen stops with the tour
     explorer: () => explorer, flyover: () => flyover,
   });
   initActor({ version: () => cityVersion, playback: () => ({ timeline, play }), onStep: announceStep, onClock: updateClock });
@@ -1130,6 +1152,8 @@ function main() {
     heightAt: (x, z) => world.heightAt(x, z),
     colliders: () => buildingMeshes.flatMap(b => b.bodies), // building bodies, boxed once per city
     dayFactor: () => dayFactor,
+    // Whatever the field guide is showing, the corner screen replays its history.
+    onRepo: (repo) => (repo ? tuneGource(repo) : stopGource()),
     // Getters: island.streets moves the cell, and the explorer outlives a city.
     slabHalf: () => SLAB_HALF, slabRadius: SLAB_R, ringHalf: () => RING_R, ringCorner: RING_CORNER, cell: () => CELL, plazaRadius: () => PLAZA_R,
     layout: () => cityLayout, // live footprint (dist / contour / streets) for slab bounds and spawn points

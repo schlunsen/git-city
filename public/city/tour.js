@@ -14,7 +14,7 @@ export const tour = { active: false, paused: false, t: 0, legs: null, leg: 0, ca
 // featured list and the profile's pinned repos (tour order), the repo panel, the
 // building.json prefetch, the explorer (it may own the camera) and the idle-orbit setting.
 let deps = { featured: () => [], pinned: () => [], openPanel() {}, prefetch() {}, inspect: () => false, closeInspect() {},
-  transitInspect: () => false, guideOpen: () => false, tuneGource() {}, stopGource() {}, explorer: () => null, flyover: () => true };
+  transitInspect: () => false, guideOpen: () => false, stopGource() {}, explorer: () => null, flyover: () => true };
 export function initTour(d) { deps = { ...deps, ...d }; }
 
 // Showcase flight — the default way into a city. The camera flies from
@@ -181,13 +181,9 @@ function openTourReadme(repo) {
     resumeLabel: 'Continue tour ',
     note: 'The camera keeps circling while you read.',
     modal: false,
-    onClose: () => { releaseHold(); deps.stopGource(); },
+    onClose: () => releaseHold(),
   });
-  if (!opened) return false;
-  // Start this repo's history replay too: it loads out of sight and swaps itself
-  // in for the showcase card in the opposite corner once its first frame is up.
-  deps.tuneGource(repo);
-  return true;
+  return opened;
 }
 // A small TV set for the showcase: which repo the camera is heading to or
 // circling, what it is, and how popular. It flickers like a CRT on each change.

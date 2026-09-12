@@ -550,6 +550,7 @@ export function createExplorer(THREE, deps = {}) {
       car.vf = car.vl = car.lastVf = 0;
     },
     onClose: clearInput,
+    onRepo: (repo) => deps.onRepo?.(repo), // walk / drive / tour / a building click all land here
   });
   const button = deps.button || document.getElementById('explore-btn');
 

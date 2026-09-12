@@ -3,7 +3,7 @@ import { readmeDocument } from './city/readme-document.js';
 import { renderReadme } from './readme-reader.js';
 import { fmtNum } from './city/util.js';
 
-export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose }) {
+export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose, onRepo }) {
   const prompt = document.createElement('button');
   prompt.type = 'button'; prompt.className = 'gri-prompt'; prompt.hidden = true;
   prompt.innerHTML = '<span class="gri-eyebrow">NEARBY REPOSITORY</span><strong></strong><span class="gri-summary"></span><span class="gri-action"><kbd>E</kbd> Inspect repo <span>↗</span></span>';
@@ -24,7 +24,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
     .gri-prompt{position:fixed;z-index:36;right:20px;bottom:155px;width:290px;text-align:left;padding:16px;cursor:pointer}
     .gri-prompt[hidden],.gri-dialog [hidden]{display:none}.gri-eyebrow{display:block;font:10px monospace;letter-spacing:1.5px;color:#74d8d8}.gri-prompt strong{display:block;font-size:19px;margin:7px 0;overflow-wrap:anywhere}.gri-summary{display:block;color:#b6c8d2;font-size:12px}.gri-action{display:flex;align-items:center;gap:8px;border-top:1px solid #ffffff20;margin-top:12px;padding-top:12px;color:#79e5df}.gri-action span{margin-left:auto}
     .gri-prompt kbd,.gri-dialog kbd{font:11px monospace;border:1px solid #689295;border-radius:4px;padding:2px 5px}.gri-prompt:focus-visible,.gri-dialog :focus-visible{outline:3px solid #77eee7;outline-offset:4px}
-    .gri-dialog{position:fixed;z-index:46;inset:20px 24px 20px auto;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;padding:28px;margin:0}.gri-dialog h2{margin:16px 0 4px;font-size:25px;overflow-wrap:anywhere}.gri-owner{color:#93aeba;font-size:12px;overflow-wrap:anywhere}.gri-description{font-size:15px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.gri-stats{padding:15px 0;border-block:1px solid #ffffff20;line-height:1.9;color:#7ededa}.gri-updated{color:#93aeba;font-size:12px}.gri-close{position:absolute;right:12px;top:8px;background:none;border:0;color:#c3d9df;font-size:27px;cursor:pointer}.gri-github,.gri-resume{box-sizing:border-box;display:block;width:100%;padding:12px;border-radius:7px;text-align:center;font:600 13px system-ui;text-decoration:none;cursor:pointer}.gri-github{color:#10262d;background:#79ded8;margin:20px 0 8px}.gri-resume{color:#d2e9ec;background:transparent;border:1px solid #56747e}.gri-resume kbd{margin-left:8px}
+    .gri-dialog{touch-action:none;position:fixed;z-index:46;inset:20px 24px 20px auto;width:min(420px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;padding:28px;margin:0}.gri-dialog h2{margin:16px 0 4px;font-size:25px;overflow-wrap:anywhere}.gri-owner{color:#93aeba;font-size:12px;overflow-wrap:anywhere}.gri-description{font-size:15px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.gri-stats{padding:15px 0;border-block:1px solid #ffffff20;line-height:1.9;color:#7ededa}.gri-updated{color:#93aeba;font-size:12px}.gri-close{position:absolute;right:12px;top:8px;background:none;border:0;color:#c3d9df;font-size:27px;cursor:pointer}.gri-github,.gri-resume{box-sizing:border-box;display:block;width:100%;padding:12px;border-radius:7px;text-align:center;font:600 13px system-ui;text-decoration:none;cursor:pointer}.gri-github{color:#10262d;background:#79ded8;margin:20px 0 8px}.gri-resume{color:#d2e9ec;background:transparent;border:1px solid #56747e}.gri-resume kbd{margin-left:8px}
     @media(max-width:700px){.gri-prompt{right:12px;bottom:170px;width:230px;padding:12px}.gri-dialog{margin:auto}.gri-prompt strong{font-size:16px}}@media(max-height:520px){.gri-prompt{bottom:85px;right:12px;width:220px;padding:10px}.gri-eyebrow{font-size:9px}.gri-action{margin-top:7px;padding-top:7px}}
   `;
   style.textContent += `
@@ -51,7 +51,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
     .gri-transit-sub::after{content:"";display:block;height:2px;margin-top:10px;border-radius:2px;background:linear-gradient(90deg,transparent,#79ded8,transparent);animation:gri-tune-bar 1.1s ease-in-out infinite}
     .gri-header{padding:26px 28px 20px;border-bottom:1px solid #ffffff18}.gri-header .gri-eyebrow{display:flex;align-items:center;gap:18px;padding-right:16px}.gri-status{font-size:9px;letter-spacing:1px;color:#bce6b3;border:1px solid #608b63;border-radius:20px;padding:4px 8px}.gri-header h2{font-size:29px;margin:15px 0 4px}.gri-close{z-index:1}
     .gri-tabs{display:flex;gap:8px;padding:12px 28px;background:#07141b55}.gri-tabs button,.gri-retry{background:transparent;border:1px solid #ffffff24;border-radius:6px;color:#91aebd;font:12px monospace;padding:10px 15px;cursor:pointer}.gri-tabs button[aria-pressed="true"]{background:#77ddd51a;border-color:#77ddd5;color:#9cfff1}.gri-tabs kbd{margin-left:12px}
-    .gri-content{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:8px 28px 24px;scrollbar-color:#426974 #101e29}.gri-description{margin:16px 0}.gri-reader-hint{margin-top:24px!important;padding:18px;border-left:2px solid #79ded8;color:#a5c2cc;line-height:1.7;background:#77ddd508}.gri-footer{padding:14px 28px 18px;border-top:1px solid #ffffff20;display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#07141b99}.gri-footer .gri-github{margin:0}.gri-footer-note{grid-column:1/-1;color:#7598a5;font:10px monospace;text-align:center}.gri-readme-status{color:#a1bdc8;line-height:1.7;margin:12px 0!important}.gri-retry{color:#79ded8}
+    .gri-content{touch-action:pan-y;flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:8px 28px 24px;scrollbar-color:#426974 #101e29}.gri-description{margin:16px 0}.gri-reader-hint{margin-top:24px!important;padding:18px;border-left:2px solid #79ded8;color:#a5c2cc;line-height:1.7;background:#77ddd508}.gri-footer{padding:14px 28px 18px;border-top:1px solid #ffffff20;display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#07141b99}.gri-footer .gri-github{margin:0}.gri-footer-note{grid-column:1/-1;color:#7598a5;font:10px monospace;text-align:center}.gri-readme-status{color:#a1bdc8;line-height:1.7;margin:12px 0!important}.gri-retry{color:#79ded8}
     .gri-markdown{font-size:14px;line-height:1.75;color:#d6e5eb;overflow-wrap:anywhere}.gri-markdown img{display:block;max-width:100%;max-height:280px;object-fit:contain;margin:16px auto;border-radius:6px}.gri-markdown img.gri-badge{display:inline-block;max-height:22px;width:auto;margin:3px 5px 3px 0;border-radius:3px;vertical-align:middle}.gri-shot{margin:18px 0;text-align:center;line-height:1}.gri-shot img{margin:8px auto}.gri-shot a{display:inline-block;text-decoration:none}.gri-shot a+a{margin-left:0}.gri-markdown p{margin:12px 0!important}.gri-markdown h2,.gri-markdown h3,.gri-markdown h4{font-size:22px;line-height:1.3;margin:26px 0 12px;border-bottom:1px solid #ffffff18;padding-bottom:9px}.gri-markdown h3{font-size:18px}.gri-markdown h4{font-size:16px}.gri-markdown a{color:#7ee4dc;text-decoration:underline}.gri-markdown ul,.gri-markdown ol{padding-left:24px;margin:12px 0}.gri-markdown li{margin:6px 0}.gri-markdown pre{background:#050f18;border:1px solid #ffffff18;padding:16px;border-radius:8px;overflow:auto;max-width:100%;font:12px/1.7 monospace;white-space:pre;overflow-wrap:normal}.gri-markdown code{font-family:monospace;color:#9ce5ca;background:#07141b;padding:2px 4px;border-radius:3px}.gri-markdown pre code{padding:0;background:transparent}.gri-markdown blockquote{margin:15px 0;border-left:3px solid #79ded8;padding:8px 16px;background:#77ddd508}.gri-table{overflow:auto}.gri-markdown table{border-collapse:collapse;width:100%;font-size:12px}.gri-markdown td,.gri-markdown th{border:1px solid #ffffff20;padding:8px 12px;text-align:left}.gri-markdown hr{border:0;border-top:1px solid #ffffff20;margin:20px 0}
     /* The island-hop warp, in a panel: a bright line races in from the right,
        opens like an iris, streaks unwind, and the guide settles onto the glass. */
@@ -91,6 +91,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
     const finish = inspectClose; inspectClose = null;
     readVersion++; readerRepo = null;
     openNow = false;
+    onRepo?.(null);
     delete dialog.dataset.state;
     // Collapse back to the warp line and shoot off to the right before it goes.
     animate('out', OUT_MS);
@@ -108,6 +109,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
   // Fill the guide with a repo. Shared by a fresh open and by a mid-tour retune.
   function fill(r, options) {
     readerRepo = r; loaded = false; readVersion++;
+    onRepo?.(r); // the host's corner screen follows whichever repo is on air
     inspectClose = typeof options.onClose === 'function' ? options.onClose : null;
     delete dialog.dataset.state;
     dialog.querySelector('.gri-status').textContent = options.status || (modeNow === 'drive' ? 'PARKED' : 'ON FOOT · PAUSED');
@@ -142,7 +144,9 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
     onOpen(); prompt.hidden = true;
     document.getElementById('tooltip')?.classList.remove('show');
     if (document.pointerLockElement) document.exitPointerLock?.();
-    dialog.dataset.hud = String(options.modal === false);
+    // One layout everywhere: the right-side HUD the tour uses, walking or driving
+    // up to a building, and clicking one from the orbit.
+    dialog.dataset.hud = String(options.modal !== true);
     dialog.hidden = false; dialog.setAttribute('open', ''); openNow = true;
     animate('in', IN_MS);
     dialog.querySelector('.gri-close').focus({ preventScroll: true });

@@ -1,5 +1,5 @@
 import { GOURCE_VIEW } from './constants.js';
-import { cine, tourJump } from './tour.js';
+import { cine, tour, tourJump } from './tour.js';
 
 // Gource View in a lightbox: the repo's whole commit history replayed as a
 // growing tree, without leaving the city. The iframe only exists while the
@@ -117,12 +117,12 @@ export function closeGource(animated = false) {
 // Desktop only: on a phone the card and the touch controls need that corner.
 // ---------------------------------------------------------------------------
 const MINI_OK = '(min-width: 1100px) and (min-height: 640px) and (hover: hover)';
-let miniRepo = '';
+let miniRepo = '', miniOn = null;
 export function tuneGource(repo) {
   if (!repo?.full_name || !matchMedia(MINI_OK).matches) { stopGource(); return; }
   if (miniRepo === repo.full_name) return;
   stopGource();
-  miniRepo = repo.full_name;
+  miniRepo = repo.full_name; miniOn = repo;
   const box = miniBox();
   box.querySelector('.gn-title').textContent = `${repo.name} · commit history`;
   box.querySelector('.gn-ext').href = gourceUrl(repo);
@@ -133,13 +133,14 @@ export function tuneGource(repo) {
   box.querySelector('.gn-frame').replaceChildren(frame);
   box.hidden = false;
   box.classList.add('loading');
+  box.classList.toggle('solo', !tour.active); // ‹ › only steer a running tour
 }
 export function stopGource() {
-  miniRepo = '';
+  miniRepo = ''; miniOn = null;
   const box = document.getElementById('gource-mini');
   if (!box) return;
-  box.classList.remove('loading', 'ready');
-  document.body.classList.remove('gource-mini-on');
+  box.classList.remove('loading', 'ready', 'arriving', 'big', 'solo');
+  document.body.classList.remove('gource-mini-on', 'gource-mini-big');
   box.querySelector('.gn-frame').replaceChildren(); // stops playback and downloads
   box.hidden = true;
 }
@@ -149,7 +150,10 @@ function miniBox() {
   box = document.createElement('div');
   box.id = 'gource-mini';
   box.hidden = true;
-  box.innerHTML = `<div class="gn-screen"><div class="gn-frame"></div><div class="gn-crt"></div></div>
+  // The frame is cross-origin, so a click never reaches this page: an overlay
+  // button on the glass is what makes the small screen open into the big one.
+  box.innerHTML = `<div class="gn-screen"><div class="gn-frame"></div><div class="gn-crt"></div>
+      <button class="gn-open" type="button" aria-label="Watch this history full size" title="Full size"></button></div>
     <div class="gn-head"><span class="gn-led"></span><span class="gn-title"></span>
       <button class="gn-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button>
       <button class="gn-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
@@ -157,14 +161,39 @@ function miniBox() {
       <button class="gn-close" type="button" aria-label="Back to the repo card">×</button></div>`;
   box.querySelectorAll('.gn-ch').forEach((b) => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
   box.querySelector('.gn-close').addEventListener('click', stopGource);
-  document.body.appendChild(box);
+  box.querySelector('.gn-open').addEventListener('click', () => expandGource());
+  const scrim = document.createElement('div');
+  scrim.id = 'gource-scrim';
+  scrim.addEventListener('click', () => expandGource(false));
+  document.body.append(scrim, box);
   return box;
+}
+// Clicking the glass grows the corner screen to the middle of the city and back.
+// It is the same element and the same frame throughout, so the replay never
+// stops, reloads, or loses its place — only its box moves and resizes.
+export function expandGource(want) {
+  const box = document.getElementById('gource-mini');
+  if (!box || box.hidden) return;
+  const big = want === undefined ? !box.classList.contains('big') : !!want;
+  box.classList.remove('arriving');
+  box.classList.toggle('big', big);
+  document.body.classList.toggle('gource-mini-big', big);
+  box.querySelector('.gn-open').title = big ? 'Back to the corner' : 'Full size';
+  document[big ? 'addEventListener' : 'removeEventListener']('keydown', miniKeys, true);
+}
+function miniKeys(e) {
+  if (e.key !== 'Escape') return;
+  e.preventDefault(); e.stopPropagation(); // Esc leaves the big screen, not the city
+  expandGource(false);
 }
 function revealMini() {
   const box = document.getElementById('gource-mini');
   if (!box?.classList.contains('loading')) return;
   box.classList.remove('loading');
-  box.classList.add('ready');
+  box.classList.add('ready', 'arriving');
+  // The power-on animation is a one-shot: it has to let go of `transform` again,
+  // or a filled animation would pin the panel and it could never grow.
+  setTimeout(() => box.classList.remove('arriving'), 700);
   document.body.classList.add('gource-mini-on'); // the showcase card steps aside
   box.querySelector('iframe')?.contentWindow?.postMessage({ source: 'git-city', type: 'play' }, GOURCE_ORIGIN);
 }
