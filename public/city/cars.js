@@ -14,7 +14,7 @@ import { roundedRect } from '../world.js';
 const CAR_PAINTS = [0xe85d5d, 0x4d9be6, 0x58c99b, 0xf39a4b, 0xa480e0, 0xf2ede2, 0xf08fb8, 0x3fc1ba];
 const BUS_PAINTS = [0xf0714f, 0x3fb6c9, 0x58c99b];
 const TAXI_YELLOW = 0xf6c343;
-const INNER_RING = 2.5 * CELL; // street loop at x, z = ±22.5, just outside the plaza
+const innerRing = () => 2.5 * CELL; // street loop just outside the plaza (±22.5 at the default cell); read live: island.streets moves CELL
 export let carKit = null;   // shared geometries + materials, built on first use
 let carLanes = [];   // { path, dir, length, cars[] }
 const _tan1 = new THREE.Vector2(), _tan2 = new THREE.Vector2(), _carPt = new THREE.Vector2();
@@ -164,8 +164,8 @@ export function buildCars(user) {
   const specs = [
     { path: boulevardLane(L, LANE_OFFSET), dir: -1, kinds: boulevard.slice(0, 6), speed: 10 },
     { path: boulevardLane(L, -LANE_OFFSET), dir: 1, kinds: boulevard.slice(6), speed: 10 },
-    { path: roundedRect(THREE, INNER_RING + STREET_W / 4, 3.0, THREE.Path), dir: -1, kinds: inner.slice(0, 2), speed: 6.5 },
-    { path: roundedRect(THREE, INNER_RING - STREET_W / 4, 1.0, THREE.Path), dir: 1, kinds: inner.slice(2), speed: 6.5 },
+    { path: roundedRect(THREE, innerRing() + STREET_W / 4, 3.0, THREE.Path), dir: -1, kinds: inner.slice(0, 2), speed: 6.5 },
+    { path: roundedRect(THREE, innerRing() - STREET_W / 4, 1.0, THREE.Path), dir: 1, kinds: inner.slice(2), speed: 6.5 },
   ];
   carLanes = specs.map(spec => {
     const path = spec.path;

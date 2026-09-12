@@ -48,8 +48,8 @@
         "streets": {
           "type": "integer",
           "minimum": 3,
-          "maximum": 5,
-          "description": "Width of the inner streets in world units (default 4). Wider streets leave a smaller lot, so the buildings on them are slimmer; narrower ones become pavement, never bigger buildings. The city keeps its footprint either way."
+          "maximum": 6,
+          "description": "Width of the inner streets in world units (default 4). The buildings keep their size: the cell grows with the street, so wider streets spread the city out rather than thinning the towers."
         }
       },
       "description": "Your island: its name, ground and city shape."

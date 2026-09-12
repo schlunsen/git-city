@@ -176,7 +176,7 @@ function buildCity(repos, user) {
     // Seeded by corner-based cell coords, as before, so a square city keeps its lots.
     vacant.push({ gx: c.gx, gz: c.gz, x: c.x, z: c.z, seed: hashStr(`${user.login}:${c.gx + L.hx},${c.gz + L.hz}`) });
   }
-  world?.setLots(planLots(vacant, user.login));
+  world?.setLots(planLots(vacant, user.login, CELL));
 
   buildAvatar(user);
   buildCars(user);
@@ -1117,7 +1117,8 @@ function main() {
     heightAt: (x, z) => world.heightAt(x, z),
     colliders: () => buildingMeshes.flatMap(b => b.bodies), // building bodies, boxed once per city
     dayFactor: () => dayFactor,
-    slabHalf: SLAB_HALF, slabRadius: SLAB_R, ringHalf: RING_R, ringCorner: RING_CORNER, cell: CELL, plazaRadius: PLAZA_R,
+    // Getters: island.streets moves the cell, and the explorer outlives a city.
+    slabHalf: () => SLAB_HALF, slabRadius: SLAB_R, ringHalf: () => RING_R, ringCorner: RING_CORNER, cell: () => CELL, plazaRadius: () => PLAZA_R,
     layout: () => cityLayout, // live footprint (dist / contour / streets) for slab bounds and spawn points
     world: () => world, // portal gates at sea: gates / gateFor / arrival (world.js)
     // Portal travel: resolves { ok } once the neighbour's city is built. A login without a

@@ -527,8 +527,8 @@ test('every biome draws its horizon from a pool of real horizons', () => {
 });
 
 test('island.streets: clamped to its range, rounded, and non-numbers warn', () => {
-  assert.equal(norm({ version: 1, island: { streets: 5 } }).config.island.streets, 5);
-  assert.equal(norm({ version: 1, island: { streets: 99 } }).config.island.streets, 5);
+  assert.equal(norm({ version: 1, island: { streets: 6 } }).config.island.streets, 6);
+  assert.equal(norm({ version: 1, island: { streets: 99 } }).config.island.streets, 6);
   assert.equal(norm({ version: 1, island: { streets: 1 } }).config.island.streets, 3);
   assert.equal(norm({ version: 1, island: { streets: 4.4 } }).config.island.streets, 4);
   const bad = norm({ version: 1, island: { streets: 'wide' } });

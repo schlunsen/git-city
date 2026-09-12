@@ -87,7 +87,7 @@ export const LIMITS = Object.freeze({
   landmarks: 6,
   repos: 100,
   volume: [0, 100],
-  streets: [3, 5],  // island.streets, in world units (city/layout.js STREET_RANGE)
+  streets: [3, 6],  // island.streets, in world units (city/layout.js STREET_RANGE)
 });
 
 export const HEX_RE = /^#[0-9a-f]{6}$/i;

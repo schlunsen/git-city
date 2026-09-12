@@ -10,13 +10,22 @@ import { LANG_COLORS, FALLBACK_COLOR } from './constants.js';
 // Layout math
 // ---------------------------------------------------------------------------
 const BLOCK = 11;    // cells per side of the building district
-export const CELL = 9;     // world units per cell
-export const DISTRICT = BLOCK * CELL; // four quadrants -> total district size
-export const SLAB_HALF = DISTRICT / 2 + 7; // the paved block, sidewalk included
-export const SLAB_R = 15;                  // corner radius — the block melts into the island
-export const RING_R = (BLOCK / 2) * CELL;  // boulevard centreline half-size
-export const RING_CORNER = SLAB_R - (SLAB_HALF - RING_R); // concentric with the slab corners
-export const PLAZA_R = CELL * 1.7;         // central town square, kept clear of buildings
+// A cell is one lot plus the street beside it. The lot is fixed, so widening
+// the streets (city.json island.streets) grows the cell and spreads the city
+// out rather than slimming every building — see setStreetWidth.
+export const LOT = 5;      // buildable lot between two streets: fixed at every street width
+export const SLAB_R = 15;  // corner radius — the block melts into the island
+// SLAB_HALF - RING_R is the +7 below whatever the cell is, so both of these are
+// the same at every street width.
+export const SIDEWALK = 7;                 // boulevard centreline -> slab edge
+export const RING_CORNER = SLAB_R - SIDEWALK; // concentric with the slab corners
+// Recomputed by setStreetWidth. They are `let`, so nothing may cache them (or
+// anything derived from them) at module load: read them where you use them.
+export let CELL;           // world units per cell
+export let DISTRICT;       // four quadrants -> total district size
+export let SLAB_HALF;      // the paved block, sidewalk included
+export let RING_R;         // boulevard centreline half-size
+export let PLAZA_R;        // central town square, kept clear of buildings
 
 // ---------------------------------------------------------------------------
 // City footprints. Every profile gets one (same login, same shape). A shape
@@ -27,42 +36,36 @@ export const PLAZA_R = CELL * 1.7;         // central town square, kept clear of
 // the island's verge are all iso-contours of that one field, so they stay
 // concentric. A cell is active when a full-size building clears the boulevard.
 // ---------------------------------------------------------------------------
-export const SIDEWALK = SLAB_HALF - RING_R; // boulevard centreline -> slab edge (7)
 export const BOULEVARD_HALF = 1.6;          // paved half-width of the boulevard ring; its ink curb runs 0.4 further
 export const LANE_OFFSET = 0.85;            // boulevard car lanes either side of its centreline
 export const LOT_CLEAR = BOULEVARD_HALF + 0.75; // footprint corners this far inside the centreline: roofs clear the boulevard's curb
 
-// Inner streets, centred on the cell boundaries. A cell is CELL wide, so the
-// lot left between two streets is CELL - STREET_W, and the biggest building on
-// it keeps LOT_MARGIN of pavement on each side. city.json island.streets moves
-// this (setStreetWidth), so both are `let`: every consumer reads them live,
-// which means nothing may cache them at module load.
-export const STREET_DEFAULT = 4;            // a 5-unit lot, 4.1-unit largest building
-// Capped at 5, not 6: a cell is 9 wide, so every unit of street comes straight
-// out of the building on the lot. At 6 the largest building is 2.1 units against
-// a default of 4.1 - half its width, which reads as a pencil rather than a
-// tower. 5 costs it a quarter of its width, which still looks like a building.
-export const STREET_RANGE = [3, 5];
-const LOT_MARGIN = 0.45;                    // pavement between a building's edge and the kerb
-// Wider streets leave a smaller lot and so a slimmer building. Narrower ones do
-// NOT grow the building past its default size: a bigger footprint deactivates
-// cells, which forces a larger grid, and at streets: 3 that pushed the block out
-// to a radius of 86 — well into the island's water. Below the default the extra
-// room becomes pavement instead, and every city keeps its usual footprint.
-const LOT_HALF_MAX = (CELL - STREET_DEFAULT) / 2 - LOT_MARGIN;
-const lotHalfFor = (w) => Math.min((CELL - w) / 2 - LOT_MARGIN, LOT_HALF_MAX);
-export let STREET_W = STREET_DEFAULT;
-export let LOT_HALF = lotHalfFor(STREET_DEFAULT); // largest building half-footprint
+// Inner streets, centred on the cell boundaries, beside a lot of a fixed LOT.
+export const STREET_DEFAULT = 4;   // the classic cell: a 5-unit lot and a 4-unit street, CELL 9
+// 6 puts the widest block at a radius of ~90 inside a ~148 shore, which still
+// leaves a ring of countryside; 7 starts to crowd the island out.
+export const STREET_RANGE = [3, 6];
+const LOT_MARGIN = 0.45;           // pavement between a building's edge and the kerb
+export const LOT_HALF = LOT / 2 - LOT_MARGIN; // largest building half-footprint: 2.05 at every width
+export let STREET_W;
 
-// Set before the layout is planned: cell activation, footprints, road meshes,
-// car lanes and lot decals all follow from these two.
+// Widen the streets and the cell grows with them, so the buildings keep their
+// size and the city simply spreads out. (Taking the width out of the lot
+// instead made every tower a pencil: at a 3-unit lot the largest building was
+// half its normal width.) Set this before the layout is planned — the grid, the
+// boulevard, the plaza and every road mesh are measured from CELL.
 export function setStreetWidth(w) {
   const [lo, hi] = STREET_RANGE;
   const n = Number.isFinite(+w) ? Math.min(hi, Math.max(lo, +w)) : STREET_DEFAULT;
   STREET_W = n;
-  LOT_HALF = lotHalfFor(n);
+  CELL = LOT + n;
+  DISTRICT = BLOCK * CELL;
+  SLAB_HALF = DISTRICT / 2 + SIDEWALK;
+  RING_R = (BLOCK / 2) * CELL;
+  PLAZA_R = CELL * 1.7;
   return n;
 }
+setStreetWidth(STREET_DEFAULT); // the module's own defaults, before anything reads them
 const SHAPE_TAU = Math.PI * 2;
 function sdRoundBox(x, z, hx, hz, r) {
   const qx = Math.abs(x) - hx + r, qz = Math.abs(z) - hz + r;
@@ -282,10 +285,7 @@ export function starsToHeight(stars) {
 }
 export function starsToFootprint(stars) {
   const t = Math.min(1, Math.log10(stars + 1) / 6);
-  // The biggest building fills its lot (2 * LOT_HALF) and the smallest is 78%
-  // of that, so with its roof overhang every building stays clear of the
-  // street however wide the streets are. At the default: 3.2..4.1 units.
-  return LOT_HALF * 2 * (0.78 + t * 0.22);
+  return 3.2 + t * 0.9; // 3.2..4.1 world units: with its roof overhang every building stays on its 5-unit lot, clear of the street
 }
 
 // The layout's building cells (active, off the plaza), ranked by ring distance

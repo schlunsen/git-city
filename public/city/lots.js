@@ -68,12 +68,13 @@ const REACH = 1.6; // props stay this far from the lot centre, clear of the stre
 // ---------------------------------------------------------------------------
 // The planner.
 // cells: [{ gx, gz, x, z, seed }] — the vacant lot cells (seed per app.js).
+// cell: world units per cell (layout.js CELL, which island.streets moves).
 // Returns { lots: [lotPlan], squares: [squarePlan] }.
 // lotPlan:   { gx, gz, x, z, seed, kind, rot, flipX, flipZ, tint, scale,
 //              square: id|null, corner: {sx, sz}|null, props: [{ p, dx, dz, h, v }] }
 // squarePlan:{ id, kind, cells: [{ gx, gz }*4], anchor: { gx, gz } }
 // ---------------------------------------------------------------------------
-export function planLots(cells, login = '') {
+export function planLots(cells, login = '', cell = 9) {
   const sorted = [...cells].sort((a, b) => a.gz - b.gz || a.gx - b.gx);
   const vacant = new Set(sorted.map(c => `${c.gx},${c.gz}`));
   const plan = seededRandom(hashStr(`lots-v1:${login}`));
@@ -143,8 +144,8 @@ export function planLots(cells, login = '') {
     let corner = null, rot;
     if (s) { // face the shared intersection: snap the 45° diagonal to 90° so
       // even organic tiles stay axis-aligned at full size (no street overhang)
-      const ix = (Math.min(...s.cells.map(q => q.gx)) + 0.5) * 9; // CELL, kept literal: lots.js is layout-agnostic
-      const iz = (Math.min(...s.cells.map(q => q.gz)) + 0.5) * 9;
+      const ix = (Math.min(...s.cells.map(q => q.gx)) + 0.5) * cell; // island.streets moves the cell, so it can't stay a literal 9
+      const iz = (Math.min(...s.cells.map(q => q.gz)) + 0.5) * cell;
       corner = { sx: Math.sign(ix - c.x) || 1, sz: Math.sign(iz - c.z) || 1 };
       rot = Math.round(Math.atan2(corner.sz, corner.sx) / (Math.PI / 2)) * (Math.PI / 2);
     } else {

@@ -53,10 +53,18 @@ export function createExplorer(THREE, deps = {}) {
   const colliders = deps.colliders || (() => []);
   const dayFactor = deps.dayFactor || (() => 1);
   // City layout (defaults mirror city/layout.js: paved slab, boulevard ring, plaza).
-  const SLAB = { half: deps.slabHalf ?? 56.5, r: deps.slabRadius ?? 15, y: 0.09 };
-  const RING = { half: deps.ringHalf ?? 49.5, corner: deps.ringCorner ?? 8 };
-  const CELL = deps.cell ?? 9;
-  const PLAZA = { r: deps.plazaRadius ?? 15.3, y: 0.14 };
+  // island.streets moves the cell and everything measured from it, and the
+  // explorer outlives a city, so these are re-read per city (syncDims, called
+  // from resetColliders) rather than captured once at boot.
+  const dim = (v, d) => (typeof v === 'function' ? v() : v ?? d);
+  let SLAB, RING, CELL, PLAZA;
+  function syncDims() {
+    SLAB = { half: dim(deps.slabHalf, 56.5), r: dim(deps.slabRadius, 15), y: 0.09 };
+    RING = { half: dim(deps.ringHalf, 49.5), corner: dim(deps.ringCorner, 8) };
+    CELL = dim(deps.cell, 9);
+    PLAZA = { r: dim(deps.plazaRadius, 15.3), y: 0.14 };
+  }
+  syncDims();
   // Round obstacles: the fountain pool around the monument and the four planters.
   const obstacles = deps.obstacles ?? [{ x: 0, z: 0, r: 7.4 },
     ...[1, 3, 5, 7].map((k) => ({ x: Math.cos(k * Math.PI / 4) * 13.8, z: Math.sin(k * Math.PI / 4) * 13.8, r: 1.2 }))];
@@ -70,7 +78,7 @@ export function createExplorer(THREE, deps = {}) {
   // Live city footprint (city/block.js cityLayout): dist(x, z) < 0 inside the boulevard
   // centreline, the slab edge SIDEWALK beyond it; contour(offset) / streets give
   // spawn points. Without one we fall back to the classic rounded square.
-  const SIDEWALK = SLAB.half - RING.half;
+  const SIDEWALK = SLAB.half - RING.half; // 7 at every street width (layout.js SIDEWALK)
   function getLayout() {
     try { const L = deps.layout?.(); return L && typeof L.dist === 'function' ? L : null; } catch { return null; }
   }
@@ -1425,7 +1433,7 @@ export function createExplorer(THREE, deps = {}) {
     if (!exiting) updateGauge(dt);
     return true;
   }
-  function resetColliders() { boxes = null; needUnstick = !!sim; game?.resync(); }
+  function resetColliders() { syncDims(); boxes = null; needUnstick = !!sim; game?.resync(); }
   function dispose() {
     game?.dispose();
     canvas.removeEventListener('contextmenu', onCtx);

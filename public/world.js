@@ -256,7 +256,7 @@ const BILLBOARD_VERTEX = /* glsl */`
 `;
 
 export function createWorld(THREE, scene, deps) {
-  const { envMat, seededRandom, DISTRICT, CELL, slabHalf, slabRadius, streetW = () => 4, base = './assets/' } = deps;
+  const { envMat, seededRandom, lot: lotSize = 5, slabHalf = () => 56.5, slabRadius, base = './assets/' } = deps;
   const rnd = seededRandom(0xC17E); // persistent scenery only (clouds, balloons)
   const loader = new THREE.TextureLoader();
   const tints = [];      // { mat, night, day } — recoloured by setDay
@@ -1844,15 +1844,17 @@ export function createWorld(THREE, scene, deps) {
   // outward normal). Default: the classic rounded square.
   const squareCity = {
     sdf: (x, z) => {
-      const h = slabHalf - slabRadius;
+      const h = slabHalf() - slabRadius;
       const qx = Math.abs(x) - h, qz = Math.abs(z) - h;
       return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - slabRadius;
     },
-    outline: (offset) => roundedRect(THREE, slabHalf + offset, slabRadius + offset, THREE.Path),
-    exits: [0, 1, 2, 3].map((k) => {
-      const a = k * Math.PI / 2;
-      return { a, x: Math.cos(a) * (slabHalf + 0.3), z: Math.sin(a) * (slabHalf + 0.3), nx: Math.round(Math.cos(a)), nz: Math.round(Math.sin(a)) };
-    }),
+    outline: (offset) => roundedRect(THREE, slabHalf() + offset, slabRadius + offset, THREE.Path),
+    get exits() { // on demand: slabHalf moves with island.streets
+      return [0, 1, 2, 3].map((k) => {
+        const a = k * Math.PI / 2;
+        return { a, x: Math.cos(a) * (slabHalf() + 0.3), z: Math.sin(a) * (slabHalf() + 0.3), nx: Math.round(Math.cos(a)), nz: Math.round(Math.sin(a)) };
+      });
+    },
   };
 
   // The horizon belongs to the city, not to the island mesh: the ring is
@@ -1921,7 +1923,7 @@ export function createWorld(THREE, scene, deps) {
     for (const lot of plan?.lots || []) {
       const kind = LOT_KIND[lot.kind];
       const idx = kind && kind.sprite < SPRITE_COUNTS.lots ? kind.sprite : (kind?.fallback ?? 0); // works with any tile count
-      const d = decal(`lots-${idx}`, (CELL - streetW() - 0.6) * lot.scale, { tint: lot.tint });
+      const d = decal(`lots-${idx}`, (lotSize - 0.6) * lot.scale, { tint: lot.tint });
       d.position.set(lot.x, 0.035, lot.z);
       d.rotation.y = lot.rot;
       if (lot.flipX) d.scale.x *= -1;
