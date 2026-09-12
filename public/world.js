@@ -29,7 +29,7 @@
 import { LOT_KIND } from './city/lots.js';
 
 // How many sprites each sheet was split into (scripts/assets/, docs/assets.md).
-export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
+export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 16, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5, BUS_SHELTER: 6, TRASH_BIN: 7, NEWS_STAND: 8, BIKE_RACK: 9 };
 // Quantized day tints for lot decals (city/lots.js plans tint 0..3) — a few
 // paper shades so identical tiles don't read as copies, and the material
