@@ -171,8 +171,7 @@ export function planLots(cells, login = '') {
     if (s) { // squares: lamps ring the intersection; the anchor carries the centrepiece
       const isAnchor = lot.gx === s.anchor.gx && lot.gz === s.anchor.gz;
       lamp(lot.corner.sx * 1.5, lot.corner.sz * 1.5);
-      if (s.kind === 'fountain') {
-        if (isAnchor) add('fountain', lot.corner.sx * 1.0, lot.corner.sz * 1.0, 3.4);
+      if (s.kind === 'fountain') { // the anchor's own decal shows the fountain: no prop, or they double up
         if (r() < 0.5) bench();
       } else if (s.kind === 'market') {
         if (isAnchor) { add('cart', lot.corner.sx * 1.2, lot.corner.sz * 0.6, 2.6); add('news-stand', lot.corner.sx * 0.6, lot.corner.sz * 1.2, 2.2); }
@@ -206,8 +205,7 @@ export function planLots(cells, login = '') {
       case 'market':
         lamp(); add('cart', spot(1.2), spot(1.2), 2.6); if (r() < 0.5) add('news-stand', spot(1.2), spot(1.2), 2.2);
         break;
-      case 'fountain':
-        add('fountain', spot(0.8), spot(0.8), 3.4);
+      case 'fountain': // the decal already has the fountain; just dress the plaza
         if (r() < 0.6) lamp();
         if (r() < 0.5) bench();
         break;
@@ -216,9 +214,8 @@ export function planLots(cells, login = '') {
         break;
       case 'construction':
         break; // the decal says it all
-      default: // courts & tracks
-        if (r() < 0.3) add('bike-rack', spot(1.4), spot(1.4), 1.3);
-        if (r() < 0.25) lamp();
+      default: // courts & tracks: keep the playing surface clear — a bike rack at a corner, no lamps mid-field
+        if (r() < 0.3) add('bike-rack', (r() < 0.5 ? -1.5 : 1.5), (r() < 0.5 ? -1.5 : 1.5), 1.3);
     }
   }
   // Clamp prop offsets into the lot (belt-and-braces; tests assert it).
