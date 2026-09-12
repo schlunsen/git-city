@@ -6,7 +6,7 @@ import {
   newFileUrl, editFileUrl, configUrl, configRepo, OPTIONS, LIMITS, MAX_BYTES,
   normalizeBuildingConfig, mergeBuildingConfig, fetchBuildingConfig, serializeBuildingConfig, BUILDING_KEYS, BUILDING_MAX_BYTES,
 } from '../public/city-config.js';
-import { BIOMES, LANDMARK_SITES, SITE_KINDS, HORIZON_NAMES } from '../public/world.js';
+import { BIOMES, LANDMARK_SITES, SITE_KINDS, HORIZON_NAMES, BIOME_HORIZONS } from '../public/world.js';
 import { ATTRACTIONS } from '../public/attractions.js';
 import { CITY_SHAPE_NAMES } from '../public/city/layout.js';
 
@@ -514,5 +514,14 @@ test('island.horizon picks the far skyline, and only from the known set', () => 
     const r = norm({ island: { horizon: bad } });
     assert.equal(r.config.island.horizon, undefined, String(bad));
     assert.equal(r.warnings.length, 1, String(bad));
+  }
+});
+
+test('every biome draws its horizon from a pool of real horizons', () => {
+  assert.deepEqual(Object.keys(BIOME_HORIZONS).sort(), Object.keys(BIOMES).sort());
+  for (const [biome, pool] of Object.entries(BIOME_HORIZONS)) {
+    assert.ok(pool.length >= 3, `${biome} needs a few to choose between, got ${pool.length}`);
+    for (const h of pool) assert.ok(HORIZON_NAMES.includes(h), `${biome} names an unknown horizon: ${h}`);
+    assert.ok(new Set(pool).size >= 2, `${biome} would always show the same horizon`);
   }
 });
