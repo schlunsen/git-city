@@ -38,7 +38,8 @@ export const BUILDING_TIMEOUT_MS = 8000; // generous: slow devices read the repl
 export const OPTIONS = Object.freeze({
   biome: Object.freeze(['meadow', 'alpine', 'tropical', 'savanna', 'lakeland']),
   shape: Object.freeze(['square', 'wide', 'tall', 'round', 'plus', 'octagon', 'blob']),
-  horizon: Object.freeze(['hills', 'peaks', 'mesas', 'isles', 'pines', 'skyline']),
+  horizon: Object.freeze(['hills', 'peaks', 'mesas', 'isles', 'pines', 'skyline',
+    'volcano', 'dunes', 'glacier', 'farmland', 'canyon']),
   landmark: Object.freeze(['rollerCoaster', 'carousel', 'circusTent', 'dropTower', 'windTurbines', 'windmill',
     'farm', 'campsite', 'radioTower', 'observatory', 'balloonPad',
     'lighthouse', 'recordShop', 'robotMonument']),
@@ -52,7 +53,8 @@ export const OPTIONS = Object.freeze({
 export const LABELS = Object.freeze({
   biome: { meadow: 'Meadow', alpine: 'Alpine', tropical: 'Tropical', savanna: 'Savanna', lakeland: 'Lakeland' },
   shape: { square: 'Square', wide: 'Wide', tall: 'Tall', round: 'Round', plus: 'Plus', octagon: 'Octagon', blob: 'Blob' },
-  horizon: { hills: 'Rolling hills', peaks: 'Snowy peaks', mesas: 'Desert mesas', isles: 'Tropical isles', pines: 'Pine ridges', skyline: 'Distant city' },
+  horizon: { hills: 'Rolling hills', peaks: 'Snowy peaks', mesas: 'Desert mesas', isles: 'Tropical isles', pines: 'Pine ridges', skyline: 'Distant city',
+    volcano: 'Volcanoes', dunes: 'Sand dunes', glacier: 'Icebergs', farmland: 'Farmland', canyon: 'Canyon' },
   landmark: {
     rollerCoaster: 'Roller coaster', carousel: 'Carousel', circusTent: 'Circus tent', dropTower: 'Drop tower',
     windTurbines: 'Wind turbines', windmill: 'Windmill', farm: 'Farm', campsite: 'Campsite', radioTower: 'Radio tower',

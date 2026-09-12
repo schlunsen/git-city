@@ -50,7 +50,7 @@ typo never breaks your city; it just doesn't do anything.
 | `island.name` | text | ≤ 40 characters | Replaces "*login*'s city" on the welcome boards (and the farewell side), and heads your profile card. |
 | `island.biome` | name | `meadow`, `alpine`, `tropical`, `savanna`, `lakeland` | Ground palette, relief, trees, beaches. Default: from your top language. |
 | `island.shape` | name | `square`, `wide`, `tall`, `round`, `plus`, `octagon`, `blob` | Footprint of the paved city block. Default: from your login. |
-| `island.horizon` | one of `hills`, `peaks`, `mesas`, `isles`, `pines`, `skyline` | What stands on the far horizon. Left out, it follows the biome: meadow rolling hills, alpine snowy peaks, savanna desert mesas, tropical islands, lakeland pine ridges. `skyline` puts a distant city out there instead. |
+| `island.horizon` | one of `hills`, `peaks`, `mesas`, `isles`, `pines`, `skyline`, `volcano`, `dunes`, `glacier`, `farmland`, `canyon` | What stands on the far horizon. Left out, it follows the biome: meadow rolling hills, alpine snowy peaks, savanna desert mesas, tropical islands, lakeland pine ridges. `skyline` puts a distant city out there instead. |
 | `welcome` | text | ≤ 120 characters | Your message on the welcome boards where the roads leave town (wrapped to 4 lines). |
 | `look.accent` | colour | `#rrggbb` | Glow colour of the plaza monument and its inlays. |
 | `look.time` | name | `auto`, `day`, `sunset`, `night`, `cycle` | How the light starts: viewer's clock, fixed day, fixed low sun, fixed night, or the 60 s cycle. |
