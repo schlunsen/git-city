@@ -43,7 +43,7 @@ import {
 } from './city/scene.js';
 import { cityLayout, setCityLayout, buildEnvironment } from './city/block.js';
 import { plazaFx, updatePlaza } from './city/plaza.js';
-import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus, focusGlowScale } from './city/buildings.js';
+import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus, focusGlowScale, refocusAfterRebuild } from './city/buildings.js';
 import {
   districtSigns, clearPerUserEnhancements, buildRingFromEvents, buildDistrictSigns, buildDistrictBaseplates, buildCommitShuttles,
   buildForkBeams, updateShuttles, updateBeams,
@@ -855,6 +855,7 @@ function refreshBuildings(repos) {
     billboards ||= !!buildingFile(r)?.billboard;
   }
   decorateBuildings();
+  refocusAfterRebuild(); // the tour may be mid-stop: its focus just got disposed
   explorer?.resetColliders();
   if (billboards && profileNow) world.setProfile({ ...profileNow, config: worldConfig() }, cityLayout.city);
 }

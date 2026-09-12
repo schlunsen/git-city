@@ -165,17 +165,55 @@ export function tickBuildingFocus(dt) {
   }
 }
 
-// City rebuild: the materials are about to be disposed; only the shared
-// outline survives, so put it back and forget the rest.
+// Put every tracked material back to how it looked and stop tracking it. Safe
+// on materials that were just disposed (they're plain objects either way), and
+// needed for the ones that weren't: a partial rebuild leaves the surviving
+// buildings tracked, and dropping them from `faded` alone would strand them
+// mid-fade forever.
+function restoreFaded() {
+  for (const [m, f] of faded) {
+    m.opacity = f.origOpacity;
+    m.transparent = f.origTransparent;
+    m.depthWrite = f.origDepthWrite;
+    if (f.origColor) m.color.copy(f.origColor);
+    else if (m.userData?.tinted) delete m.userData.focusK;
+  }
+  faded.clear();
+}
+
+// City rebuild: the focus and every fade it set are about to dangle, so undo
+// the lot. Whatever survives the rebuild comes back at full strength.
 function clearFocusState() {
   const outline = getOutlineMat();
   if (focusEntry) {
     if (focusOutline) eachMat(focusEntry.mesh, (m, o) => { if (m === focusOutline) o.material = outline; });
-    focusSigns(focusEntry, false);
+    focusSigns(focusEntry, false); // also disposes the private sign clones disposeObject skips
   }
   outline.transparent = false; outline.opacity = 1;
-  faded.clear();
+  restoreFaded();
+  for (const o of buildingMeshes) {
+    o.ghost = o.ghostTarget = 0;
+    o.mesh.traverse((c) => { if (c.isMesh && c.userData.casts0 !== undefined) c.castShadow = c.userData.casts0; });
+  }
+  ghosting = false;
   focusEntry = null;
+}
+
+// A partial rebuild (app.js refreshBuildings: a building config arrived) swaps
+// some buildings out from under a running tour and re-makes every sign atlas,
+// so the focus entry and half the tracked materials are disposed. Drop all of
+// it and re-apply the focus to whatever stands in the old building's place.
+export function refocusAfterRebuild() {
+  if (!focusEntry) return;
+  const name = focusEntry.repo?.full_name;
+  clearFocusState();
+  const b = name ? buildingByName.get(name) : null;
+  if (!b) return;
+  setFocusedBuilding(b);
+  // Re-applying starts every material back at full opacity, which would flash
+  // the whole city bright for a few frames. The fade was already in place, so
+  // land it this instant instead of easing it in again.
+  tickBuildingFocus(1e3);
 }
 
 
