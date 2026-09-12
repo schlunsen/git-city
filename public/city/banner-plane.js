@@ -198,6 +198,20 @@ export function bannerPlaneHit(raycaster) {
 
 // Where to put the camera to read the banner: off to one side of it, a little above.
 const VIEW_SIDE = 30, VIEW_BACK = 4, VIEW_UP = 2.5;
+const _vu = new THREE.Vector3(0, 1, 0), _vd = new THREE.Vector3(), _vr = new THREE.Vector3();
+// The support panel opens against the right edge and would sit right on top of
+// the banner. How much of the width it covers, 0..1 — the flypast is framed in
+// what is left instead. A panel wide enough to be a full sheet (a phone) leaves
+// nothing to aim at, so the shot stays as it was.
+function supportCover() {
+  const panel = document.getElementById('bmc-iframe');
+  if (!panel || panel.hidden) return 0;
+  const box = panel.getBoundingClientRect();
+  const width = window.innerWidth || 1;
+  if (box.width < 40 || box.right < width * 0.6) return 0; // closed, or not on the right
+  const covered = Math.min(box.width, width - box.left) / width;
+  return covered > 0.55 ? 0 : covered;
+}
 export function bannerPlaneView(eye, look) {
   if (!rig || !rig.flying) return false;
   rig.banner.updateMatrixWorld();
@@ -205,8 +219,19 @@ export function bannerPlaneView(eye, look) {
   _vf.set(1, 0, 0).applyQuaternion(rig.banner.quaternion); // along the run
   _vs.set(-_vf.z, 0, _vf.x);
   if (_vs.dot(_vc.subVectors(camera.position, look)) < 0) _vs.negate(); // stay on the side you are already on
-  eye.copy(look).addScaledVector(_vs, VIEW_SIDE).addScaledVector(_vf, -VIEW_BACK);
+  const cover = supportCover();
+  // Stand off further as well, so the whole banner still fits across the
+  // narrower strip of city the panel leaves behind.
+  eye.copy(look).addScaledVector(_vs, VIEW_SIDE * (1 + cover * 1.5)).addScaledVector(_vf, -VIEW_BACK);
   eye.y = look.y + VIEW_UP;
+  if (cover > 0) {
+    // Aim to the right of the banner by exactly the strip the panel covers, and
+    // the plane rides in the middle of what the visitor can actually see.
+    _vd.subVectors(look, eye).normalize();
+    _vr.crossVectors(_vd, _vu).normalize(); // screen right
+    const halfWidth = Math.tan((camera.fov * Math.PI) / 360) * camera.aspect * eye.distanceTo(look);
+    look.addScaledVector(_vr, halfWidth * cover);
+  }
   return true;
 }
 

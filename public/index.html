@@ -12,7 +12,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="./styles.css" />
+<!-- The page itself is never edge-cached, but the stylesheet is (four hours at
+     the CDN). ?v is how a restyle reaches visitors on the day it ships: bump it
+     whenever styles.css changes in a way that must not wait out that window. -->
+<link rel="stylesheet" href="./styles.css?v=2" />
 </head>
 <body>
 
