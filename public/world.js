@@ -31,6 +31,14 @@
 export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 4, roofs: 4 };
 export const PROP = { LAMP: 0, BENCH: 1, HYDRANT: 2, MAILBOX: 3, CART: 4, BUS_STOP: 5, BUS_SHELTER: 6, TRASH_BIN: 7, NEWS_STAND: 8, BIKE_RACK: 9 };
 export const LANDMARK = { BALLOON: 0, LIGHTHOUSE: 1, WINDMILL: 2, FERRIS: 3, ROCKET: 4 };
+// What stands on the far horizon. 'hills' is the original painted ridge; the
+// rest are their own strips. Each biome has a default, city.json can override.
+export const HORIZON_ASSET = Object.freeze({
+  hills: 'hills', peaks: 'horizon-peaks', mesas: 'horizon-mesas',
+  isles: 'horizon-isles', pines: 'horizon-pines', skyline: 'horizon-skyline',
+});
+export const HORIZON_NAMES = Object.freeze(Object.keys(HORIZON_ASSET));
+const BIOME_HORIZON = Object.freeze({ meadow: 'hills', alpine: 'peaks', tropical: 'isles', savanna: 'mesas', lakeland: 'pines' });
 // Attraction sites buildLand() reserves before the terrain: the ground each
 // kind offers (attractions.js tags + footprint radius). farm0..farm3 are the
 // fields by each village, fair2 a second fair lot.
@@ -356,6 +364,7 @@ export function createWorld(THREE, scene, deps) {
   const hillsTex = getTex('hills').tex;
   hillsTex.wrapS = THREE.MirroredRepeatWrapping; // guarantees a continuous seam
   hillsTex.repeat.set(12, 1);
+  let horizonKey = 'hills';
   const HILL_R = 440, HILL_H = 92;
   const hillMat = new THREE.MeshBasicMaterial({ map: hillsTex, side: THREE.BackSide, alphaTest: 0.5, alphaToCoverage: true, fog: false });
   tints.push({ mat: hillMat, night: new THREE.Color(0x1b2438), day: new THREE.Color(0xffffff) });
@@ -1812,6 +1821,22 @@ export function createWorld(THREE, scene, deps) {
     }),
   };
 
+  // The horizon belongs to the city, not to the island mesh: the ring is
+  // persistent scenery, so re-skin its material instead of rebuilding it.
+  function applyHorizon(T, cfg) {
+    const q = new URLSearchParams(globalThis.location?.search || '');
+    const named = (k) => (typeof k === 'string' && Object.prototype.hasOwnProperty.call(HORIZON_ASSET, k) ? k : null);
+    const want = named(q.get('horizon')) || named(cfg?.island?.horizon) || BIOME_HORIZON[T.biome] || 'hills';
+    const hr = seededRandom((T.seed ^ 0x4012) >>> 0); // its own stream: never shifts the shared rnd()
+    const tex = getTex(HORIZON_ASSET[want]).tex;
+    tex.wrapS = THREE.MirroredRepeatWrapping;
+    tex.repeat.set(8 + Math.floor(hr() * 5), 1); // 8-12 wraps: peaks are bigger or smaller per city
+    tex.offset.x = hr();                         // and a different stretch of ridge faces the city
+    tex.needsUpdate = true;
+    if (hillMat.map !== tex) { hillMat.map = tex; hillMat.needsUpdate = true; }
+    horizonKey = want;
+  }
+
   let land = null;
   let lastNeighbors = null; // { login, list } from setNeighbors, re-applied when the island is rebuilt
   // profile.config: a normalised city.json (city-config.js) or null.
@@ -1823,6 +1848,7 @@ export function createWorld(THREE, scene, deps) {
     const q = new URLSearchParams(globalThis.location?.search || '');
     if (isBiome(q.get('biome'))) T.biome = q.get('biome'); // ?biome=alpine to preview a biome
     T.landmarks = (cfg?.landmarks || []).filter((k) => Object.prototype.hasOwnProperty.call(LANDMARK_SITES, k));
+    applyHorizon(T, cfg); // cheap, and runs even when the island itself is unchanged
     // Only what the island itself shows: a volume change in the Customize preview doesn't rebuild it.
     T.configKey = cfg ? JSON.stringify([cfg.island?.name, cfg.welcome, T.landmarks, cfg.featured, cfg.hide,
       Object.keys(cfg.repos || {}).map((n) => [n, cfg.repos[n].billboard])]) : '';
@@ -1911,6 +1937,7 @@ export function createWorld(THREE, scene, deps) {
     heightAt: (x, z) => land?.heightAt(x, z) ?? GROUND,
     get traits() { return land?.traits ?? null; },
     islandRadius: ISLAND_R,
+    get horizon() { return horizonKey; },
     _parts: { sea, hills, clouds, get land() { return land; } },
   };
 }

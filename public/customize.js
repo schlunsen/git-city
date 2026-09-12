@@ -515,6 +515,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
         section('Island', true,
           row('Name', textField(['island', 'name'], LIMITS.name, `${ctx.login}'s city`)),
           row('Biome', selectField(['island', 'biome'], OPTIONS.biome, LABELS.biome, 'Automatic (top language)')),
+          row('Horizon', selectField(['island', 'horizon'], OPTIONS.horizon, LABELS.horizon, 'Automatic (suits the biome)')),
           row('City shape', selectField(['island', 'shape'], OPTIONS.shape, LABELS.shape, 'Automatic (from your login)')),
           row('Welcome', textField(['welcome'], LIMITS.text, 'Welcome to my city!', true), `Up to ${LIMITS.text} characters, on the welcome boards.`)),
         section('Landmarks', false, h('small', { class: 'cz-note', text: `Pick up to ${LIMITS.landmarks}; they're placed first, then the island tops up as usual.` }), landmarkPicker()),

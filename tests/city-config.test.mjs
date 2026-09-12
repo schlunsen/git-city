@@ -6,7 +6,7 @@ import {
   newFileUrl, editFileUrl, configUrl, configRepo, OPTIONS, LIMITS, MAX_BYTES,
   normalizeBuildingConfig, mergeBuildingConfig, fetchBuildingConfig, serializeBuildingConfig, BUILDING_KEYS, BUILDING_MAX_BYTES,
 } from '../public/city-config.js';
-import { BIOMES, LANDMARK_SITES, SITE_KINDS } from '../public/world.js';
+import { BIOMES, LANDMARK_SITES, SITE_KINDS, HORIZON_NAMES } from '../public/world.js';
 import { ATTRACTIONS } from '../public/attractions.js';
 import { CITY_SHAPE_NAMES } from '../public/city/layout.js';
 
@@ -299,6 +299,7 @@ test('the vocabulary matches the code it names (world.js, city/layout.js, attrac
   assert.deepEqual([...OPTIONS.biome].sort(), Object.keys(BIOMES).sort());
   assert.deepEqual([...OPTIONS.landmark].sort(), ATTRACTIONS.map((a) => a.key).sort());
   assert.deepEqual([...OPTIONS.shape], CITY_SHAPE_NAMES);
+  assert.deepEqual([...OPTIONS.horizon].sort(), [...HORIZON_NAMES].sort());
 });
 
 test('every landmark has island sites that can hold it (world.js LANDMARK_SITES vs attractions.js)', () => {
@@ -502,3 +503,16 @@ test('organizations: city.json falls back to the .github repository, and publish
   assert.equal(one.length, 1);
 });
 
+test('island.horizon picks the far skyline, and only from the known set', () => {
+  const { config, warnings } = norm({ island: { horizon: 'skyline' } });
+  assert.equal(config.island.horizon, 'skyline');
+  assert.deepEqual(warnings, []);
+  // Every biome has a default, so leaving it out is the normal case.
+  assert.equal(norm({ island: { biome: 'alpine' } }).config.island.horizon, undefined);
+  // Anything else is dropped with a warning, like every other named option.
+  for (const bad of ['volcano', 'AUTO', 'Skyline', '', 42, null, ['peaks']]) {
+    const r = norm({ island: { horizon: bad } });
+    assert.equal(r.config.island.horizon, undefined, String(bad));
+    assert.equal(r.warnings.length, 1, String(bad));
+  }
+});

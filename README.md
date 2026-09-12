@@ -67,7 +67,7 @@ you care about with one file in your profile repository,
 boards, pick the biome, city shape and landmarks, feature or hide
 repositories, give buildings their own colours, signs and billboards, choose
 your neighbours, set the look (accent, time, weather, TV / FX), the player's
-soundtrack and your plane's livery.
+soundtrack, the far horizon and your plane's livery.
 
 Organizations get a city too (`?user=<org>`), built from the org's public
 repositories and members. They keep the same file in their `.github`
