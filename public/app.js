@@ -42,7 +42,7 @@ import {
 } from './city/scene.js';
 import { cityLayout, setCityLayout, buildEnvironment } from './city/block.js';
 import { plazaFx, updatePlaza } from './city/plaza.js';
-import { buildingMeshes, buildingByName, resetBuildings, createBuilding } from './city/buildings.js';
+import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus } from './city/buildings.js';
 import {
   districtSigns, clearPerUserEnhancements, buildRingFromEvents, buildDistrictSigns, buildDistrictBaseplates, buildCommitShuttles,
   buildForkBeams, updateShuttles, updateBeams,
@@ -730,6 +730,7 @@ function animate(timestamp) {
   if (watching) { /* the plane camera placed it this frame */ }
   else if (touring && !exploring) updateTour(dt);
   else if (cine && !exploring) updateCine(dt); // click-a-building flight in / out
+  tickBuildingFocus(dt); // ease the tour focus fade even while the user holds the camera
   const scripted = touring || !!cine || watching;
 
   if (exploring) { /* explore.js placed the camera this frame */ }

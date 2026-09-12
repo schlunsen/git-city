@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { camera, controls } from './scene.js';
-import { buildingMeshes, buildingByName } from './buildings.js';
+import { buildingMeshes, buildingByName, setFocusedBuilding } from './buildings.js';
 import { readmeExcerpt, readmeKnown } from './readme.js';
 import { langHex } from './constants.js';
 import { fmtNum } from './util.js';
@@ -34,7 +34,7 @@ function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 1.4, loop = false } =
   const out = Math.hypot(cx, cz) > 1 ? Math.atan2(cz, cx) : fallbackBearing; // start on the side facing out of town
   const a0 = out - sweep / 2;
   return {
-    dur, loop, repo: b.repo,
+    dur, loop, repo: b.repo, b,
     pos: (u, o) => o.set(cx + Math.cos(a0 + sweep * u) * r, y + (loop ? 0 : Math.sin(u * Math.PI) * 2), cz + Math.sin(a0 + sweep * u) * r),
     look: (u, o) => o.set(cx, h * 0.55, cz),
   };
@@ -77,7 +77,7 @@ function buildShowcase(start = 0) {
   let bearing = Math.atan2(camera.position.z, camera.position.x);
   const push = (leg) => {
     const fly = flyLeg(pos, look, leg.pos(0, new THREE.Vector3()), leg.look(0, new THREE.Vector3()), legs.length ? 3.6 : 3);
-    if (leg.repo) Object.assign(fly, { repo: leg.repo, stop: leg.stop, of: leg.of, highlight: leg.highlight, next: true }); // announce the next repo on the way
+    if (leg.repo) Object.assign(fly, { repo: leg.repo, b: leg.b, stop: leg.stop, of: leg.of, highlight: leg.highlight, next: true }); // announce the next repo on the way
     legs.push(fly);
     legs.push(leg);
     pos = leg.pos(1, new THREE.Vector3()); look = leg.look(1, new THREE.Vector3());
@@ -104,6 +104,7 @@ export function updateTour(dt) {
   camera.position.copy(leg.pos(u, _tp));
   controls.target.copy(leg.look(u, _tl));
   showcaseCard(leg.repo ? leg : null);
+  setFocusedBuilding(leg.repo ? leg.b || null : null); // the city fades back behind the stop in focus
 }
 // Jump the showcase to the next (+1) / previous (-1) repo, or back to the
 // current one (0, after the user looked around): fly there from wherever the camera is.
@@ -201,6 +202,7 @@ export function startTour() {
 export function endTour() {
   tour.active = false; tour.paused = false; tour.legs = null; tour.stops = null;
   showcaseCard(null);
+  setFocusedBuilding(null);
   document.getElementById('tour-btn')?.classList.remove('on');
 }
 

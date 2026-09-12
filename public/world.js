@@ -335,9 +335,18 @@ export function createWorld(THREE, scene, deps) {
     return mesh;
   }
   // A flat top-down decal (lots, roofs). `size` is the square side length.
-  function decal(name, size) {
+  // `own`: a private material copy the caller can fade per mesh (the tour-focus
+  // fade ghosts one building's roof without touching the shared sprite material).
+  // The clone skips the day/night tint list and is disposed with its owner.
+  function decal(name, size, { own = false } = {}) {
     const entry = getTex(name);
-    const mesh = new THREE.Mesh(unitDecal, cutoutMat(name, { night: 0x3b4660, day: 0xffffff }));
+    let mat = cutoutMat(name, { night: 0x3b4660, day: 0xffffff });
+    if (own) {
+      mat = mat.clone();
+      mat.alphaTest = 0.05; // below the fade floor, so opacity eases smoothly instead of popping out at 0.5
+      mat.userData = {};    // not shared: disposed with its owner (the texture stays shared)
+    }
+    const mesh = new THREE.Mesh(unitDecal, mat);
     mesh.scale.set(size, 1, size);
     mesh.visible = false;
     mesh.raycast = () => {};
@@ -1890,7 +1899,7 @@ export function createWorld(THREE, scene, deps) {
     }
     scene.add(lotGroup);
   }
-  function roofDecal(k, size) { return decal(`roofs-${k % SPRITE_COUNTS.roofs}`, size); }
+  function roofDecal(k, size, opts) { return decal(`roofs-${k % SPRITE_COUNTS.roofs}`, size, opts); }
 
   // ---- per-frame -------------------------------------------------------------
   let cloudOpacity = 0.95;

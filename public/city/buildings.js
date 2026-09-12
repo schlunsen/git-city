@@ -15,6 +15,7 @@ export const buildingByName = new Map(); // repo full_name -> building
 
 // Take every building down (a new city, or a rebuild for a config change).
 export function resetBuildings() {
+  clearFocusState();
   for (const b of buildingMeshes) {
     cityGroup.remove(b.mesh);
     disposeObject(b.mesh);
@@ -22,6 +23,123 @@ export function resetBuildings() {
   buildingMeshes = [];
   buildingByName.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Tour focus: while the showcase tour circles one building, every other
+// building fades to a dim ghost so the stop stands out. Building materials are
+// per-building (toonMat never caches), so a fade is an opacity + colour target
+// per material, eased toward by tickBuildingFocus each frame. The single
+// shared outline material can't fade per building, so the focused building's
+// hulls get a crisp full-opacity clone while the shared one fades with the city.
+// ---------------------------------------------------------------------------
+const FOCUS_DIM = 0.3;   // opacity of unfocused buildings while one has the focus
+const FOCUS_DARK = 0.7;  // …and a colour multiplier, so the ghosts don't wash out pale
+const FOCUS_EASE = 4.5;  // fade lerp rate (per second)
+const faded = new Map(); // material -> { origOpacity, origTransparent, origColor, k, target }
+let focusEntry = null, focusOutline = null;
+
+const eachMat = (root, fn) => root.traverse((o) => {
+  if (!o.isMesh || !o.material) return;
+  for (const m of Array.isArray(o.material) ? o.material : [o.material]) fn(m, o);
+});
+
+function fadeTo(m, target) {
+  const f = faded.get(m);
+  if (f) { f.target = target; return; }
+  faded.set(m, { origOpacity: m.opacity, origTransparent: m.transparent, origColor: m.color?.clone() || null, k: 1, target });
+  if (target < m.opacity) m.transparent = true; // opacity only blends when transparent
+}
+
+// Repo signs share atlas materials across buildings (repo-signs.js), so fading
+// an unfocused building's board would fade the focused one's too. Instead the
+// focused building's boards get private full-opacity copies while it has the
+// focus; the shared atlas materials fade with the rest of the city.
+const focusSigns = (b, on) => eachMat(b.mesh, (m, o) => {
+  if (o.name !== 'repo-sign') return;
+  if (on) {
+    if (o.userData.signMats) return;
+    o.userData.signMats = o.material;
+    o.material = o.material.map((x) => {
+      const c = x.clone();
+      c.opacity = 1; c.transparent = true;
+      c.userData = { shared: true }; // disposed by focusSigns(false), not disposeObject (the atlas texture is shared)
+      return c;
+    });
+  } else if (o.userData.signMats) {
+    for (const c of Array.isArray(o.material) ? o.material : [o.material]) c.dispose();
+    o.material = o.userData.signMats;
+    o.userData.signMats = null;
+  }
+});
+
+export function setFocusedBuilding(b) {
+  if (b === focusEntry) return;
+  const outline = getOutlineMat();
+  // The previous focus's hulls rejoin the shared outline and its boards the shared atlases…
+  if (focusEntry) {
+    if (focusOutline) eachMat(focusEntry.mesh, (m, o) => { if (m === focusOutline) o.material = outline; });
+    focusSigns(focusEntry, false);
+  }
+  focusEntry = b || null;
+  fadeTo(outline, b ? FOCUS_DIM : 1);
+  const seenSign = new Set(); // sign atlas materials are shared: fade or restore them once
+  for (const o of buildingMeshes) {
+    eachMat(o.mesh, (m, mesh) => {
+      if (m === outline || m === focusOutline) return; // hulls are handled per mesh
+      if (mesh.name === 'repo-sign') {
+        if (o === b || seenSign.has(m)) return; // the focus's private copies stay full
+        seenSign.add(m);
+        const f = faded.get(m);
+        const orig = f ? f.origOpacity : m.opacity;
+        if (!b) { if (f) f.target = orig; } else fadeTo(m, orig * FOCUS_DIM);
+        return;
+      }
+      const f = faded.get(m);
+      const orig = f ? f.origOpacity : m.opacity;
+      if (!b || o === b) { if (f) f.target = orig; } // back to full (untrack when it lands)
+      else fadeTo(m, orig * FOCUS_DIM);
+    });
+  }
+  // …and the new focus gets crisp hulls and boards while the shared ones fade.
+  if (b) {
+    if (!focusOutline) { focusOutline = outline.clone(); focusOutline.userData = { shared: true }; } // survives disposeObject, like the shared one
+    focusOutline.opacity = 1; focusOutline.transparent = false;
+    eachMat(b.mesh, (m, o) => { if (m === outline) o.material = focusOutline; });
+    focusSigns(b, true);
+  }
+}
+
+export function tickBuildingFocus(dt) {
+  if (!faded.size) return;
+  const k = Math.min(1, dt * FOCUS_EASE);
+  for (const [m, f] of faded) {
+    m.opacity += (f.target - m.opacity) * k;
+    // The colour dims alongside (k runs 1 → FOCUS_DARK as the fade comes in)…
+    f.k += ((f.target < f.origOpacity ? FOCUS_DARK : 1) - f.k) * k;
+    if (f.origColor) m.color.copy(f.origColor).multiplyScalar(f.k);
+    if (Math.abs(f.target - m.opacity) >= 0.01) continue;
+    m.opacity = f.target;
+    if (f.target === f.origOpacity) { // …and everything is restored on the way back
+      m.transparent = f.origTransparent;
+      if (f.origColor) m.color.copy(f.origColor);
+      faded.delete(m);
+    }
+  }
+}
+
+// City rebuild: the materials are about to be disposed; only the shared
+// outline survives, so put it back and forget the rest.
+function clearFocusState() {
+  const outline = getOutlineMat();
+  if (focusEntry) {
+    if (focusOutline) eachMat(focusEntry.mesh, (m, o) => { if (m === focusOutline) o.material = outline; });
+    focusSigns(focusEntry, false);
+  }
+  outline.transparent = false; outline.opacity = 1;
+  faded.clear();
+  focusEntry = null;
+}
+
 
 export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: building config (city.json repos[name] + building.json)
   const form = bcfg?.style;
@@ -91,7 +209,7 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
     // gravel + HVAC, solar); the rest keep their 3D props.
     const decalRoof = !!world && topF >= 3.2 && rnd() < 0.5;
     if (decalRoof) {
-      const d = world.roofDecal(Math.floor(rnd() * 4), topF + (tiers.length === 1 ? over : over * 0.6) - 0.5);
+      const d = world.roofDecal(Math.floor(rnd() * 4), topF + (tiers.length === 1 ? over : over * 0.6) - 0.5, { own: true }); // own material: the tour-focus fade ghosts it per building
       d.position.set(cx, topY + 0.02, cz);
       group.add(d);
     }
@@ -165,7 +283,7 @@ const ROOF_DECAL = { helipad: 1, garden: 2, solar: 3 }; // roofs-0 is gravel + H
 function buildRoof(group, kind, { cx, cz, topY, topF, size, propDark }) {
   if (Object.hasOwn(ROOF_DECAL, kind)) {
     if (!world) return;
-    const d = world.roofDecal(ROOF_DECAL[kind], size - 0.5);
+    const d = world.roofDecal(ROOF_DECAL[kind], size - 0.5, { own: true }); // own material: fades with its building on tour focus
     d.position.set(cx, topY + 0.02, cz);
     group.add(d);
   } else if (kind === 'pool') {
