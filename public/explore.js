@@ -1481,8 +1481,9 @@ export function createExplorer(THREE, deps = {}) {
     /** True while a mode (or the glide back to orbit) is driving the camera. */
     get ownsCamera() { return mode !== 'orbit' || exiting; },
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
-    wantsKey(e) { return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'; },
+    wantsKey(e) { return repoInspector.open || (mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V'); },
     update, postRender, dispose, resetColliders, flyToNext, travelTo,
+    inspectRepo(repo, options) { return repoInspector.inspect(repo, options); },
     startGame, get game() { return game; },
     groundAt, setLivery,
     /** Debug / test hooks: collider count, box list, and teleporting the active walker / car. */

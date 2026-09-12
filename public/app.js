@@ -341,7 +341,19 @@ function hookCoffeeButton() {
   let tries = 0;
   const attach = () => {
     const btn = document.getElementById('bmc-wbtn');
-    if (btn) { btn.addEventListener('click', (e) => { if (e.isTrusted) coffeeButtonPressed(); }); return true; }
+    if (btn) {
+      btn.setAttribute('role', 'button');
+      btn.setAttribute('aria-label', 'Support Gitilla on Buy Me a Coffee');
+      btn.tabIndex = 0;
+      btn.addEventListener('click', (e) => { if (e.isTrusted) coffeeButtonPressed(); });
+      btn.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        btn.click();
+        coffeeButtonPressed();
+      });
+      return true;
+    }
     return ++tries > 60;         // the widget is an external script: give it 30s to turn up
   };
   if (attach()) return;
@@ -632,6 +644,7 @@ function wireUI() {
   setTv(readPref('gc-tv') === '1', { animate: false });
   $('tv-btn').addEventListener('click', () => setTv(!tvOn, { remember: cfgNow()?.look.tv === undefined }));
   $('customize-btn')?.addEventListener('click', () => customizer?.open()); // city.json editor (customize.js)
+  $('support-btn').addEventListener('click', () => { setMenu(false); watchPlane(); });
   // Transport
   $('play-btn').addEventListener('click', () => setPlaying(!play.playing));
   $('scrub').addEventListener('input', (e) => seekTo(Number(e.target.value) / 1000));
@@ -1105,6 +1118,7 @@ function main() {
   // What the city modules read from here (getters, so they stay live across cities).
   initTour({
     featured: () => cfgNow()?.featured || [], pinned: () => pinnedRepos, openPanel, prefetch: ensureBuildingConfig,
+    inspect: (repo, options) => explorer?.inspectRepo(repo, options) || false,
     explorer: () => explorer, flyover: () => flyover,
   });
   initActor({ version: () => cityVersion, playback: () => ({ timeline, play }), onStep: announceStep, onClock: updateClock });

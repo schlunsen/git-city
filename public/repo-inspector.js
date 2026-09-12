@@ -33,20 +33,23 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
     @media(max-width:700px){.gri-dialog{height:calc(100dvh - 24px);width:calc(100vw - 24px)}.gri-header{padding:22px 18px 16px}.gri-header h2{font-size:24px}.gri-tabs{padding:10px 18px}.gri-tabs button{padding:9px 11px}.gri-content{padding:8px 18px 20px}.gri-footer{padding:12px 18px;grid-template-columns:1fr}.gri-footer-note{display:none}.gri-status{font-size:8px}}
   `;
   document.head.append(style); document.body.append(prompt, dialog);
-  let target = null, timer = 0, candidates = null, modeNow = 'walk', readVersion = 0, readerRepo = null, loaded = false;
+  let target = null, timer = 0, candidates = null, modeNow = 'walk', readVersion = 0, readerRepo = null, loaded = false, inspectClose = null;
   const forward = new THREE.Vector3(), ray = new THREE.Raycaster();
   function close() {
     if (!dialog.open) return;
+    const finish = inspectClose; inspectClose = null;
     readVersion++; readerRepo = null;
     dialog.close(); onClose();
     prompt.hidden = !target;
     if (!prompt.hidden) prompt.focus({ preventScroll: true });
+    finish?.();
   }
-  function open() {
-    if (!target || dialog.open) return;
-    const r = target.repo;
+  function open(repo = target?.repo, options = {}) {
+    if (!repo || dialog.open) return false;
+    const r = repo;
     readerRepo = r; loaded = false; readVersion++;
-    dialog.querySelector('.gri-status').textContent = modeNow === 'drive' ? 'PARKED' : 'ON FOOT · PAUSED';
+    inspectClose = typeof options.onClose === 'function' ? options.onClose : null;
+    dialog.querySelector('.gri-status').textContent = options.status || (modeNow === 'drive' ? 'PARKED' : 'ON FOOT · PAUSED');
     dialog.querySelector('.gri-markdown').replaceChildren();
     dialog.querySelector('h2').textContent = r.name;
     dialog.querySelector('.gri-owner').textContent = r.full_name || '';
@@ -63,6 +66,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
     if (document.pointerLockElement) document.exitPointerLock?.();
     dialog.showModal();
     setView('readme');
+    return true;
   }
   async function loadReadme() {
     const repo = readerRepo, version = ++readVersion;
@@ -90,12 +94,13 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose 
   }
   dialog.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
   dialog.querySelector('.gri-retry').addEventListener('click', loadReadme);
-  prompt.addEventListener('click', open);
+  prompt.addEventListener('click', () => open());
   dialog.querySelector('.gri-close').addEventListener('click', close);
   dialog.querySelector('.gri-resume').addEventListener('click', close);
   dialog.addEventListener('cancel', e => { e.preventDefault(); close(); });
   return {
     get open() { return dialog.open; },
+    inspect(repo, options) { return open(repo, options); },
     key(e) {
       if (e.ctrlKey || e.metaKey || e.altKey) return false;
       if (dialog.open && e.code === 'KeyR') { e.preventDefault(); e.stopImmediatePropagation(); setView('readme'); return true; }

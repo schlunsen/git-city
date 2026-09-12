@@ -347,6 +347,10 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
 #showcase-card .sc-ch { pointer-events: auto; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; line-height: 1;
   font-size: 14px; color: var(--ink-300); border: 1px solid rgba(255, 255, 255, 0.12); background: radial-gradient(circle at 35% 30%, #3b4458, #141923); }
 #showcase-card .sc-ch:hover { color: var(--accent); }
+#showcase-card .sc-read { pointer-events: auto; cursor: pointer; padding: 5px 9px; border-radius: 6px;
+  border: 1px solid rgba(100, 222, 219, 0.35); background: rgba(100, 222, 219, 0.08); color: var(--accent);
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; }
+#showcase-card .sc-read:hover { background: rgba(100, 222, 219, 0.16); border-color: var(--accent-dim); }
 #showcase-card .sc-readme { margin-top: 9px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.1); font-size: 12px; line-height: 1.5;
   color: var(--ink-300); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 #showcase-card .sc-readme:empty { display: none; }
@@ -429,6 +433,7 @@ body.tv::after {
    transport, and repository details as a bottom sheet. */
 #menu { display: contents; }
 .menu-btn, .profile-toggle { display: none; }
+#support-btn { display: none; }
 #scene { touch-action: none; }
 /* The page itself never scrolls or rubber-bands on touch devices: the body is
    pinned, bars refuse page pans, and only the menu / profile / repo sheet
@@ -474,6 +479,7 @@ body { position: fixed; inset: 0; }
     background: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
   }
   #menu .tb { min-height: 44px; padding: 8px 4px; font-size: 11px; white-space: normal; background: var(--panel2); border-radius: 8px; }
+  #menu #support-btn { display: block; }
 
   #explorer {
     display: block; top: auto; right: auto; left: max(10px, env(safe-area-inset-left));
@@ -548,13 +554,19 @@ body { position: fixed; inset: 0; }
   #explorer { width: 250px; }
 }
 
-/* Buy Me a Coffee (index.html loads its widget; the sponsor plane opens it too): the
-   widget pins its button and panel to the bottom edge, so lift both above the playback
-   bar (app.js keeps --transport-h in sync). On narrow screens its panel is full-screen. */
-#bmc-wbtn { bottom: calc(var(--transport-h, 120px) + 14px) !important; }
-/* Compact layouts put the profile peek card above the bar on the left: the button goes right. */
-@media (max-width: 900px), (max-height: 500px) { #bmc-wbtn { left: auto !important; right: 18px !important; } }
+/* Buy Me a Coffee (index.html loads its widget; the sponsor plane opens it too).
+   Keep the desktop launcher deliberately quieter than the vendor default. Compact
+   layouts expose Support in the menu instead, leaving the city and touch controls clear. */
+#bmc-wbtn {
+  bottom: calc(var(--transport-h, 120px) + 14px) !important;
+  width: 44px !important; height: 44px !important; border-radius: 50% !important;
+  background: rgba(19, 27, 40, 0.9) !important; border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28) !important; opacity: 0.78;
+}
+#bmc-wbtn:hover, #bmc-wbtn:focus-visible { opacity: 1; }
+#bmc-wbtn img { width: 24px !important; height: 24px !important; }
+@media (max-width: 900px), (max-height: 500px) { #bmc-wbtn { display: none !important; } }
 @media (min-width: 480px) {
-  #bmc-iframe { bottom: calc(var(--transport-h, 120px) + 86px) !important;
-    min-height: 0 !important; max-height: calc(100vh - var(--transport-h, 120px) - 110px) !important; } /* the panel fits above it */
+  #bmc-iframe { bottom: calc(var(--transport-h, 120px) + 66px) !important;
+    min-height: 0 !important; max-height: calc(100vh - var(--transport-h, 120px) - 90px) !important; } /* the panel fits above it */
 }

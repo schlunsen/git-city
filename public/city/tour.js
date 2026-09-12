@@ -13,7 +13,7 @@ export const tour = { active: false, paused: false, t: 0, legs: null, leg: 0, ca
 // What the tour needs from app.js, handed over once (initTour): the city.json
 // featured list and the profile's pinned repos (tour order), the repo panel, the
 // building.json prefetch, the explorer (it may own the camera) and the idle-orbit setting.
-let deps = { featured: () => [], pinned: () => [], openPanel() {}, prefetch() {}, explorer: () => null, flyover: () => true };
+let deps = { featured: () => [], pinned: () => [], openPanel() {}, prefetch() {}, inspect: () => false, explorer: () => null, flyover: () => true };
 export function initTour(d) { deps = { ...deps, ...d }; }
 
 // Showcase flight — the default way into a city. The camera flies from
@@ -144,17 +144,30 @@ function showcaseCard(leg) {
       <div class="sc-chin"><span class="sc-led"></span>
         <button class="sc-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button><span class="sc-stop"></span>
         <button class="sc-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
+        <button class="sc-read" type="button">Read README</button>
         <span class="sc-hint">← → switch · click a building to watch</span></div>`;
     el.querySelectorAll('.sc-ch').forEach(b => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
+    el.querySelector('.sc-read').addEventListener('click', () => {
+      const repo = tour.cardRepo;
+      if (!repo) return;
+      const wasPaused = tour.paused;
+      tour.paused = true;
+      if (!deps.inspect(repo, {
+        status: 'TOUR · PAUSED',
+        onClose: () => { if (tour.active) tour.paused = wasPaused; },
+      })) tour.paused = wasPaused;
+    });
     document.body.appendChild(el);
   }
   const repo = leg?.repo || null, key = repo ? `${repo.full_name || repo.name}|${leg.next ? 'next' : 'here'}` : null;
   if (tour.card === key) return;
   const sameRepo = repo && tour.card && tour.card.split('|')[0] === (repo.full_name || repo.name);
   tour.card = key;
+  tour.cardRepo = repo;
   if (!repo) { el.classList.remove('show'); return; }
   el.querySelector('.sc-kicker').textContent = (leg.next ? 'Next stop' : 'Now circling') + (leg.highlight ? ` · ${leg.highlight}` : '');
   el.querySelector('.sc-name').textContent = repo.name;
+  el.querySelector('.sc-read').setAttribute('aria-label', `Read ${repo.name} README`);
   el.querySelector('.sc-desc').textContent = repo.description || 'No description yet.';
   const days = repo.pushed_at ? Math.max(0, Math.round((Date.now() - Date.parse(repo.pushed_at)) / 86400000)) : null;
   const meta = [`★ ${fmtNum(repo.stargazers_count || 0)}`, `⑂ ${fmtNum(repo.forks_count || 0)}`, repo.language,
