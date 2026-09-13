@@ -27,6 +27,7 @@
  * THREE is passed in by the host so this module works with its import map.
  */
 import { LOT_KIND } from './city/lots.js';
+import { sponsorsFor } from './city/sponsors.js';
 
 // How many sprites each sheet was split into (scripts/assets/, docs/assets.md).
 export const SPRITE_COUNTS = { clouds: 4, trees: 10, bushes: 10, props: 10, houses: 6, landmarks: 5, lots: 16, roofs: 4 };
@@ -445,9 +446,20 @@ export function createWorld(THREE, scene, deps) {
       .replace('#include <map_fragment>', 'diffuseColor.rgb *= mix(vec3(1.0), texture2D(map, vMapUv).rgb, vGrass);');
   };
   // Shallows: the same wave PNG as the sea, brightened and faded by vertex colour.
-  const shallowMat = shared(new THREE.MeshBasicMaterial({ map: water, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
-  const foamMat = shared(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+  // The bands lie ON the beach, not above it: measured round the island, the
+  // ground crosses the shallows' plane once per bearing -- the waterline -- and
+  // comes within 0.0001 of it at the crossing. Two surfaces meeting at a grazing
+  // angle with nothing to separate them is z-fighting, and it shows up as a
+  // shimmering water's edge that gets worse as the camera moves and the depth
+  // precision shifts under it. Every other thing painted on the ground here (the
+  // roads, the fields) already carries a polygon offset for the same reason;
+  // these were the ones that did not. Stepped -2/-3/-4 so they also keep clear
+  // of each other, in the order they are drawn.
+  const seaDecal = (units) => ({ polygonOffset: true, polygonOffsetFactor: units, polygonOffsetUnits: units });
+  const shallowMat = shared(new THREE.MeshBasicMaterial({ map: water, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...seaDecal(-2) }));
+  const foamMat = shared(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, ...seaDecal(-4) }));
   const foam2Mat = foamMat.clone(); shared(foam2Mat);
+  foam2Mat.polygonOffsetFactor = foam2Mat.polygonOffsetUnits = -3;
   tints.push({ mat: shallowMat, night: col(0x2b3f63), day: col(0xffffff) },
     { mat: foamMat, night: col(0x6f7fa3), day: col(0xffffff) }, { mat: foam2Mat, night: col(0x6f7fa3), day: col(0xffffff) });
 
@@ -1147,6 +1159,44 @@ export function createWorld(THREE, scene, deps) {
         if (desc) for (const l of wrapWords(desc, 38, custom ? 3 : 2)) lines.push({ text: l, size: 26, weight: 600, color: '#4a4a4a' });
         const tex = signTexture(lines, 768, 384, '#fffaf0');
         signboard(x, z, Math.atan2(-tx, -tz) + side * 0.5, 8.5, 4.25, 2.6, tex, tex);
+      });
+      // Sponsored plots: hoardings on the land beside the same roads, nearer
+      // town than the repo billboards and on the other verge, so the two never
+      // share a stretch of road. On the sponsor's own colour -- that is what
+      // they bought -- and only ever on the one island sponsors.json names.
+      const plots = sponsorsFor(who)?.plots || [];
+      // A plot is somewhere a hoarding can actually stand: out of the sea, off a
+      // slope, clear of everything already placed. One fixed spot per road was
+      // too brittle -- a road that happened to run along a hillside simply lost
+      // its sponsor -- so each one tries a few spots down the road, and both
+      // verges, before giving up.
+      const plotSite = (k) => {
+        for (let attempt = 0; attempt < roads.length * 6; attempt++) {
+          const r = roads[(k + (attempt >> 2)) % roads.length];
+          if (!r || r.pts.length < 30) continue;
+          const frac = [0.36, 0.28, 0.46, 0.22][attempt % 4];
+          const side = (k + attempt) % 2 ? -1 : 1; // prefer the verge opposite the repo billboards
+          const i = Math.floor(r.pts.length * frac), p = r.pts[i], q = r.pts[i + 1], o = r.pts[i - 1];
+          if (!p || !q || !o) continue;
+          const tx = q.x - o.x, tz = q.z - o.z, L = Math.hypot(tx, tz) || 1;
+          const x = p.x - (tz / L) * side * (r.w / 2 + 4.5), z = p.z + (tx / L) * side * (r.w / 2 + 4.5);
+          if (heightAt(x, z) < -0.3 || slopeAt(x, z) > 0.3) continue;
+          if (keepOut.some((c) => Math.hypot(c.x - x, c.z - z) < c.r + 5)) continue; // never on top of something else
+          return { x, z, facing: Math.atan2(-tx, -tz) + side * 0.5 };
+        }
+        return null;
+      };
+      plots.forEach((plot, k) => {
+        const site = plotSite(k);
+        if (!site) return; // nowhere sensible left on this island
+        const { x, z, facing } = site;
+        const lines = [
+          { text: 'SPONSOR', size: 28, weight: 800, color: plot.ink },
+          { text: plot.name, size: 64, color: plot.ink },
+        ];
+        if (plot.tagline) for (const l of wrapWords(plot.tagline, 30, 2)) lines.push({ text: l, size: 26, weight: 600, color: plot.ink });
+        const tex = signTexture(lines, 768, 384, plot.color);
+        signboard(x, z, facing, 8.5, 4.25, 2.6, tex, tex);
       });
     }
 
