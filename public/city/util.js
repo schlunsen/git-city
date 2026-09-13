@@ -4,6 +4,14 @@
 
 export const $ = (id) => document.getElementById(id);
 
+// A screen the repo guide has to cover to be readable, rather than sit beside
+// the city. Below this width repo-inspector.js lays the guide out as a sheet
+// across almost the whole viewport, so anything that would raise it *unasked*
+// -- a tour stop, a tapped building -- offers it instead and lets the visitor
+// open it. Defined once: a guide that opens on one rule and is laid out on
+// another is how a panel ends up covering a city nobody asked it to cover.
+export const handheld = () => matchMedia('(max-width:700px)').matches;
+
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

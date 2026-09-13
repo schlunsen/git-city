@@ -30,7 +30,7 @@ import { buildWayfinding } from './wayfinding.js'; // repo-named street signs + 
 import { fetchCityConfig, configRepo, normalizeCityConfig, fetchBuildingConfig, normalizeBuildingConfig, mergeBuildingConfig } from './city-config.js'; // city.json / building.json (validated, data only)
 import { createCustomizer, showToast } from './customize.js'; // Customize panel: live preview + publish via GitHub's editor
 import { API, DEFAULT_USER, FIXTURES, MAX_BUILDINGS, DAY_CYCLE_SECONDS, LANG_COLORS, FALLBACK_COLOR } from './city/constants.js';
-import { $, escapeHtml, fmtNum, fmtBytes, setLoadStatus, disposeObject, readPref, writePref, hexNum, prefersReducedMotion } from './city/util.js';
+import { $, escapeHtml, fmtNum, fmtBytes, setLoadStatus, disposeObject, readPref, writePref, hexNum, prefersReducedMotion, handheld } from './city/util.js';
 import { getOutlineMat, envPalette, envMat, hashStr } from './city/toon.js';
 import { planLots } from './city/lots.js';
 import {
@@ -55,7 +55,7 @@ import {
 } from './city/townlife.js';
 import {
   tour, cine, orbitReturn, initTour, updateTour, tourJump, tourToRepo, startTour, endTour, updateCine, flyToBuilding, returnToOrbit, cityFraming,
-  pauseTourForUser, resumeTourAfterUser, cancelFlights,
+  pauseTourForUser, resumeTourAfterUser, cancelFlights, showRepoCard, hideRepoCard,
 } from './city/tour.js';
 import { actor, initActor, buildActor, buildAvatar, updateActor } from './city/actor.js';
 import { carKit, buildCars, updateCars } from './city/cars.js';
@@ -536,7 +536,33 @@ function onPointerUp(e) {
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
   if (hits.length > 0) visitRepo(hits[0].object.userData.building, { x: e.clientX, y: e.clientY });
-  else { closePanel(); if (!tour.active) closeVisit(); }
+  else {
+    // A tap on open ground is the visitor stepping out of whatever is running.
+    // The showcase ends here rather than pausing: dragging is what pauses it
+    // (pauseTourForUser), and a pause flies back to the stop a moment later --
+    // which is exactly what someone who just clicked away does not want.
+    if (tour.active) endTour();
+    closePanel();
+    closeVisit();
+  }
+}
+
+// The profile card names the island it belongs to, so it comes and goes with
+// one: down the instant we leave (before the warp covers the screen, or the
+// departed developer is the last thing read on the way out) and back a beat
+// after the new city has landed, so the island is what arrives first.
+const PROFILE_SETTLE_MS = 900;
+let profileSettleTimer = null;
+function hideProfileCard() {
+  clearTimeout(profileSettleTimer); profileSettleTimer = null;
+  $('explorer').classList.remove('landed');
+}
+function settleProfileCard() {
+  clearTimeout(profileSettleTimer);
+  const version = cityVersion; // a card belongs to the city that asked for it
+  profileSettleTimer = setTimeout(() => {
+    if (version === cityVersion) $('explorer').classList.add('landed');
+  }, PROFILE_SETTLE_MS);
 }
 
 // Clicking a building is a one-repo tour stop: the camera arcs over and circles
@@ -559,17 +585,27 @@ function visitRepo(building, at) {
   visitChaining = true;
   flyToBuilding(building);
   visitChaining = false;
-  const opened = explorer?.inspectRepo(repo, {
+  const guide = {
     status: 'ORBITING',
     resumeLabel: 'Back to the city ',
     note: 'The camera circles this building while you read.',
     modal: false,
-    onClose: () => { if (!visitChaining) returnToOrbit(); },
-  });
+    onClose: () => { if (!visitChaining) { hideRepoCard(); returnToOrbit(); } },
+  };
+  // On a phone the guide is a sheet over most of the city, so tapping a
+  // building must not raise it: you tapped to look at the thing, not to have
+  // it covered up. The camera flies over and circles it while the showcase
+  // card -- the same one the tour narrates with, README teaser and all --
+  // names it at the foot of the screen and offers the read. Roomy screens
+  // open the guide beside the building, where it hides nothing, as before.
+  const opened = handheld()
+    ? showRepoCard(repo, () => explorer?.inspectRepo(repo, guide))
+    : explorer?.inspectRepo(repo, guide);
   // No explorer yet (a very early click): the old side panel and player still work.
   if (!opened) { openPanel(repo); if (repo.full_name) openGource(repo, at); }
 }
 function closeVisit() {
+  hideRepoCard(); // the tapped-building card, if one is on air
   if (!explorer?.inspectorOpen) return false;
   explorer.closeInspector();
   return true;
@@ -861,6 +897,12 @@ function wireUI() {
 function animate(timestamp) {
   requestAnimationFrame(animate);
   if (gourceCovering) return; // the history TV covers the city: skip rendering it
+  // ...and so does the guide on a phone while a replay is running inside it:
+  // drawing a city nobody can see is what left the replay stuttering. The
+  // media query is re-checked rather than trusted from when the replay began,
+  // so turning the phone on its side brings the city straight back instead of
+  // leaving a stale flag holding the whole scene frozen behind a side column.
+  if (document.documentElement.dataset.replay && handheld()) return;
   clock.update(timestamp);
   const dt = Math.min(clock.getDelta(), 0.05);
 
@@ -1172,6 +1214,7 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
   login = login.trim().replace(/^@/, '');
   const version = ++cityVersion;
   cancelAutoTour(); // a pending flight belongs to the city we are leaving
+  hideProfileCard(); // ...and so does the card naming the developer we are leaving
   currentLogin = login;
   const err = $('error');
   err.classList.remove('show');
@@ -1230,6 +1273,7 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     resetCamera();
     loading.classList.add('hidden');
     explorer?.revealCity(); // the same light-and-warp language as island travel and the README
+    settleProfileCard();   // the island arrives first; its card follows it in
     onBuilt?.(user.login); // explore.js portal travel: the new island is ready
     // Open on the showcase flight around the buildings (the activity playback is one press of ▶ away).
     // An embed is nothing but the flight, so it starts sooner; reduced motion
@@ -1261,6 +1305,10 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
   } catch (e) {
     if (version !== cityVersion) return;
     loading.classList.add('hidden');
+    // The city we were on is still standing behind the message (a mistyped
+    // name never tears it down), so its card comes back rather than leaving
+    // the island nameless until the next successful search.
+    settleProfileCard();
     if (e.message === 'notfound') {
       err.innerHTML = `Couldn't find <b>${escapeHtml(login)}</b> on GitHub. Try another username.`;
     } else {
@@ -1330,6 +1378,9 @@ function main() {
         $('loading').classList.add('hidden'); // the warp's cloud whiteout stands in for the loading screen
       });
     },
+    // A hop starts covering the screen before travel() is called, so the card
+    // steps off at the first sign of departure rather than under the warp.
+    onTravelStart: () => hideProfileCard(),
     buildings: () => buildingMeshes, // bomb run targets (game.js); the city is restored from snapshots on exit
     login: () => currentLogin,       // best score per island
     onGameStart: () => { endTour(); closePanel(); closeGource(); }, // the bomb run takes the screen

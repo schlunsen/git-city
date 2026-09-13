@@ -7,7 +7,7 @@ import { camera, controls } from './scene.js';
 import { buildingMeshes, buildingByName, setFocusedBuilding } from './buildings.js';
 import { readmeExcerpt, readmeKnown } from './readme.js';
 import { langHex } from './constants.js';
-import { fmtNum } from './util.js';
+import { fmtNum, handheld } from './util.js';
 
 export const tour = { active: false, paused: false, t: 0, legs: null, leg: 0, card: null, stops: null, stop: 0 }; // showcase flight (see updateTour)
 // What the tour needs from app.js, handed over once (initTour): the city.json
@@ -182,16 +182,27 @@ export function updateTour(dt) {
   // A guide already on air (a hop between stops) re-tunes as soon as the new
   // leg starts, so the reader is never left staring at the last repo.
   const atBuilding = leg.repo && (!leg.next || u >= (warping ? 0.12 : 0.78));
-  if (atBuilding && !leg.autoInspected && openTourReadme(leg.repo)) {
-    leg.autoInspected = true; warping = false;
-    const orbit = leg.next ? tour.legs[tour.leg + 1] : null;
-    // The approach carries on to the building; the shot it lands in becomes a
-    // whole slow turn around it, held for as long as the guide is on air.
-    if (orbit?.repo === leg.repo) tour.legs[tour.leg + 1] = holdLeg(orbit, null);
-    else if (leg.b) {
-      tour.legs[tour.leg] = holdLeg(leg, Math.atan2(camera.position.z - leg.b.mesh.position.z, camera.position.x - leg.b.mesh.position.x));
-      tour.t = 0; // picked up from the camera's own bearing, so nothing jumps
-    }
+  if (atBuilding && !leg.autoInspected) {
+    // A phone only opens the guide when it is asked to (see handheld): the
+    // card narrates the stop and the tour rolls on. Once the guide *is* open
+    // -- the card's button, or a hop with it already on air -- every stop
+    // retunes it, or the reader is left on the last repo while the camera
+    // flies to the next one.
+    if (handheld() && !deps.guideOpen()) leg.autoInspected = true;
+    else if (openTourReadme(leg.repo)) { leg.autoInspected = true; warping = false; holdCurrentStop(); }
+  }
+}
+// Settle the stop the camera is on into a slow turn around its building, held
+// for as long as the guide stays open. The approach carries on to the building
+// first; the shot it lands in becomes the turn.
+function holdCurrentStop() {
+  const leg = tour.legs?.[tour.leg];
+  if (!leg || leg.hold) return;
+  const orbit = leg.next ? tour.legs[tour.leg + 1] : null;
+  if (orbit?.repo === leg.repo) tour.legs[tour.leg + 1] = holdLeg(orbit, null);
+  else if (leg.b) {
+    tour.legs[tour.leg] = holdLeg(leg, Math.atan2(camera.position.z - leg.b.mesh.position.z, camera.position.x - leg.b.mesh.position.x));
+    tour.t = 0; // picked up from the camera's own bearing, so nothing jumps
   }
 }
 // The circling shot a stop holds while its field guide is open: a whole turn at
@@ -255,54 +266,64 @@ function openTourReadme(repo) {
 }
 // A small TV set for the showcase: which repo the camera is heading to or
 // circling, what it is, and how popular. It flickers like a CRT on each change.
-function showcaseCard(leg) {
+// The same set stands in for the guide on a phone, where a tapped building
+// would otherwise be buried under a sheet -- see showRepoCard.
+let cardOpen = null; // what the set's "Open full README" does for whatever it is showing
+function tourRead() { if (openTourReadme(tour.cardRepo)) holdCurrentStop(); }
+function cardElement() {
   let el = document.getElementById('showcase-card');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'showcase-card';
-    el.setAttribute('aria-live', 'polite');
-    el.innerHTML = `<div class="sc-screen"><div class="sc-kicker"></div><div class="sc-name"></div>
-        <div class="sc-desc"></div><div class="sc-meta"></div>
-        <section class="sc-readme-panel" aria-label="README preview">
-          <div class="sc-readme-signal"><span>From the readme</span><i></i><b>live</b></div>
-          <div class="sc-pic"><img alt="" referrerpolicy="no-referrer" decoding="async"></div>
-          <div class="sc-readme"></div>
-        </section></div>
-      <div class="sc-chin"><span class="sc-led"></span>
-        <button class="sc-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button><span class="sc-stop"></span>
-        <button class="sc-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
-        <button class="sc-read" type="button">Open full README</button>
-        <span class="sc-hint">← → switch · click a building to watch</span></div>`;
-    el.querySelectorAll('.sc-ch').forEach(b => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
-    el.querySelector('.sc-read').addEventListener('click', () => {
-      openTourReadme(tour.cardRepo);
-    });
-    document.body.appendChild(el);
-  }
-  const repo = leg?.repo || null, key = repo ? `${repo.full_name || repo.name}|${leg.next ? 'next' : 'here'}` : null;
+  if (el) return el;
+  el = document.createElement('div');
+  el.id = 'showcase-card';
+  el.setAttribute('aria-live', 'polite');
+  el.innerHTML = `<div class="sc-screen"><div class="sc-kicker"></div><div class="sc-name"></div>
+      <div class="sc-desc"></div><div class="sc-meta"></div>
+      <section class="sc-readme-panel" aria-label="README preview">
+        <div class="sc-readme-signal"><span>From the readme</span><i></i><b>live</b></div>
+        <div class="sc-pic"><img alt="" referrerpolicy="no-referrer" decoding="async"></div>
+        <div class="sc-readme"></div>
+      </section></div>
+    <div class="sc-chin"><span class="sc-led"></span>
+      <button class="sc-ch" type="button" data-dir="-1" aria-label="Previous repo">\u2039</button><span class="sc-stop"></span>
+      <button class="sc-ch" type="button" data-dir="1" aria-label="Next repo">\u203a</button>
+      <button class="sc-read" type="button">Open full README</button>
+      <span class="sc-hint">\u2190 \u2192 switch \u00b7 click a building to watch</span></div>`;
+  el.querySelectorAll('.sc-ch').forEach(b => b.addEventListener('click', () => tourJump(Number(b.dataset.dir))));
+  // Asked for by hand: on a phone this is the only thing that opens the guide.
+  el.querySelector('.sc-read').addEventListener('click', () => cardOpen?.());
+  document.body.appendChild(el);
+  return el;
+}
+// Put one repo on the set, or null to take it off air. `view` carries what
+// differs between a tour stop and a repo standing on its own: the kicker, the
+// stop counter, and whether there are other stops to step through.
+function renderCard(view) {
+  const el = cardElement();
+  const repo = view?.repo || null, key = view?.key || null;
   if (tour.card === key) return;
   const sameRepo = repo && tour.card && tour.card.split('|')[0] === (repo.full_name || repo.name);
   const wasLanded = el.classList.contains('landed');
   tour.card = key;
   tour.cardRepo = repo;
   if (!repo) { el.classList.remove('show', 'landed', 'readme-in', 'readme-ready'); return; }
-  const landed = !leg.next;
+  const landed = !!view.landed;
   el.classList.toggle('landed', landed);
-  el.querySelector('.sc-kicker').textContent = (leg.next ? 'Next stop' : 'Now circling') + (leg.highlight ? ` · ${leg.highlight}` : '');
+  el.classList.toggle('no-nav', !view.nav); // one repo on its own: nothing to step through
+  el.querySelector('.sc-kicker').textContent = view.kicker;
   el.querySelector('.sc-name').textContent = repo.name;
   el.querySelector('.sc-read').setAttribute('aria-label', `Read ${repo.name} README`);
   el.querySelector('.sc-desc').textContent = repo.description || 'No description yet.';
   const days = repo.pushed_at ? Math.max(0, Math.round((Date.now() - Date.parse(repo.pushed_at)) / 86400000)) : null;
-  const meta = [`★ ${fmtNum(repo.stargazers_count || 0)}`, `⑂ ${fmtNum(repo.forks_count || 0)}`, repo.language,
+  const meta = [`\u2605 ${fmtNum(repo.stargazers_count || 0)}`, `\u2442 ${fmtNum(repo.forks_count || 0)}`, repo.language,
     days == null ? '' : days === 0 ? 'updated today' : `updated ${days}d ago`].filter(Boolean);
   el.querySelector('.sc-meta').replaceChildren(...meta.map((t) => Object.assign(document.createElement('span'), { textContent: t })));
-  el.querySelector('.sc-stop').textContent = leg.stop ? `${leg.stop} / ${leg.of}` : '';
+  el.querySelector('.sc-stop').textContent = view.stopText || '';
   el.style.setProperty('--sc-lang', langHex(repo.language));
   // A few lines from the README (plain text only), and the next stop's fetched ahead.
   const readme = el.querySelector('.sc-readme'), pic = el.querySelector('.sc-pic img');
   const stillHere = () => tour.card && tour.card.startsWith(`${repo.full_name || repo.name}|`);
   if (!sameRepo) {
-    readme.textContent = 'Receiving README…';
+    readme.textContent = 'Receiving README\u2026';
     el.classList.remove('has-pic', 'pic-loading', 'pic-in', 'readme-ready');
     pic.removeAttribute('src');
   }
@@ -327,17 +348,45 @@ function showcaseCard(leg) {
       pic.src = image;
     }
   });
-  const upcoming = tour.stops?.[leg.stop % (tour.stops?.length || 1)];
-  if (upcoming) readmeExcerpt(upcoming.repo);
+  const ahead = view.ahead;
+  if (ahead) readmeExcerpt(ahead.repo);
   // Repo-level .git-city/building.json: load it for this stop and the next, so
   // graffiti, roofs and neon are up before the camera arrives.
-  deps.prefetch(repo); if (upcoming) deps.prefetch(upcoming);
+  deps.prefetch(repo); if (ahead) deps.prefetch(ahead);
   el.classList.add('show');
   if (landed && !wasLanded) {
     el.classList.remove('readme-in'); void el.offsetWidth; el.classList.add('readme-in');
   } else if (!landed) el.classList.remove('readme-in');
   if (!sameRepo) { el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip'); } // CRT channel change
 }
+function showcaseCard(leg) {
+  const repo = leg?.repo || null;
+  if (!repo) return renderCard(null);
+  cardOpen = tourRead;
+  renderCard({
+    repo,
+    key: `${repo.full_name || repo.name}|${leg.next ? 'next' : 'here'}`,
+    kicker: (leg.next ? 'Next stop' : 'Now circling') + (leg.highlight ? ` \u00b7 ${leg.highlight}` : ''),
+    landed: !leg.next,
+    stopText: leg.stop ? `${leg.stop} / ${leg.of}` : '',
+    nav: true,
+    ahead: tour.stops?.[leg.stop % (tour.stops?.length || 1)] || null,
+  });
+}
+// The same set, for a building the visitor tapped rather than a tour stop: the
+// repo, a few lines of its README, and the way in -- instead of the guide
+// opening over the city it was tapped in. `onRead` is what its button does.
+export function showRepoCard(repo, onRead) {
+  if (tour.active) return false; // the tour is narrating; do not talk over it
+  cardOpen = onRead || null;
+  renderCard(repo ? {
+    repo, key: `${repo.full_name || repo.name}|one`, kicker: 'Now circling',
+    landed: true, stopText: '', nav: false, ahead: null,
+  } : null);
+  return !!repo;
+}
+// Take a standalone card off air (a tap on open ground, or the guide taking over).
+export function hideRepoCard() { if (!tour.active) showRepoCard(null); }
 
 // Start (or steer) the showcase tour at one repo, e.g. from the bomb-run results
 // list: it flies there and carries on through the rest of the city from that stop.
@@ -361,6 +410,7 @@ export function startTour() {
 export function endTour() {
   tour.active = false; tour.paused = false; tour.legs = null; tour.stops = null;
   warping = false;
+  if (tourResumeTimer) { clearTimeout(tourResumeTimer); tourResumeTimer = 0; } // nothing to fly back to
   clearTimeout(embedDwell); embedDwell = 0; // a stop that is gone must not release a later one
   deps.stopGource();
   deps.closeInspect(); // the field guide belongs to the tour: it leaves with it

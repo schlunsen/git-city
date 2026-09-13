@@ -1301,6 +1301,7 @@ const AUTO = {
   function startTravel(gate, source = 'edge') { // source: 'edge' | 'next' | 'ui'
     if (trip || typeof deps.travel !== 'function' || !gate?.login) return;
     cityReveal = null;
+    deps.onTravelStart?.(); // the host takes down anything naming the island we are leaving
     trip = { gate, mode, source, phase: 'cover', t0: performance.now(), skyDay: deps.dayFactor?.() ?? 1 }; // travel in the current mode
     warpTitle.textContent = `✈ @${gate.login}’s island`;
     warpSub.textContent = gate.via ? `next island · ${gate.via}` : 'next island';

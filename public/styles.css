@@ -113,8 +113,18 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 .tb.on::before { content: "● "; font-size: 8px; vertical-align: 2px; }
 
 /* ---------- Left: profile explorer ---------- */
-#explorer { position: fixed; top: 76px; left: 20px; z-index: 15; width: 250px; pointer-events: none; }
+/* The card introduces the island, so it waits for the island to arrive. On the
+   first load it used to be the only thing on screen while the city was still
+   being built -- a profile floating over an empty sea -- and on a hop between
+   islands the old developer's card was still sitting there as the warp closed
+   over it, naming somebody we had already left. It is taken down before every
+   departure and settles back in a moment after the new city lands. */
+#explorer { position: fixed; top: 76px; left: 20px; z-index: 15; width: 250px; pointer-events: none;
+  opacity: 0; transform: translateY(-8px); transition: opacity 0.55s ease, transform 0.55s ease; }
+#explorer.landed { opacity: 1; transform: none; }
 #explorer > * { pointer-events: auto; }
+#explorer:not(.landed) > * { pointer-events: none; } /* not clickable while it is not really there */
+@media (prefers-reduced-motion: reduce) { #explorer { transition: opacity 0.2s linear; transform: none; } }
 #hud-login { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05; margin: 6px 0 4px; word-break: break-all; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 0 14px rgba(0, 0, 0, 0.45); }
 #hud-status { font-family: var(--mono); font-size: 11px; color: var(--ink-300); margin-bottom: 14px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
 #profile-head > .eyebrow { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); color: var(--ink-300); }
@@ -343,6 +353,9 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
 #showcase-card .sc-chin { display: flex; align-items: center; gap: 8px; padding: 6px 4px 0; font-family: var(--mono); font-size: 10px; color: var(--ink-500); }
 #showcase-card .sc-led { width: 6px; height: 6px; border-radius: 50%; background: #ff5a4f; box-shadow: 0 0 6px #ff5a4f; }
 #showcase-card .sc-hint { margin-left: auto; }
+/* One repo on its own (a tapped building) rather than a stop in a round: there
+   is nothing to page through, so the channel buttons and counter stand down. */
+#showcase-card.no-nav .sc-ch, #showcase-card.no-nav .sc-stop { display: none; }
 #showcase-card .sc-ch { pointer-events: auto; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; line-height: 1;
   font-size: 14px; color: var(--ink-300); border: 1px solid rgba(255, 255, 255, 0.12); background: radial-gradient(circle at 35% 30%, #3b4458, #141923); }
 #showcase-card .sc-ch:hover { color: var(--accent); }
@@ -410,6 +423,49 @@ input[type="range"].timeline::-moz-range-thumb { width: 12px; height: 12px; bord
 }
 @media (max-width: 720px) { #showcase-card .sc-hint { display: none; } #showcase-card .sc-name { font-size: 19px; } #showcase-card .sc-readme { -webkit-line-clamp: 2; } #showcase-card .sc-pic { height: 90px; } }
 @media (prefers-reduced-motion: reduce) { #showcase-card.flip .sc-screen { animation: none; } }
+/* ---------------------------------------------------------------------------
+   The set, by day. Its face was a dark CRT with the colours baked in, but its
+   type has always read the page's ink tokens -- so when the interface turned to
+   paper the card kept its black screen and put dark brown text on it, which is
+   to say it put text on nothing. A television is a dark object, so rather than
+   tint the same picture it changes stock: paper screen, printed ink, the
+   scanlines down to a whisper of a halftone. The language stripe and the tuning
+   animations are untouched, and after dark none of this applies.
+   --------------------------------------------------------------------------- */
+:root[data-theme="paper"] #showcase-card {
+  background: linear-gradient(160deg, var(--sheet-a), var(--sheet-b) 55%, var(--sheet-c));
+  border-color: var(--sheet-edge);
+  box-shadow: 0 18px 50px -18px rgba(20, 16, 8, 0.45), inset 0 1px 0 #fffdf7;
+}
+:root[data-theme="paper"] #showcase-card .sc-screen {
+  background: radial-gradient(ellipse at 28% 18%, #fffdf7, var(--sheet-b) 72%);
+  box-shadow: 0 0 0 2px var(--sheet-c), inset 0 0 30px rgba(36, 31, 24, 0.05);
+  color: var(--ink-100);
+}
+/* Scanlines on paper are a print screen, not a cathode ray: barely there, and
+   no vignette -- a dark rim on cream reads as a smudge. */
+:root[data-theme="paper"] #showcase-card .sc-screen::after {
+  background: repeating-linear-gradient(to bottom, rgba(36, 31, 24, 0.045) 0 1px, transparent 1px 3px);
+}
+:root[data-theme="paper"] #showcase-card .sc-meta span:first-child { color: #a9791b; } /* gold is a light: on paper it is ochre */
+:root[data-theme="paper"] #showcase-card .sc-ch {
+  background: var(--glass); border-color: var(--sheet-edge); color: var(--ink-300);
+}
+:root[data-theme="paper"] #showcase-card .sc-read {
+  border-color: var(--accent-dim); background: rgba(19, 107, 100, 0.08); color: var(--accent);
+}
+:root[data-theme="paper"] #showcase-card .sc-read:hover { background: rgba(19, 107, 100, 0.16); }
+:root[data-theme="paper"] #showcase-card .sc-readme-panel { border-top-color: var(--line); }
+:root[data-theme="paper"] #showcase-card .sc-readme-signal i {
+  background: repeating-linear-gradient(90deg, var(--accent-dim) 0 5px, transparent 5px 9px);
+}
+:root[data-theme="paper"] #showcase-card .sc-readme-signal b { color: #2c5f2b; }
+:root[data-theme="paper"] #showcase-card .sc-readme-signal b::before { background: #4e8f3f; box-shadow: 0 0 7px #4e8f3f80; }
+:root[data-theme="paper"] #showcase-card .sc-pic { background: var(--sheet-c); }
+:root[data-theme="paper"] #showcase-card.pic-loading .sc-pic {
+  background: repeating-linear-gradient(0deg, rgba(36, 31, 24, 0.05) 0 1px, transparent 1px 3px), var(--sheet-c);
+}
+:root[data-theme="paper"] #showcase-card.pic-loading .sc-pic::after { color: var(--ink-500); }
 @media (prefers-reduced-motion: reduce) {
   #showcase-card.readme-in .sc-readme-panel, #showcase-card.readme-in .sc-readme-panel::after,
   #showcase-card.readme-ready .sc-readme { animation: none; }
@@ -978,9 +1034,13 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
   body:has(.gri-dialog[open]:not([hidden])) #showcase-card {
     opacity: 0; pointer-events: none; transform: translate(-50%, 14px) scale(0.96);
   }
-  #showcase-card { width: min(420px, calc(100vw - 20px)); }
-  #showcase-card .sc-readme-panel { display: none; }   /* the guide has the readme */
-  #showcase-card .sc-pic { display: none; }
+  #showcase-card { width: calc(100vw - 16px); }
+  /* The teaser used to be dropped here because the guide opened itself on a
+     phone and already had the README. It does not any more -- a sheet over the
+     city is not something to raise unasked -- so the card carries the first
+     few lines itself, and its button is the way to the rest. The screenshot
+     still stays behind: a picture is what makes this card tall. */
+  #showcase-card.has-pic .sc-pic, #showcase-card .sc-pic { display: none; }
   #showcase-card .sc-screen { padding: 12px 14px 10px; }
   #showcase-card .sc-name { font-size: 21px; }
   #showcase-card .sc-desc {
@@ -990,6 +1050,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
   #showcase-card .sc-hint { display: none; }           /* no arrow keys to press */
   #showcase-card .sc-chin { padding: 7px 12px 0; gap: 6px; }
 }
+/* Lying down there is no height for a teaser: name, stats and the way in. */
+@media (max-height: 560px) { #showcase-card .sc-readme-panel { display: none; } }
 
 /* ---------------------------------------------------------------------------
    The replay, mounted rather than embedded.

@@ -2,7 +2,7 @@ import { pickNearbyRepo } from './city/nearby-repo.js';
 import { readmeDocument } from './city/readme-document.js';
 import { gourceUrl, miniAvailable } from './city/gource-player.js';
 import { renderReadme } from './readme-reader.js';
-import { fmtNum } from './city/util.js';
+import { fmtNum, handheld } from './city/util.js';
 
 export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose, onRepo }) {
   const prompt = document.createElement('button');
@@ -18,7 +18,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     <nav class="gri-tabs" aria-label="Repository views"><button type="button" data-view="overview" aria-pressed="true">Overview</button><button type="button" data-view="readme" aria-pressed="false">Readme <kbd>R</kbd></button><button type="button" data-view="history" aria-pressed="false" hidden>History <kbd>H</kbd></button></nav>
     <div class="gri-content"><section class="gri-overview"><p class="gri-description"></p><p class="gri-stats"></p><p class="gri-updated"></p><p class="gri-reader-hint">Get to know the project. Open its README for setup instructions, examples, and documentation.</p></section>
     <section class="gri-readme" hidden><p class="gri-readme-status" role="status"></p><button type="button" class="gri-retry" hidden>Retry README</button><article class="gri-markdown" aria-label="Repository README"></article></section>
-    <section class="gri-history" hidden><div class="gri-screen"></div><p class="gri-history-note">The whole commit history, replayed. Files appear as they are written.</p></section></div>
+    <section class="gri-history" hidden><div class="gri-screen"></div><p class="gri-history-note">The whole commit history, replayed. Files appear as they are written.</p><a class="gri-history-open" target="_blank" rel="noopener">Open in Gource View \u2197</a></section></div>
     <footer class="gri-footer"><a class="gri-github" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a><button class="gri-resume" type="button">Continue exploring <kbd>Esc</kbd></button><span class="gri-footer-note">Your position is saved while you read.</span></footer>`;
   const style = document.createElement('style');
   style.textContent = `
@@ -135,7 +135,11 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink);border-color:var(--rule);
     }
     .gri-tabs kbd{margin-left:8px;color:var(--ink-faint);border-color:var(--rule);background:#0000000a}
-    .gri-content{padding:14px 30px 26px;scrollbar-color:#c9bda5 transparent}
+    /* --gri-pad is the reading margin, named here so the full-bleed replay can
+       cancel exactly it. Both come from this one declaration: when they were
+       set in two places the replay cancelled 18px of a 30px margin and sat
+       inset by the difference. */
+    .gri-content{--gri-pad:30px;padding:14px var(--gri-pad) 26px;scrollbar-color:#c9bda5 transparent}
     .gri-description{font:400 17px/1.62 var(--prose);color:var(--ink)}
     .gri-stats,.gri-updated{font:500 13px/1.6 var(--ui);color:var(--ink-soft)}
     .gri-reader-hint{
@@ -186,19 +190,53 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       border:1px solid var(--rule);border-radius:10px;overflow:hidden;
       background:var(--sheet-c,#ece0c9);
     }
-    .gri-screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+    .gri-screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;transition:opacity .35s ease}
+    .gri-screen.loading iframe{opacity:0}
+    /* Something has to be happening in here: a replay can take a while to wind
+       back through a long history, and a single grey line in a large empty box
+       reads as a view that failed rather than one that is working. */
+    .gri-screen-load{
+      position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;
+      align-items:center;justify-content:center;text-align:center;padding:0 24px;
+    }
+    .gri-screen-load b{font:700 14px/1.35 var(--display);color:var(--ink-soft);display:block}
+    .gri-screen-load i{font:400 11px/1.4 var(--ui);font-style:normal;color:var(--ink-faint);overflow-wrap:anywhere}
+    .gri-screen-load u{
+      display:block;width:120px;height:3px;border-radius:3px;text-decoration:none;
+      background:var(--rule);overflow:hidden;position:relative;
+    }
+    .gri-screen-load u::after{
+      content:"";position:absolute;top:0;bottom:0;width:40%;border-radius:3px;background:var(--accent);
+      animation:gri-wind 1.15s ease-in-out infinite;
+    }
+    @keyframes gri-wind{0%{left:-40%}100%{left:100%}}
+    @media(prefers-reduced-motion:reduce){.gri-screen-load u::after{animation:none;left:0;width:100%;opacity:.5}}
     .gri-history-note{margin:0!important;font:12px/1.6 var(--prose);color:var(--ink-soft)}
+    .gri-history-open{
+      align-self:flex-start;font:700 12px var(--ui);color:var(--accent);text-decoration:none;
+      border:1px solid var(--rule);border-radius:8px;padding:8px 12px;
+    }
+    .gri-history-open:hover{border-color:var(--accent-dim)}
     @media(max-width:700px){
-      /* No room for both on a sheet: the picture is the point, the caption is not. */
+      /* No room for both on a sheet: the picture is the point, the caption is not.
+         The link out is not a caption -- on a handset it is how the replay gets
+         watched at a size worth watching -- so it stays, and stretches. */
       .gri-history-note{display:none}
+      .gri-history-open{align-self:stretch;text-align:center}
       /* A phone has no R or H key to press. The hints were costing the replay
          about thirty pixels of height to advertise shortcuts nobody there has. */
       .gri-tabs kbd{display:none}
       /* The replay is bound by width here, not height: Gource View letterboxes
          its own 16:9 picture inside whatever box it gets, so a taller sheet
          bought nothing but cream bands above and below. The box takes the
-         picture's shape and the sheet stays the size it was. */
-      .gri-screen{width:100%}
+         picture's shape and the sheet stays the size it was.
+         Width is the scarce thing, so it takes all of it: the replay runs out
+         to the sheet's edges instead of sitting inside the reading margin that
+         the prose either side of it needs. */
+      .gri-screen{
+        width:auto;margin-inline:calc(var(--gri-pad, 18px) * -1);
+        border-inline:0;border-radius:0;
+      }
     }
     /* On a phone the guide was the whole screen: 366x672 of a 390x844 display,
        with the tour card stacked on top of it, which measured out at 136% of
@@ -227,15 +265,14 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
 
   document.head.append(style); document.body.append(prompt, dialog);
   let target = null, timer = 0, candidates = null, modeNow = 'walk', readVersion = 0, readerRepo = null, loaded = false, inspectClose = null, openNow = false;
-  let animTimer = 0, hideTimer = 0, historyRepo = '';
+  let animTimer = 0, hideTimer = 0, historyRepo = '', historyTimer = 0, historyListener = null;
   // The History tab stands in for the corner screen on anything too small for it.
   const historyTab = () => !miniAvailable();
   // On a phone the guide is a 60dvh sheet over the island. Opening it straight
   // into the README buried the repo under a wall of prose and left no sign the
   // history was there at all. It opens on the overview instead -- what the repo
   // is, in a few lines -- and the tabs offer the README and the replay.
-  const compact = () => matchMedia('(max-width:700px)').matches;
-  const openingView = () => (compact() ? 'overview' : 'readme');
+  const openingView = () => (handheld() ? 'overview' : 'readme');
   function syncTabs() {
     dialog.querySelector('[data-view="history"]').hidden = !historyTab();
   }
@@ -355,6 +392,17 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
   // screen: leaving the tab, changing repo or closing the guide tears it down,
   // the way the corner screen does. Otherwise a phone keeps a video decoding
   // behind a README it is no longer showing.
+  // A replay on a phone is two heavy pictures at once -- the city behind the
+  // sheet and the history inside it -- competing for one GPU, which is what
+  // made the replay stutter once it had finally loaded. The city is the one
+  // nobody can see while the sheet is up, so it stands down: the same trade
+  // the full-screen player makes with gourceCovering. On a roomy screen the
+  // guide is a column beside a city that is still worth drawing, so it stays.
+  function markReplaying(on) {
+    const root = document.documentElement;
+    if (on && handheld()) root.dataset.replay = '1';
+    else delete root.dataset.replay;
+  }
   function mountHistory() {
     const screen = dialog.querySelector('.gri-screen');
     const repo = readerRepo;
@@ -365,11 +413,48 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     frame.title = `Commit history: ${repo.full_name}`;
     frame.allow = 'autoplay';
     frame.loading = 'lazy';
-    screen.replaceChildren(frame);
+    // Gource View puts up its own header and progress readout while it works
+    // through a history. That is its interface, not the guide's: in here the
+    // replay should arrive as a picture and nothing else. So the frame is held
+    // blank behind one line of our own until it reports the first frame on
+    // screen -- with a fallback, because a replay that never announces itself
+    // should still be watchable rather than hidden for good.
+    const note = document.createElement('div');
+    note.className = 'gri-screen-load';
+    note.setAttribute('role', 'status');
+    note.innerHTML = '<b></b><u></u><i></i>';
+    note.querySelector('b').textContent = 'Winding back to the first commit';
+    note.querySelector('i').textContent = `${repo.full_name} \u00b7 every file, as it was written`;
+    screen.classList.add('loading');
+    const reveal = () => {
+      clearTimeout(historyTimer); historyTimer = 0;
+      screen.classList.remove('loading');
+      note.remove();
+    };
+    clearTimeout(historyTimer);
+    historyTimer = setTimeout(reveal, 20000);
+    const out = dialog.querySelector('.gri-history-open');
+    out.href = gourceUrl(repo);
+    out.setAttribute('aria-label', `Open ${repo.full_name} in Gource View, new tab`);
+    const origin = new URL(frame.src, location.href).origin;
+    historyListener = (e) => {
+      if (e.origin !== origin || e.data?.source !== 'gource-view') return;
+      if (e.source !== frame.contentWindow) return; // the mini screen and the full player answer for themselves
+      if (e.data.type === 'video-ready') reveal();
+      else if (e.data.type === 'video-open') { clearTimeout(historyTimer); historyTimer = setTimeout(reveal, 2500); }
+    };
+    window.addEventListener('message', historyListener);
+    screen.replaceChildren(frame, note);
+    markReplaying(true);
   }
   function stopHistory() {
     historyRepo = '';
-    dialog.querySelector('.gri-screen')?.replaceChildren();
+    markReplaying(false);
+    clearTimeout(historyTimer); historyTimer = 0;
+    if (historyListener) { window.removeEventListener('message', historyListener); historyListener = null; }
+    const screen = dialog.querySelector('.gri-screen');
+    screen?.classList.remove('loading');
+    screen?.replaceChildren();
   }
   function setView(view) {
     // Nothing to show in a tab that is not there: the History tab is hidden
