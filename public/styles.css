@@ -727,6 +727,14 @@ body { position: fixed; inset: 0; }
   --panel2: #e3d7bf;
   --sheet-a: #fffaf0; --sheet-b: #f7f0e2; --sheet-c: #ece0c9;
   --sheet-solid: #f7f0e2;
+  /* The explore HUD and its mode menu read --panel directly. It was only ever
+     declared on the base :root, so those surfaces stayed dark while everything
+     around them turned to paper -- the dropdown in particular, floating black
+     over a cream page. */
+  --panel: rgba(247, 240, 226, 0.94);
+  --panel-solid: #f7f0e2;
+  --glass: rgba(36, 31, 24, 0.06);
+  --glass-strong: rgba(36, 31, 24, 0.12);
   --sheet-input: #fffaf0;
   --sheet-edge: rgba(36, 31, 24, 0.20);
   --sheet-shadow: 0 10px 30px -12px rgba(20, 16, 8, .45), 0 1px 0 #fffdf7 inset;
@@ -747,6 +755,10 @@ body { position: fixed; inset: 0; }
   --panel2: #2e2b21;
   --sheet-a: #2b2820; --sheet-b: #211f18; --sheet-c: #191710;
   --sheet-solid: #211f18;
+  --panel: rgba(33, 31, 24, 0.94);
+  --panel-solid: #211f18;
+  --glass: rgba(247, 240, 226, 0.06);
+  --glass-strong: rgba(247, 240, 226, 0.12);
   --sheet-input: #16150f;
   --sheet-edge: rgba(247, 240, 226, 0.22);
   --sheet-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,.04) inset;

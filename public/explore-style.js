@@ -13,35 +13,35 @@ export function injectStyle() {
     display: flex; align-items: center; gap: 12px; padding: 5px 5px 5px 6px; max-width: calc(100vw - 24px);
     background: var(--panel, rgba(17, 24, 36, 0.8)); border: 1px solid var(--line, rgba(110, 135, 175, 0.22)); border-radius: 999px;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-    font: 11px/1.2 var(--mono, ui-monospace, Menlo, monospace); color: var(--ink-500, #7f8ca3); user-select: none; -webkit-user-select: none; }
+    font: 600 12px/1.2 var(--ui, system-ui), sans-serif; color: var(--ink-500, #7f8ca3); user-select: none; -webkit-user-select: none; }
   .gcx-hud[hidden], .gcx-menu[hidden], .gcx-touch[hidden], .gcx-cross[hidden], .gcx-gauge[hidden] { display: none !important; }
   .gcx-hud b { color: var(--ink-100, #f1f4f9); font-weight: 600; }
-  .gcx-seg { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); flex: none; }
+  .gcx-seg { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--glass, rgba(255, 255, 255, 0.05)); flex: none; }
   .gcx-seg button, .gcx-exit { font: inherit; border: 0; cursor: pointer; border-radius: 999px; padding: 6px 11px; background: none; color: var(--ink-300, #c2cad8); }
-  .gcx-seg button:hover, .gcx-exit:hover { color: var(--ink-100, #f1f4f9); background: rgba(255, 255, 255, 0.06); }
+  .gcx-seg button:hover, .gcx-exit:hover { color: var(--ink-100, #f1f4f9); background: var(--glass-strong, rgba(255, 255, 255, 0.06)); }
   .gcx-seg button.on { background: var(--accent, #64dedb); color: var(--accent-ink, #082524); font-weight: 600; }
   .gcx-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .gcx-gauge { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-300, #c2cad8); flex: none; }
-  .gcx-exit { flex: none; background: rgba(255, 255, 255, 0.06); }
+  .gcx-exit { flex: none; background: var(--glass, rgba(255, 255, 255, 0.06)); }
   .gcx-hud kbd, .gcx-menu kbd { font: 600 9px/1 var(--mono, monospace); padding: 2px 4px; border-radius: 4px; border: 1px solid var(--line, rgba(110, 135, 175, 0.3)); color: var(--ink-500, #7f8ca3); margin-right: 4px; }
   .gcx-menu { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 2px; padding: 5px; min-width: 150px;
-    background: rgba(17, 24, 36, 0.97); border: 1px solid var(--line, rgba(110, 135, 175, 0.22)); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
+    background: var(--panel, rgba(17, 24, 36, 0.97)); border: 1px solid var(--line, rgba(110, 135, 175, 0.22)); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
   .gcx-menu button { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 0; background: none; cursor: pointer;
-    font: 12px var(--mono, monospace); color: var(--ink-300, #c2cad8); padding: 9px 10px; border-radius: 7px; text-align: left; }
-  .gcx-menu button:hover { background: rgba(255, 255, 255, 0.06); color: var(--ink-100, #f1f4f9); }
+    font: 600 13px var(--ui, system-ui), sans-serif; color: var(--ink-300, #c2cad8); padding: 9px 10px; border-radius: 7px; text-align: left; }
+  .gcx-menu button:hover { background: var(--glass-strong, rgba(255, 255, 255, 0.06)); color: var(--ink-100, #f1f4f9); }
   .gcx-menu button.on { color: var(--accent, #64dedb); }
   .gcx-menu kbd { margin: 0; }
   .gcx-cross { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; z-index: 25; pointer-events: none;
     background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1.5px rgba(10, 13, 22, 0.85); }
   .gcx-stick { position: fixed; z-index: 31; left: max(18px, env(safe-area-inset-left)); bottom: calc(var(--transport-h, 96px) + 70px);
-    width: 124px; height: 124px; border-radius: 50%; touch-action: none; background: rgba(17, 24, 36, 0.45);
+    width: 124px; height: 124px; border-radius: 50%; touch-action: none; background: var(--panel, rgba(17, 24, 36, 0.45));
     border: 1.5px solid rgba(241, 244, 249, 0.25); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   .gcx-knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
     background: rgba(100, 222, 219, 0.85); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); pointer-events: none; }
   .gcx-acts { position: fixed; z-index: 31; right: max(18px, env(safe-area-inset-right)); bottom: calc(var(--transport-h, 96px) + 76px);
     display: flex; flex-direction: column; gap: 12px; }
   .gcx-act { width: 66px; height: 66px; border-radius: 50%; touch-action: none; font: 600 13px var(--mono, monospace); color: var(--ink-100, #f1f4f9);
-    background: rgba(17, 24, 36, 0.55); border: 1.5px solid rgba(241, 244, 249, 0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+    background: var(--panel, rgba(17, 24, 36, 0.55)); border: 1.5px solid var(--line, rgba(241, 244, 249, 0.3)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   .gcx-act.on { background: rgba(100, 222, 219, 0.85); color: var(--accent-ink, #082524); }
   .gcx-hud.gcx-touchy .gcx-hint { display: none; }
   @media (max-width: 900px), (max-height: 500px) {
