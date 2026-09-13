@@ -4,7 +4,7 @@
 // createExplorer(THREE, deps) layers three camera modes over the app's
 // OrbitControls view:
 //   walk  — first person: WASD / arrows, mouse look (pointer lock, or drag when
-//           the lock is unavailable), Shift to run, Space to jump. Collides with
+//           the lock is unavailable), Shift to run, hold Space to fly. Collides with
 //           the building boxes and stays on the island.
 //   drive — a cel-shaded toon car on the boulevard ring. Arcade physics
 //           (throttle, drag, speed-scaled steering, slip / drift), follows and
@@ -31,7 +31,7 @@ import { buildPerson, posePerson, disposePerson } from './city/townlife.js'; // 
 
 const MODES = ['orbit', 'walk', 'drive', 'fly'];
 const LABEL = { orbit: 'Orbit', walk: 'Walk', drive: 'Drive', fly: 'Fly' };
-const EYE = 1.65, PLAYER_R = 0.45, WALK_SPEED = 5.2, RUN_SPEED = 11, JUMP_V = 7.4, GRAVITY = 22;
+const EYE = 1.65, PLAYER_R = 0.45, WALK_SPEED = 5.2, RUN_SPEED = 11, UNICORN_CLIMB = 7.4, UNICORN_FALL = 4.5, GRAVITY = 22;
 // Third-person framing: how far back the camera sits, what it aims at, and how
 // high it rides when the look is level. Close enough that a doorway still has
 // scale, far enough that the figure is a person rather than a shoulder.
@@ -602,7 +602,7 @@ export function createExplorer(THREE, deps = {}) {
   const onDocDown = (e) => { if (!menu.hidden && !menu.contains(e.target) && !button?.contains(e.target)) closeMenu(); };
 
   // Touch: one-thumb joystick + per-mode action buttons.
-  const ACTS = { walk: [['jump', 'Jump'], ['run', 'Run']], drive: [['brake', 'Drift']], fly: [['faster', '+'], ['slower', '−']] };
+  const ACTS = { walk: [['jump', 'Fly ↑'], ['run', 'Run']], drive: [['brake', 'Drift']], fly: [['faster', '+'], ['slower', '−']] };
   const GAME_ACTS = [['fire', 'FIRE'], ['bomb', 'BOMB']]; // bomb run on touch: hold FIRE, tap BOMB
   function moveJoy(e) {
     const r = stick.getBoundingClientRect(), R = r.width / 2 - 8;
@@ -623,8 +623,8 @@ export function createExplorer(THREE, deps = {}) {
 
   const coarse = globalThis.matchMedia?.('(pointer: coarse)');
   const HINTS = {
-    walk: () => (locked ? '<b>WASD</b> move · <b>Shift</b> run · <b>Space</b> jump · <b>E</b> inspect repo · <b>Esc</b> free mouse'
-      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · <b>Space</b> jump · <b>click</b> to mouse-look · <b>E</b> inspect repo'),
+    walk: () => (locked ? '<b>WASD</b> move · <b>Shift</b> run · hold <b>Space</b> fly · <b>E</b> inspect repo · <b>Esc</b> free mouse'
+      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · hold <b>Space</b> fly · <b>click</b> to mouse-look · <b>E</b> inspect repo'),
     drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look · <b>E</b> inspect repo',
     fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle · <b>N</b> next island',
     game: () => '<b>Space</b>/<b>click</b> fire · <b>B</b>/<b>right-click</b> bomb · <b>A/D</b> bank · <b>W/S</b> dive · climb · <b>Esc</b> end',
@@ -933,11 +933,19 @@ export function createExplorer(THREE, deps = {}) {
         if (vn < 0) { w.v.x -= vn * hitN.x; w.v.z -= vn * hitN.z; }
       }
     }
-    const g = groundAt(w.p.x, w.p.z);
-    if (w.grounded && input.jump) { w.vy = JUMP_V; w.grounded = false; }
+    let g = groundAt(w.p.x, w.p.z);
+    // Rooftops are landing surfaces when approached from above.
+    for (const b of getBoxes()) {
+      if (w.p.x + PLAYER_R > b.min.x && w.p.x - PLAYER_R < b.max.x &&
+          w.p.z + PLAYER_R > b.min.z && w.p.z - PLAYER_R < b.max.z &&
+          w.p.y >= b.max.y - .05) g = Math.max(g, b.max.y);
+    }
+    if (input.jump) w.grounded = false;
     if (w.grounded) { if (w.p.y - g > 0.6) w.grounded = false; else w.p.y = g; }
     if (!w.grounded) {
-      w.vy -= GRAVITY * dt; w.p.y += w.vy * dt;
+      if (input.jump) w.vy += (UNICORN_CLIMB - w.vy) * damp(dt, 5);
+      else w.vy = Math.max(-UNICORN_FALL, w.vy - GRAVITY * dt);
+      w.p.y += w.vy * dt;
       if (w.p.y <= g) { w.p.y = g; w.vy = 0; w.grounded = true; }
     }
     const sp = Math.hypot(w.v.x, w.v.z);
@@ -950,7 +958,7 @@ export function createExplorer(THREE, deps = {}) {
     // something once there is a body beside it.
     if (!person) person = buildPerson();
     person.group.visible = true;
-    const step = posePerson(person, { speed: sp, dt, airborne: !w.grounded });
+    const step = posePerson(person, { speed: sp, dt, airborne: !w.grounded, flying: input.jump });
     person.group.position.set(w.p.x, w.p.y + step, w.p.z);
     // Model faces -Z, which is also the walker's forward at yaw 0.
     person.group.rotation.y = w.yaw;

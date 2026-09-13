@@ -314,6 +314,19 @@ export function buildPerson() {
     const lock = oval(tail, rainbow[i], (i - 1.5) * .046, -.07 - i * .035, .13, .063, .24, .11);
     lock.rotation.x = -.55; lock.rotation.z = (i - 1.5) * .15;
   }
+  const wing = side => {
+    const pivot = new THREE.Group(); pivot.name = side > 0 ? 'wing-left' : 'wing-right';
+    pivot.position.set(side * .25, .81, .02); body.add(pivot);
+    oval(pivot, coat, side * .25, 0, .025, .33, .075, .24);
+    for (let i = 0; i < 5; i++) {
+      const feather = oval(pivot, i % 2 ? coat : rainbow[1], side * (.39 + i * .075), -.012, -.15 + i * .085,
+        .28 - i * .025, .045, .075);
+      feather.rotation.y = -side * (.12 + i * .12);
+    }
+    pivot.rotation.z = side * 1.18;
+    return pivot;
+  };
+  const wingL = wing(1), wingR = wing(-1);
   const leg = (x, z) => {
     const pivot = new THREE.Group(); pivot.position.set(x, .42, z); body.add(pivot);
     oval(pivot, coat, 0, -.15, 0, .085, .18, .09);
@@ -323,13 +336,17 @@ export function buildPerson() {
   const legL = leg(.21, .30), legR = leg(-.21, .30);
   const armL = leg(.21, -.28), armR = leg(-.21, -.28);
   group.visible = false; scene.add(group);
-  return { group, parts: { body, head, tail, legL, legR, armL, armR }, phase: 0, age: 0 };
+  return { group, parts: { body, head, tail, legL, legR, armL, armR, wingL, wingR }, phase: 0, age: 0 };
 }
 
-export function posePerson(person, { speed = 0, dt = 0, airborne = false } = {}) {
+export function posePerson(person, { speed = 0, dt = 0, airborne = false, flying = false } = {}) {
   if (!person) return 0;
-  const { body, head, tail, legL, legR, armL, armR } = person.parts;
+  const { body, head, tail, legL, legR, armL, armR, wingL, wingR } = person.parts;
   person.age += dt; person.phase += speed * 2.8 * dt;
+  const wingAngle = airborne ? (flying ? Math.sin(person.age * 15) * .65 : .12 + Math.sin(person.age * 4) * .12) : 1.18;
+  const wingBlend = 1 - Math.exp(-dt * 12);
+  wingL.rotation.z += (wingAngle - wingL.rotation.z) * wingBlend;
+  wingR.rotation.z += (-wingAngle - wingR.rotation.z) * wingBlend;
   const moving = speed > .15, swing = moving ? Math.sin(person.phase) : 0;
   body.rotation.z = airborne ? 0 : swing * .045;
   head.rotation.z = -body.rotation.z * .5 + Math.sin(person.age * 1.7) * .035;
