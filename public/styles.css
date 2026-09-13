@@ -828,6 +828,52 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
 #guide-link { color: var(--accent); }
 #profile-toggle { color: var(--ink-500); }
 
+/* ---------------------------------------------------------------------------
+   The profile card, as one page rather than three boxes.
+   ---------------------------------------------------------------------------
+   Two things were wrong with it on paper. The name carried a pair of black drop
+   shadows -- right for light type floating over a dark interface, which is what
+   this used to be, and a smudge under dark ink on cream, which is what it is
+   now. And the head, the stats and the most-active list were three separate
+   sheets with three borders and three shadows, stacked with gaps: a lot of
+   edges for one idea, and on a pale sky the whole stack washed out because no
+   single edge was doing much.
+
+   It becomes one sheet with sections divided by hairlines -- the way the field
+   guide already reads -- with a slightly firmer edge so it holds against a
+   bright horizon. Desktop only: the compact layout builds this from the same
+   markup as a collapsible bar, and that already works.
+   -------------------------------------------------------------------------- */
+@media (min-width: 901px) and (min-height: 501px) {
+  #explorer {
+    pointer-events: auto; /* it is a solid sheet now: clicks land on it, not the city behind */
+    background-image:
+      repeating-linear-gradient(92deg, rgba(128,128,128,.05) 0 1px, transparent 1px 3px),
+      radial-gradient(120% 160% at 18% 0%, var(--sheet-a), var(--sheet-b) 52%, var(--sheet-c));
+    border: 1px solid var(--sheet-edge);
+    border-radius: 16px;
+    box-shadow: var(--sheet-shadow);
+    color: var(--ink-100);
+    overflow: hidden; /* so the sections cannot poke out past the rounded corners */
+  }
+  /* The three panels stop being panels and become parts of the page. */
+  #explorer > #profile-head,
+  #explorer > .card.kv {
+    background: none; background-image: none; border: 0; border-radius: 0;
+    box-shadow: none; margin: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  #explorer > #profile-head { padding: 14px 16px 12px; }
+  #explorer > .card.kv { padding: 12px 16px; border-top: 1px dashed var(--sheet-edge); }
+  /* The name is the one thing on this page anyone reads from across the room. */
+  #hud-login {
+    text-shadow: none;
+    font-size: 32px;
+    letter-spacing: -0.025em;
+    word-break: normal; overflow-wrap: anywhere; /* break a long login, never a short one mid-letter */
+  }
+  #hud-status { text-shadow: none; }
+}
+
 /* Turning the page, rather than flipping a switch: the sky takes a while to
    change and the interface should look like it is keeping up, not reacting. */
 /* A gradient cannot be interpolated, so transitioning background-image does
