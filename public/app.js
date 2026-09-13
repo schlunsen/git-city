@@ -63,7 +63,7 @@ import { loadSponsors } from './city/sponsors.js';
 import { gourceUrl, gourceCovering, openGource, closeGource, tuneGource, stopGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
-import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane, setPlaneSponsor } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
+import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane, setPlaneSponsor, bannerNow } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
 
 // ---------------------------------------------------------------------------
 // App state (what the city modules own lives with them)
@@ -1313,7 +1313,7 @@ function main() {
       startTour();
     }, 6000);
   }
-  window.__city = { scene, world, camera, controls, explorer, get cityConfig() { return cityConfig; }, cityPlayerSettings, get buildingFiles() { return buildingFiles; }, debug: { get orbitReturn() { return orbitReturn; }, get tour() { return tour.active && { paused: tour.paused, stop: tour.stop, leg: tour.leg }; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
+  window.__city = { scene, world, camera, controls, explorer, get cityConfig() { return cityConfig; }, cityPlayerSettings, get buildingFiles() { return buildingFiles; }, debug: { get orbitReturn() { return orbitReturn; }, get tour() { return tour.active && { paused: tour.paused, stop: tour.stop, leg: tour.leg }; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; }, get banner() { return bannerNow(); } } }; // debug handle
 }
 
 main();

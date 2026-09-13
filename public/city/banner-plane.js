@@ -40,6 +40,8 @@ export function setPlaneSponsor(login) {
   }
 }
 const bannerText = () => sponsor?.text || TEXT;
+/** What the banner currently says. For the debug handle and for tests. */
+export function bannerNow() { return bannerText(); }
 const bannerLink = () => sponsor?.url || SUPPORT_URL;
 // Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
 const FLIGHT_SPEED = 11;                    // world units per second around the city

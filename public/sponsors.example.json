@@ -7,10 +7,40 @@
   ],
   "island": "schlunsen",
   "cars": [
-    { "name": "Northwind", "color": "#e4574f", "ink": "#fff8e8" },
-    { "name": "Kestrel", "color": "#2f8f83", "ink": "#fdf6e3" },
-    { "name": "Fieldnote", "color": "#4d9be6", "ink": "#ffffff" },
-    { "name": "Tallow & Co", "color": "#f39a4b", "ink": "#2b1d10" }
+    {
+      "name": "Northwind",
+      "color": "#e4574f",
+      "ink": "#fff8e8"
+    },
+    {
+      "name": "Kestrel",
+      "color": "#2f8f83",
+      "ink": "#fdf6e3"
+    },
+    {
+      "name": "Fieldnote",
+      "color": "#4d9be6",
+      "ink": "#ffffff"
+    },
+    {
+      "name": "Tallow & Co",
+      "color": "#f39a4b",
+      "ink": "#2b1d10"
+    }
+  ],
+  "plots": [
+    {
+      "name": "Northwind",
+      "tagline": "logistics, quietly",
+      "color": "#e4574f",
+      "ink": "#fff8e8"
+    },
+    {
+      "name": "Kestrel",
+      "tagline": "maps for small teams",
+      "color": "#2f8f83",
+      "ink": "#fdf6e3"
+    }
   ],
   "plane": {
     "name": "Northwind",

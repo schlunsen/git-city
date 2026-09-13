@@ -2,8 +2,9 @@
  * Gitilla — sponsors.
  *
  * Sponsorship pays for one island: the author's. A sponsor buys a car in the
- * traffic with their name on its doors, or -- for the big ones -- the banner
- * behind the plane that circles the city. Everywhere else, every other
+ * traffic with their name on its doors, a hoarding on a plot out in the
+ * country, or -- for the big ones -- the banner behind the plane that circles
+ * the city. Everywhere else, every other
  * developer's city, is untouched: sponsors.json names the single login they
  * apply to, and a sponsor cannot appear on anybody else's island by accident,
  * whoever is looking at it or however the city was reached.
@@ -49,11 +50,21 @@ export function sponsorsFor(login) {
     }))
     .filter((c) => c.name)
     .slice(0, 8); // more than this stops reading as traffic
+  // Roadside plots: a hoarding out in the country, on the sponsor's own colour.
+  const plots = (Array.isArray(data.plots) ? data.plots : [])
+    .map((b) => ({
+      name: clean(b?.name, 22),
+      tagline: clean(b?.tagline, 46),
+      color: colour(b?.color, '#fffaf0'),
+      ink: colour(b?.ink, '#1a2233'),
+    }))
+    .filter((b) => b.name)
+    .slice(0, 6); // one per road out of town, and there are not many roads
   const p = data.plane;
   const plane = p && clean(p.name, 28)
     ? { name: clean(p.name, 28), text: clean(p.text, 64) || `${clean(p.name, 28)} supports Gitilla`, url: httpUrl(p.url) }
     : null;
-  return cars.length || plane ? { cars, plane } : null;
+  return cars.length || plots.length || plane ? { cars, plots, plane } : null;
 }
 
 /** http(s) only, and only if it parses: this becomes a link somebody can click. */

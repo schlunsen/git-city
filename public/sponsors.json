@@ -15,6 +15,8 @@
     "       Order matters: the first entries get the boulevard, where the tour",
     "       and the drive-mode camera pass them. Six or so is the most that",
     "       reads as traffic rather than a motor show; eight is the cap.",
+    "plots: a hoarding on a plot out in the country, beside a road leaving",
+    "       town, painted in the sponsor's own colour. One per road, six max.",
     "plane: one big sponsor at a time. The prop plane that circles the city tows",
     "       their banner instead of the coffee one.",
     "",
@@ -25,8 +27,30 @@
   ],
   "island": "schlunsen",
   "cars": [
-    { "name": "YOUR BRAND", "color": "#e4574f", "ink": "#fff8e8" },
-    { "name": "HERE", "color": "#2f8f83", "ink": "#fdf6e3" }
+    {
+      "name": "YOUR BRAND",
+      "color": "#e4574f",
+      "ink": "#fff8e8"
+    },
+    {
+      "name": "HERE",
+      "color": "#2f8f83",
+      "ink": "#fdf6e3"
+    }
+  ],
+  "plots": [
+    {
+      "name": "YOUR BRAND HERE",
+      "tagline": "this plot is for rent",
+      "color": "#f2e3c4",
+      "ink": "#1a2233"
+    },
+    {
+      "name": "YOUR BRAND HERE",
+      "tagline": "this plot is for rent",
+      "color": "#dbe8e2",
+      "ink": "#1a2233"
+    }
   ],
   "plane": {
     "name": "Sponsor Gitilla",
