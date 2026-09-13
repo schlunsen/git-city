@@ -237,6 +237,19 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
         width:auto;margin-inline:calc(var(--gri-pad, 18px) * -1);
         border-inline:0;border-radius:0;
       }
+      /* A 16:9 picture across the full width of the sheet is taller than the
+         gap between the tabs and the footer, so the replay was arriving cut in
+         half. The sheet gives the replay more of the screen while it is the
+         thing on show, and the picture then takes the height that is actually
+         there rather than the height its ratio asks for -- Gource View
+         letterboxes itself, so a shorter box costs a band, not a crop. */
+      .gri-dialog[data-hud="true"][data-view="history"]{height:min(82dvh,760px);max-height:82dvh}
+      .gri-dialog[data-view="history"] .gri-content{display:flex;flex-direction:column;overflow:hidden}
+      .gri-dialog[data-view="history"] .gri-history{flex:1;min-height:0}
+      .gri-dialog[data-view="history"] .gri-screen{flex:1;min-height:130px;aspect-ratio:auto}
+      /* Two stacked full-width buttons under it is most of a phone screen spent
+         on ways to leave; side by side they cost one row. */
+      .gri-dialog[data-view="history"] .gri-footer{grid-template-columns:1fr 1fr}
     }
     /* On a phone the guide was the whole screen: 366x672 of a 390x844 display,
        with the tour card stacked on top of it, which measured out at 136% of
@@ -463,6 +476,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     dialog.querySelector('.gri-overview').hidden = view !== 'overview';
     dialog.querySelector('.gri-readme').hidden = view !== 'readme';
     dialog.querySelector('.gri-history').hidden = view !== 'history';
+    dialog.dataset.view = view; // the sheet lays itself out differently for the replay
     dialog.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
     dialog.querySelector('.gri-content').scrollTop = 0;
     if (view === 'readme' && !loaded) loadReadme();
