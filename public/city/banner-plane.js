@@ -1,21 +1,19 @@
 /*
  * Gitilla — the sponsor plane: like the banner planes over tourist beaches, a
  * little prop plane tows a banner that nudges visitors to support Gitilla on
- * Buy Me a Coffee. It flies across whatever the camera is looking at, then goes
- * away for a while and comes back the other way. Clicking
+ * Buy Me a Coffee. It flies across whatever the camera is looking at, then keeps
+ * circling the city. Clicking
  * the plane or its banner opens the Buy Me a Coffee widget (loaded by
  * index.html); without the widget, the page opens in a new tab.
  */
 import * as THREE from 'three';
-import { scene, camera, controls } from './scene.js';
+import { scene, camera, cityGroup } from './scene.js';
 import { toonMat, getOutlineMat, hullOf, noRaycast } from './toon.js';
 
 const SUPPORT_URL = 'https://buymeacoffee.com/schlunsen';
 const TEXT = 'Enjoying Gitilla?  Buy me a coffee ☕';
 // Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
-const CROSS = 22;                           // seconds to cross the view
-const REST_MIN = 16, REST_VAR = 18;         // seconds out of sight between passes
-const AHEAD = 72, HALF = 130;               // how far in front of the camera it crosses, and half the run
+const FLIGHT_SPEED = 11;                    // world units per second around the city
 const FIRST_WAIT = 6;                       // the first pass comes soon after the city is up
 const SCALE = 2.1;                          // the plane model is ~5 units long before scaling
 const BANNER_W = 22, BANNER_H = 2.9, SEGS = 28, GAP = 3.5; // banner size, cloth segments, tow-line length
@@ -42,11 +40,85 @@ function bannerTexture() {
   return t;
 }
 
+// Small painted details, drawn once: crisp enough for the close flypast without
+// adding geometry or competing with the banner at city scale.
+function planePaint(wing = false) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = wing ? '#f6f1e4' : '#64dedb';
+  ctx.fillRect(0, 0, 512, 512);
+  if (wing) {
+    // Box top UVs run along the span vertically: paired painted tip bands.
+    for (const y of [30, 450]) {
+      ctx.fillStyle = '#419f9e'; ctx.fillRect(0, y, 512, 26);
+      ctx.fillStyle = '#f2c14e'; ctx.fillRect(0, y + 29, 512, 7);
+    }
+    ctx.strokeStyle = 'rgba(47,53,66,0.16)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(105, 65); ctx.lineTo(105, 447);
+    for (let y = 90; y < 440; y += 55) {
+      ctx.moveTo(18, y); ctx.lineTo(494, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(47,53,66,0.23)';
+    for (let y = 80; y < 442; y += 22) {
+      ctx.beginPath(); ctx.arc(116, y, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  } else {
+    // Capsule UV v follows the fuselage; u wraps around it. Two lengthwise
+    // cream pinstripes give both sides a little vintage aircraft character.
+    for (const x of [112, 368]) {
+      ctx.fillStyle = '#f6f1e4'; ctx.fillRect(x, 0, 28, 512);
+      ctx.fillStyle = '#e8bd62'; ctx.fillRect(x + 30, 0, 6, 512);
+    }
+    ctx.fillStyle = 'rgba(47,53,66,0.12)';
+    for (const y of [125, 385]) ctx.fillRect(0, y, 512, 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function planeRelief(wing = false) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, 512, 512);
+  // Height is independent of paint: the decorative stripes stay smooth.
+  ctx.strokeStyle = '#747474'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  if (wing) {
+    ctx.moveTo(105, 65); ctx.lineTo(105, 447);
+    for (let y = 90; y < 440; y += 55) {
+      ctx.moveTo(18, y); ctx.lineTo(494, y);
+    }
+  } else {
+    for (const y of [125, 385]) {
+      ctx.moveTo(0, y); ctx.lineTo(512, y);
+    }
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#929292';
+  if (wing) {
+    for (let y = 80; y < 442; y += 22) {
+      ctx.beginPath(); ctx.arc(116, y, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.NoColorSpace; // height data, not sRGB paint
+  texture.anisotropy = 8;
+  return texture;
+}
+
 // A cartoon prop plane in the island's toon style. Local frame: +x is the nose, y up.
 function buildPlaneModel() {
   const g = new THREE.Group();
   const teal = toonMat({ color: 0x64dedb }), cream = toonMat({ color: 0xf6f1e4 }), dark = toonMat({ color: 0x2f3542 });
   const yellow = toonMat({ color: 0xf2c14e }), glass = toonMat({ color: 0x9ad3ea });
+  const bodyPaint = toonMat({ map: planePaint(), bumpMap: planeRelief(), bumpScale: 0.035 });
+  const wingPaint = toonMat({ map: planePaint(true), bumpMap: planeRelief(true), bumpScale: 0.025 });
+  const wingFaces = [cream, cream, wingPaint, wingPaint, cream, cream];
   const pickables = [];
   const add = (geo, mat, ink = 0.12) => {
     const m = new THREE.Mesh(geo, mat);
@@ -55,8 +127,8 @@ function buildPlaneModel() {
     if (ink) { const h = new THREE.Mesh(hullOf(geo, ink), getOutlineMat()); h.raycast = noRaycast; g.add(h); }
     return m;
   };
-  add(new THREE.CapsuleGeometry(0.55, 3.2, 6, 12).rotateZ(Math.PI / 2), teal, 0.14);                          // fuselage
-  add(new THREE.BoxGeometry(1.3, 0.12, 6.6).translate(0.35, 0.12, 0), cream, 0.12);                             // wing
+  add(new THREE.CapsuleGeometry(0.55, 3.2, 6, 12).rotateZ(Math.PI / 2), bodyPaint, 0.14);                     // fuselage
+  add(new THREE.BoxGeometry(1.3, 0.12, 6.6).translate(0.35, 0.12, 0), wingFaces, 0.12);                         // wing
   add(new THREE.BoxGeometry(0.8, 0.08, 2.5).translate(-2.05, 0.28, 0), cream, 0.1);                             // tailplane
   add(new THREE.BoxGeometry(0.9, 1.15, 0.1).translate(-2.15, 0.8, 0), teal, 0.1);                               // fin
   add(new THREE.CylinderGeometry(0.44, 0.52, 0.36, 14).rotateZ(Math.PI / 2).translate(2.08, 0, 0), yellow, 0.1); // cowling
@@ -84,13 +156,19 @@ export function buildBannerPlane() {
   const { group: plane, prop, pickables } = buildPlaneModel();
   const tex = bannerTexture();
   const mat = toonMat({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25 }); // readable at dusk too
-  const front = new THREE.Mesh(new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 1), mat);
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 6), mat);
   // A second face for the other side. Turning it round already reverses it for a
   // viewer over there, so its uvs stay as they are: mirroring them too would
   // flip the text back and it would read backwards from that side.
-  const backGeo = new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 1);
+  const backGeo = new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 6);
   const back = new THREE.Mesh(backGeo, mat);
   back.rotation.y = Math.PI;
+  for (const mesh of [front, back]) {
+    mesh.geometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
+    mesh.geometry.attributes.normal.setUsage(THREE.DynamicDrawUsage);
+    mesh.geometry.computeBoundingSphere();
+    mesh.geometry.boundingSphere.radius += 1; // include the cloth's animated edges for picking/culling
+  }
   const banner = new THREE.Group();
   banner.add(front, back);
   // The leading pole the banner hangs from (a weight at its foot keeps it upright) ...
@@ -105,78 +183,85 @@ export function buildBannerPlane() {
   rope.frustumCulled = false;
   rope.raycast = noRaycast;
   scene.add(plane, banner, rope);
-  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT, side: 1, cross: CROSS, from: new THREE.Vector3(), to: new THREE.Vector3() };
+  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT, radius: 110, altitude: 70, phase: 0, center: new THREE.Vector3() };
   updateBannerPlane(0, 0, false);
 }
 
 const _p = new THREE.Vector3(), _b = new THREE.Vector3(), _tail = new THREE.Vector3(), _lead = new THREE.Vector3(), _dir = new THREE.Vector3();
-const _f = new THREE.Vector3(), _side = new THREE.Vector3(), _mid = new THREE.Vector3(), _dirXZ = new THREE.Vector3();
+const _dirXZ = new THREE.Vector3();
 const _vf = new THREE.Vector3(), _vs = new THREE.Vector3(), _vc = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
-// Flutter: a travelling wave that grows toward the free end of the banner.
+// Wind travels from the fixed pole to the loose hem. Broad billows carry
+// smaller folds; the height variation keeps this from looking like a rigid
+// sheet waving as one. UVs supply rest coordinates, so deformation never drifts.
 function flutter(mesh, time, sign) {
   const pos = mesh.geometry.attributes.position;
+  const uv = mesh.geometry.attributes.uv;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), u = (BANNER_W / 2 - sign * x) / BANNER_W; // 0 at the rope end, 1 at the free end
-    pos.setZ(i, Math.sin(u * 9 - time * 7) * 0.45 * u * sign);
+    const v = uv.getY(i) - 0.5;
+    const loose = u * u;
+    const gust = 0.85 + 0.15 * Math.sin(time * 0.73);
+    const billow = Math.sin(u * 8.5 - time * 4.6 + v * 0.8) * 0.38 * u;
+    const fold = Math.sin(u * 19 - time * 7.1 - v * 2.4) * 0.085 * loose;
+    const curl = Math.sin(u * 12 - time * 5.3 + v * 4) * 0.10 * loose * (v * v * 4);
+    pos.setZ(i, (billow + fold + curl) * gust * sign);
+    pos.setY(i, v * BANNER_H - 0.16 * loose
+      + Math.sin(u * 9 - time * 4.6 + v) * 0.065 * loose);
   }
   pos.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
 }
 
-// A pass: a straight run across the view, planned from where the camera looks now.
+// Establish a city-centred circuit once, independent of the follow camera.
 function planPass() {
-  _f.set(controls.target.x - camera.position.x, 0, controls.target.z - camera.position.z);
-  if (_f.lengthSq() < 1e-4) _f.set(0, 0, -1);
-  _f.normalize();
-  _side.set(-_f.z, 0, _f.x).multiplyScalar(rig.side); // across the view, alternating each time
-  // Cross whatever you are looking at: usually straight over the city, sometimes just past it.
-  const reach = Math.hypot(controls.target.x - camera.position.x, controls.target.z - camera.position.z) || AHEAD;
-  const d = Math.min(180, Math.max(30, reach * (0.6 + Math.random() * 0.75)));
-  const y = Math.min(80, Math.max(44, camera.position.y * 0.42 + 10)); // over the rooftops, under the clouds
-  _mid.set(camera.position.x + _f.x * d, y, camera.position.z + _f.z * d);
-  rig.from.copy(_mid).addScaledVector(_side, -HALF);
-  rig.to.copy(_mid).addScaledVector(_side, HALF);
+  const bounds = new THREE.Box3().setFromObject(cityGroup);
+  if (!bounds.isEmpty()) {
+    bounds.getCenter(rig.center).setY(0);
+    rig.radius = Math.max(85, Math.hypot(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z) / 2 + 18);
+    rig.altitude = Math.max(60, bounds.max.y + 16);
+  }
+  rig.phase = Math.atan2(camera.position.z - rig.center.z, camera.position.x - rig.center.x);
   rig.start = now();
-  rig.cross = CROSS; // a click can lengthen this pass
   rig.flying = true;
-  rig.side = -rig.side;
+}
+
+function circuitPoint(angle, target) {
+  return target.set(rig.center.x + rig.radius * Math.cos(angle),
+    rig.altitude + 0.65 * Math.sin(angle * 2),
+    rig.center.z + rig.radius * Math.sin(angle));
 }
 
 export function updateBannerPlane(dt, elapsed, hidden) {
   if (!rig) return;
   if (hidden) { rig.plane.visible = rig.banner.visible = rig.rope.visible = false; return; }
-  if (!rig.flying) { // out of sight between passes
+  if (!rig.flying) { // wait only before the first arrival
     rig.plane.visible = rig.banner.visible = rig.rope.visible = false;
     if (now() < rig.next) return;
     planPass();
   }
-  const age = now() - rig.start, u = age / rig.cross;
-  if (u >= 1) { // gone by: rest, then come back the other way
-    rig.flying = false;
-    rig.next = now() + REST_MIN + Math.random() * REST_VAR;
-    rig.plane.visible = rig.banner.visible = rig.rope.visible = false;
-    return;
-  }
+  const age = now() - rig.start;
+  const angularSpeed = FLIGHT_SPEED / rig.radius;
+  const angle = rig.phase + age * angularSpeed;
   rig.plane.visible = rig.banner.visible = rig.rope.visible = true;
-  const bob = Math.sin(age * 0.7) * 0.9;
-  _p.lerpVectors(rig.from, rig.to, u);
-  _p.y += bob;
+  circuitPoint(angle, _p);
   rig.plane.position.copy(_p);
-  _dirXZ.subVectors(rig.to, rig.from).setY(0).normalize();
-  // Nose along the run. The model faces +x, and rotateY(a) sends +x to (cos a, 0, -sin a),
-  // so the heading (dx, dz) needs a = atan2(-dz, dx).
+  _dirXZ.set(-Math.sin(angle), 0, Math.cos(angle));
   const yaw = Math.atan2(-_dirXZ.z, _dirXZ.x);
+  const climbSpeed = 1.3 * angularSpeed * Math.cos(angle * 2);
   rig.plane.rotation.set(0, 0, 0);
   rig.plane.rotateY(yaw);
-  rig.plane.rotateZ(Math.sin(age * 0.5) * 0.05); // a lazy roll
+  rig.plane.rotateZ(Math.atan2(climbSpeed, FLIGHT_SPEED));
+  rig.plane.rotateX(Math.atan2(FLIGHT_SPEED * angularSpeed, 9.81));
   rig.prop.rotation.x += dt * 38;
-  // The banner trails a tow line behind the tail, along the run.
+  // The cloth follows an earlier point on the same circuit. Aim its leading
+  // pole toward the tail while keeping the lettering upright through turns.
   const lag = SCALE * 2.6 + GAP + BANNER_W / 2;
-  _b.copy(_p).addScaledVector(_dirXZ, -lag);
-  _b.y -= 2.2; // the tow line angles down to it
+  circuitPoint(angle - lag / rig.radius, _b);
+  _b.y -= 2.2;
   rig.banner.position.copy(_b);
-  rig.banner.rotation.set(0, yaw, 0);
+  _dir.subVectors(_p, _b);
+  rig.banner.rotation.set(0, Math.atan2(-_dir.z, _dir.x), 0);
   flutter(rig.front, age, 1);
   flutter(rig.back, age, -1);
   // The tow line: from the plane's tail to the middle of the banner's leading pole.
@@ -212,18 +297,36 @@ function supportCover() {
   const covered = Math.min(box.width, width - box.left) / width;
   return covered > 0.55 ? 0 : covered;
 }
-export function bannerPlaneView(eye, look) {
+export function bannerPlaneView(eye, look, watchTime = 0) {
   if (!rig || !rig.flying) return false;
   rig.banner.updateMatrixWorld();
   look.setFromMatrixPosition(rig.banner.matrixWorld);
   _vf.set(1, 0, 0).applyQuaternion(rig.banner.quaternion); // along the run
   _vs.set(-_vf.z, 0, _vf.x);
-  if (_vs.dot(_vc.subVectors(camera.position, look)) < 0) _vs.negate(); // stay on the side you are already on
+  // Watch from outside the circuit, looking inward over the banner toward
+  // the city. Camera position must not decide the side: that could leave the
+  // rising shot looking out to sea for the whole flight.
+  if (_vs.dot(_vc.subVectors(look, rig.center).setY(0)) < 0) _vs.negate();
   const cover = supportCover();
   // Stand off further as well, so the whole banner still fits across the
   // narrower strip of city the panel leaves behind.
-  eye.copy(look).addScaledVector(_vs, VIEW_SIDE * (1 + cover * 1.5)).addScaledVector(_vf, -VIEW_BACK);
-  eye.y = look.y + VIEW_UP;
+  // A small arc alongside the plane, eased in after the approach. Stay on
+  // this side of the banner so the lettering remains readable throughout.
+  const enter = Math.min(1, Math.max(0, watchTime / 3));
+  const ease = enter * enter * (3 - 2 * enter);
+  const arc = Math.sin(watchTime * 0.24) * 0.16 * ease;
+  const distance = VIEW_SIDE * (1 + cover * 1.5);
+  // First settle alongside, then climb over eight seconds to a three-quarter
+  // overhead view. Keep the viewing radius steady as the camera rises.
+  const climb = Math.min(1, Math.max(0, (watchTime - 3) / 8));
+  const climbEase = climb * climb * (3 - 2 * climb);
+  const elevation = climbEase * Math.PI / 5; // 36 degrees: wings visible, banner still readable
+  const horizontal = distance * Math.cos(elevation);
+  eye.copy(look)
+    .addScaledVector(_vs, horizontal * Math.cos(arc))
+    .addScaledVector(_vf, -VIEW_BACK + horizontal * Math.sin(arc));
+  eye.y = look.y + VIEW_UP + distance * Math.sin(elevation)
+    + Math.sin(watchTime * 0.31) * 0.8 * ease;
   if (cover > 0) {
     // Aim to the right of the banner by exactly the strip the panel covers, and
     // the plane rides in the middle of what the visitor can actually see.
@@ -235,11 +338,9 @@ export function bannerPlaneView(eye, look) {
   return true;
 }
 
-// Clicking the plane: leave enough of the pass to read the banner during the flight over.
-export function holdBannerPass(sec = 12) {
-  if (!rig || !rig.flying) return false;
-  rig.cross = Math.max(rig.cross, (now() - rig.start) + sec);
-  return true;
+// Kept for the shared follow-camera entry point: the circuit now runs indefinitely.
+export function holdBannerPass() {
+  return !!rig && rig.flying;
 }
 
 export function bannerPlaneFlying() { return !!rig && rig.flying; }

@@ -320,7 +320,7 @@ const _pcEye = new THREE.Vector3(), _pcLook = new THREE.Vector3();
 // Ride along with the plane, if there is a pass to ride. A click lengthens it.
 function startPlaneWatch() {
   if (explorer?.ownsCamera) return false;               // walk / drive / fly own the camera
-  if (!holdBannerPass(12)) return false;                // nothing overhead right now
+  if (!holdBannerPass(PLANE_WATCH_MAX + 1)) return false; // keep the full camera climb within the pass
   endTour();
   if (!planeCam) planeCam = { home: { position: camera.position.clone(), target: controls.target.clone(), autoRotate: controls.autoRotate }, t: 0, phase: 'watch' };
   controls.autoRotate = false;
@@ -367,7 +367,7 @@ function releasePlaneCam() {
 function updatePlaneCam(dt) {
   const pc = planeCam;
   pc.t += dt;
-  const live = bannerPlaneView(_pcEye, _pcLook);
+  const live = bannerPlaneView(_pcEye, _pcLook, pc.t);
   if (pc.phase === 'watch' && (!live || pc.t > PLANE_WATCH_MAX)) { // the pass is over: drift home
     pc.phase = 'back';
     pc.t = 0;
@@ -381,7 +381,7 @@ function updatePlaneCam(dt) {
     if (u >= 1) releasePlaneCam();
     return true;
   }
-  const k = 1 - Math.exp(-dt * (pc.t < 1.2 ? 2.8 : 6)); // swing in, then hold station beside it
+  const k = 1 - Math.exp(-dt * (pc.t < 1.2 ? 2.8 : 6)); // swing in, then follow the gently drifting viewpoint
   camera.position.lerp(_pcEye, k);
   controls.target.lerp(_pcLook, k);
   return true;
