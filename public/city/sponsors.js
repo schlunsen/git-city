@@ -62,9 +62,26 @@ export function sponsorsFor(login) {
     .slice(0, 6); // one per road out of town, and there are not many roads
   const p = data.plane;
   const plane = p && clean(p.name, 28)
-    ? { name: clean(p.name, 28), text: clean(p.text, 64) || `${clean(p.name, 28)} supports Gitilla`, url: httpUrl(p.url) }
+    ? { name: clean(p.name, 28), text: clean(p.text, 64) || `${clean(p.name, 28)} supports Gitilla`,
+        url: httpUrl(p.url), logo: localLogo(p.logo) }
     : null;
   return cars.length || plots.length || plane ? { cars, plots, plane } : null;
+}
+
+/**
+ * A sponsor's logo, as a path to a file in this repository. Deliberately not a
+ * URL: an image from the sponsor's own domain would be blocked by the page's
+ * content-security-policy, would taint the canvas it is drawn on (which breaks
+ * the WebGL texture outright), and would put their uptime in front of ours. So
+ * the artwork is vendored under public/sponsors/ and reviewed like any other
+ * file. Anything with a scheme, a protocol-relative start, a parent segment or
+ * a leading slash is refused.
+ */
+function localLogo(v) {
+  const s = clean(v, 120);
+  if (!s || !s.startsWith('sponsors/')) return null;
+  if (/[:\\]|\/\/|\.\./.test(s)) return null;
+  return /\.(png|jpe?g|webp|svg)$/i.test(s) ? `./${s}` : null;
 }
 
 /** http(s) only, and only if it parses: this becomes a link somebody can click. */

@@ -23,26 +23,28 @@
     "name:  what goes on the door / the banner. Short is better -- a long name is",
     "       shrunk to fit and stops being readable from the road.",
     "color: the car's paintwork (hex). ink: the lettering on it.",
-    "url:   optional. Clicking the plane's banner opens it."
+    "url:   optional. Clicking the plane's banner opens it.",
+    "logo:  a file in this repo under public/sponsors/ -- vendored, not hotlinked,",
+    "       so the page's CSP allows it and the canvas stays untainted."
   ],
   "island": "schlunsen",
   "cars": [
     {
+      "name": "n0_",
+      "color": "#1a2233",
+      "ink": "#fafaf7"
+    },
+    {
       "name": "YOUR BRAND",
       "color": "#e4574f",
       "ink": "#fff8e8"
-    },
-    {
-      "name": "HERE",
-      "color": "#2f8f83",
-      "ink": "#fdf6e3"
     }
   ],
   "plots": [
     {
-      "name": "YOUR BRAND HERE",
-      "tagline": "this plot is for rent",
-      "color": "#f2e3c4",
+      "name": "n0_",
+      "tagline": "the AI workspace built for every team",
+      "color": "#fafaf7",
       "ink": "#1a2233"
     },
     {
@@ -53,8 +55,9 @@
     }
   ],
   "plane": {
-    "name": "Sponsor Gitilla",
-    "text": "This banner is for sale  ✈  sponsor Gitilla",
-    "url": "https://github.com/schlunsen/git-city#sponsors"
+    "name": "n0_",
+    "text": "n0_  ·  nzero.pro",
+    "url": "https://nzero.pro",
+    "logo": "sponsors/nzero-icon.png"
   }
 }

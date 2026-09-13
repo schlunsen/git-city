@@ -326,10 +326,13 @@ function onPointerMove(e) {
 function doHover(cx, cy) {
   raycaster.setFromCamera(pointerNDC, camera);
   const tip = document.getElementById('tooltip');
-  if (bannerPlaneHit(raycaster)) { // the sponsor plane and its banner
+  const planeHit = bannerPlaneHit(raycaster); // the house plane, or a sponsor's
+  if (planeHit) {
     if (hovered !== 'plane') {
       hovered = 'plane';
-      tip.textContent = '\u2615 Enjoying Gitilla? Click to fly alongside';
+      tip.textContent = planeHit.house
+        ? '\u2615 Enjoying Gitilla? Click to fly alongside'
+        : 'Sponsor \u00b7 click to open in a new tab';
       tip.classList.add('show');
       document.body.style.cursor = 'pointer';
     }
@@ -470,7 +473,14 @@ function onPointerUp(e) {
   pointerNDC.x = (e.clientX / window.innerWidth) * 2 - 1;
   pointerNDC.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointerNDC, camera);
-  if (bannerPlaneHit(raycaster)) { watchPlane(); return; } // the sponsor plane: fly alongside, then the coffee
+  // A sponsor's aircraft is a link: it opens their site and the camera stays
+  // where it is. The house one is an invitation: it flies you alongside.
+  const clickedPlane = bannerPlaneHit(raycaster);
+  if (clickedPlane) {
+    if (clickedPlane.house) watchPlane();
+    else openSupport(clickedPlane.link);
+    return;
+  }
   const bodies = buildingMeshes.flatMap(b => b.bodies);
   const hits = raycaster.intersectObjects(bodies, false);
   if (hits.length > 0) visitRepo(hits[0].object.userData.building, { x: e.clientX, y: e.clientY });

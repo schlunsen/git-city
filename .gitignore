@@ -4,4 +4,6 @@ node_modules/
 scripts/assets/raw/
 
 # Written at deploy time so the live site can be matched to a commit.
-public/.deployed-stamp
+# Not a dotfile: the server does not serve those, so it 404'd and the check
+# that is supposed to confirm a deploy silently confirmed nothing.
+public/deployed.txt

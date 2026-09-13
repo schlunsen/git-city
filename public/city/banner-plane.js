@@ -14,61 +14,90 @@ import { sponsorsFor } from './sponsors.js';
 
 const SUPPORT_URL = 'https://buymeacoffee.com/schlunsen';
 const TEXT = 'Enjoying Gitilla?  Buy me a coffee ☕';
-// A headline sponsor takes the banner on their island, and the plane becomes
-// theirs: the coffee line is the house ad that runs when nobody has bought it.
+// A headline sponsor gets an aircraft of their own on their island. The coffee
+// plane keeps flying either way -- it is the house ad, not a placeholder, and
+// replacing it was the wrong shape: a sponsor buys space, not the only banner.
 // Set by app.js as each city is built, and cleared for every other developer.
 let sponsor = null;
 export function setPlaneSponsor(login) {
   const next = sponsorsFor(login)?.plane || null;
-  if ((next?.text || '') === (sponsor?.text || '')) return;
+  if ((next?.text || '') === (sponsor?.text || '') && (next?.logo || '') === (sponsor?.logo || '')) return;
   sponsor = next;
-  // The banner is two cloth meshes -- front and back -- not one mesh, so repaint
-  // both. Their materials may be the same object or two; dispose each old map
-  // once, and never the new one.
-  if (rig) {
-    const tex = bannerTexture();
-    const done = new Set();
-    for (const face of [rig.front, rig.back]) {
-      const mat = face?.material;
-      if (!mat || done.has(mat)) continue;
-      done.add(mat);
-      const old = mat.map;
-      mat.map = tex;
-      mat.needsUpdate = true;
-      if (old && old !== tex) old.dispose();
-    }
-  }
+  for (let i = rigs.length - 1; i >= 1; i--) { disposeRig(rigs[i]); rigs.splice(i, 1); } // retire the last sponsor's
+  if (!sponsor || !houseRig()) return;
+  const r = makeRig(sponsor.text, sponsor.logo, sponsor.url || SUPPORT_URL);
+  r.lap = Math.PI; // half a lap behind the house plane
+  r.lift = 26;     // ...and well above it
+  r.next = now() + 2;
+  rigs.push(r);
 }
-const bannerText = () => sponsor?.text || TEXT;
-/** What the banner currently says. For the debug handle and for tests. */
-export function bannerNow() { return bannerText(); }
-const bannerLink = () => sponsor?.url || SUPPORT_URL;
+function disposeRig(r) {
+  if (!r) return;
+  scene.remove(r.plane, r.banner, r.rope);
+  for (const face of [r.front, r.back]) face.geometry.dispose();
+  const m = r.front.material;
+  m.map?.dispose(); m.dispose();
+}
+/** What the sponsor's banner says, or the house one if there is no sponsor. For the debug handle. */
+export function bannerNow() { return sponsor?.text || TEXT; }
 // Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
 const FLIGHT_SPEED = 11;                    // world units per second around the city
 const FIRST_WAIT = 6;                       // the first pass comes soon after the city is up
 const SCALE = 2.1;                          // the plane model is ~5 units long before scaling
 const BANNER_W = 22, BANNER_H = 2.9, SEGS = 28, GAP = 3.5; // banner size, cloth segments, tow-line length
 
-let rig = null; // { plane, prop, banner, front, back, rope, pickables, start, next, flying }
+// Two planes: the house one carrying the coffee ad, and -- on an island with a
+// headline sponsor -- a second carrying theirs. They fly the same circuit half
+// a lap apart, the sponsor's the higher of the two, so they are never on screen
+// as a pair and never share the same air. rigs[0] is always the house plane:
+// it is the one the support flow rides.
+const rigs = [];
+const houseRig = () => rigs[0] || null;
 const now = () => performance.now() / 1000;
 
-function bannerTexture() {
-  const c = document.createElement('canvas');
-  c.width = 1536; c.height = 202;
+// The cloth: bunting edges, the message, and -- for a sponsor who has one --
+// their own mark at the hoist end. The logo is a file in this repository, so it
+// is same-origin and does not taint the canvas; a remote one would break the
+// texture outright. It loads after the banner is already flying, so the cloth
+// is painted once without it and repainted when the image arrives.
+function paintBanner(c, text, logoImg) {
   const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
   g.fillStyle = '#fdf6e3'; g.fillRect(0, 0, c.width, c.height);
   g.lineWidth = 14; g.strokeStyle = '#1a2233'; g.strokeRect(7, 7, c.width - 14, c.height - 14);
   g.fillStyle = '#e4574f'; g.fillRect(16, 16, 20, c.height - 32); g.fillRect(c.width - 36, 16, 20, c.height - 32);
+  let left = 60, right = c.width - 60;
+  if (logoImg) {
+    // Square, inset from the bunting, with the text taking what is left.
+    const box = c.height - 56, x = 56;
+    g.save();
+    g.beginPath(); g.roundRect(x, 28, box, box, 22); g.clip();
+    g.drawImage(logoImg, x, 28, box, box);
+    g.restore();
+    g.lineWidth = 5; g.strokeStyle = '#1a2233';
+    g.beginPath(); g.roundRect(x, 28, box, box, 22); g.stroke();
+    left = x + box + 34;
+  }
   g.fillStyle = '#1a2233'; g.textAlign = 'center'; g.textBaseline = 'middle';
   let px = 112;
   const font = () => `800 ${px}px ui-rounded, "Nunito", "Trebuchet MS", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
-  const text = bannerText();
+  const room = right - left;
   g.font = font();
-  while (g.measureText(text).width > c.width - 130 && px > 40) { px -= 4; g.font = font(); }
-  g.fillText(text, c.width / 2, c.height / 2 + 6);
+  while (g.measureText(text).width > room && px > 30) { px -= 4; g.font = font(); }
+  g.fillText(text, (left + right) / 2, c.height / 2 + 6);
+}
+function bannerTexture(text, logoSrc) {
+  const c = document.createElement('canvas');
+  c.width = 1536; c.height = 202;
+  paintBanner(c, text, null);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
+  if (logoSrc) {
+    const img = new Image();
+    img.onload = () => { paintBanner(c, text, img); t.needsUpdate = true; };
+    img.src = logoSrc; // same-origin: no crossOrigin dance, and the canvas stays clean
+  }
   return t;
 }
 
@@ -183,10 +212,10 @@ function buildPlaneModel() {
   return { group: g, prop, pickables };
 }
 
-export function buildBannerPlane() {
-  if (rig) return;
+/** One aircraft with its own banner: the cloth, the pole, the tow line. */
+function makeRig(text, logo, link) {
   const { group: plane, prop, pickables } = buildPlaneModel();
-  const tex = bannerTexture();
+  const tex = bannerTexture(text, logo);
   const mat = toonMat({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25 }); // readable at dusk too
   const front = new THREE.Mesh(new THREE.PlaneGeometry(BANNER_W, BANNER_H, SEGS, 6), mat);
   // A second face for the other side. Turning it round already reverses it for a
@@ -215,7 +244,16 @@ export function buildBannerPlane() {
   rope.frustumCulled = false;
   rope.raycast = noRaycast;
   scene.add(plane, banner, rope);
-  rig = { plane, prop, banner, front, back, rope, pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT, radius: 110, altitude: 70, phase: 0, center: new THREE.Vector3() };
+  return { plane, prop, banner, front, back, rope, link, house: false, lap: 0, lift: 0,
+    pickables: [...pickables, front, back], start: 0, flying: false, next: now() + FIRST_WAIT,
+    radius: 110, altitude: 70, phase: 0, center: new THREE.Vector3() };
+}
+
+export function buildBannerPlane() {
+  if (rigs.length) return;
+  const house = makeRig(TEXT, null, SUPPORT_URL);
+  house.house = true; // the one the support flow rides, and the only one that is not a link
+  rigs.push(house); // always flying, sponsor or no sponsor
   updateBannerPlane(0, 0, false);
 }
 
@@ -246,37 +284,40 @@ function flutter(mesh, time, sign) {
 }
 
 // Establish a city-centred circuit once, independent of the follow camera.
-function planPass() {
+function planPass(rig) {
   const bounds = new THREE.Box3().setFromObject(cityGroup);
   if (!bounds.isEmpty()) {
     bounds.getCenter(rig.center).setY(0);
     rig.radius = Math.max(85, Math.hypot(bounds.max.x - bounds.min.x, bounds.max.z - bounds.min.z) / 2 + 18);
-    rig.altitude = Math.max(60, bounds.max.y + 16);
+    rig.altitude = Math.max(60, bounds.max.y + 16) + rig.lift;
   }
-  rig.phase = Math.atan2(camera.position.z - rig.center.z, camera.position.x - rig.center.x);
+  rig.phase = Math.atan2(camera.position.z - rig.center.z, camera.position.x - rig.center.x) + rig.lap;
   rig.start = now();
   rig.flying = true;
 }
 
-function circuitPoint(angle, target) {
+function circuitPoint(rig, angle, target) {
   return target.set(rig.center.x + rig.radius * Math.cos(angle),
     rig.altitude + 0.65 * Math.sin(angle * 2),
     rig.center.z + rig.radius * Math.sin(angle));
 }
 
 export function updateBannerPlane(dt, elapsed, hidden) {
+  for (const r of rigs) stepRig(r, dt, hidden);
+}
+function stepRig(rig, dt, hidden) {
   if (!rig) return;
   if (hidden) { rig.plane.visible = rig.banner.visible = rig.rope.visible = false; return; }
   if (!rig.flying) { // wait only before the first arrival
     rig.plane.visible = rig.banner.visible = rig.rope.visible = false;
     if (now() < rig.next) return;
-    planPass();
+    planPass(rig);
   }
   const age = now() - rig.start;
   const angularSpeed = FLIGHT_SPEED / rig.radius;
   const angle = rig.phase + age * angularSpeed;
   rig.plane.visible = rig.banner.visible = rig.rope.visible = true;
-  circuitPoint(angle, _p);
+  circuitPoint(rig, angle, _p);
   rig.plane.position.copy(_p);
   _dirXZ.set(-Math.sin(angle), 0, Math.cos(angle));
   const yaw = Math.atan2(-_dirXZ.z, _dirXZ.x);
@@ -289,7 +330,7 @@ export function updateBannerPlane(dt, elapsed, hidden) {
   // The cloth follows an earlier point on the same circuit. Aim its leading
   // pole toward the tail while keeping the lettering upright through turns.
   const lag = SCALE * 2.6 + GAP + BANNER_W / 2;
-  circuitPoint(angle - lag / rig.radius, _b);
+  circuitPoint(rig, angle - lag / rig.radius, _b);
   _b.y -= 2.2;
   rig.banner.position.copy(_b);
   _dir.subVectors(_p, _b);
@@ -308,9 +349,16 @@ export function updateBannerPlane(dt, elapsed, hidden) {
   rig.rope.scale.set(1, len, 1);
 }
 
-// Is the pointer ray on the plane or its banner?
+/**
+ * Which aircraft the pointer ray is on, if any. Returns the rig so the caller
+ * can open the right link -- the house plane goes to the coffee page, a
+ * sponsor's to the sponsor.
+ */
 export function bannerPlaneHit(raycaster) {
-  return !!rig && rig.plane.visible && raycaster.intersectObjects(rig.pickables, false).length > 0;
+  for (const r of rigs) {
+    if (r.plane.visible && raycaster.intersectObjects(r.pickables, false).length > 0) return r;
+  }
+  return null;
 }
 
 // Where to put the camera to read the banner: off to one side of it, a little above.
@@ -330,6 +378,7 @@ function supportCover() {
   return covered > 0.55 ? 0 : covered;
 }
 export function bannerPlaneView(eye, look, watchTime = 0) {
+  const rig = houseRig(); // the support flypast always rides the house plane
   if (!rig || !rig.flying) return false;
   rig.banner.updateMatrixWorld();
   look.setFromMatrixPosition(rig.banner.matrixWorld);
@@ -372,13 +421,15 @@ export function bannerPlaneView(eye, look, watchTime = 0) {
 
 // Kept for the shared follow-camera entry point: the circuit now runs indefinitely.
 export function holdBannerPass() {
+  const rig = houseRig();
   return !!rig && rig.flying;
 }
 
-export function bannerPlaneFlying() { return !!rig && rig.flying; }
+export function bannerPlaneFlying() { const r = houseRig(); return !!r && r.flying; }
 
 // Bring the plane round now instead of waiting out its rest (the coffee button asks for this).
 export function summonBannerPlane() {
+  const rig = houseRig();
   if (!rig || rig.flying) return false;
   rig.next = now();
   return true;
@@ -387,9 +438,10 @@ export function summonBannerPlane() {
 // Clicking the plane or its banner. A sponsor's banner goes to the sponsor, if
 // they gave a link; otherwise the Buy Me a Coffee widget (index.html loads it),
 // and its own page if the widget is unavailable.
-export function openSupport() {
-  const href = bannerLink();
-  if (href !== SUPPORT_URL) { window.open(href, '_blank', 'noopener'); return; }
+export function openSupport(href = SUPPORT_URL) {
+  // A sponsor's aircraft goes to the sponsor, in a new tab; the house one opens
+  // the coffee widget the page already loads, and its own page if that is gone.
+  if (href && href !== SUPPORT_URL) { window.open(href, '_blank', 'noopener'); return; }
   const btn = document.getElementById('bmc-wbtn');
   if (btn) { btn.click(); return; }
   window.open(SUPPORT_URL, '_blank', 'noopener');
