@@ -57,11 +57,12 @@ export function injectStyle() {
 
 // Full-screen travel warp (see postRender): radial zoom blur toward the vanishing
 // point with a chromatic stretch, speed streaks racing outward, a teal tint, and an
-// inked cloud iris that opens into a bright whiteout. uReduced: a plain crossfade.
+// layered cloud sky that covers the city during loading. uReduced: a plain crossfade.
 export const WARP_FRAG = /* glsl */ `
 uniform sampler2D tMap;
 uniform float uAmt, uWhite, uTime, uReduced;
 uniform float uOpening;
+uniform float uDay;
 uniform vec2 uRes;
 varying vec2 vUv;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -88,19 +89,40 @@ void main() {
     col = acc / 12.0;
     float ang = atan(d.y, d.x), lane = floor(ang * 40.0), h = hash(vec2(lane, 7.0));
     float dash = smoothstep(0.6, 1.0, fract(r * (1.4 + h * 2.2) - uTime * (1.6 + h * 2.6) + h * 9.0));
-    col += vec3(0.86, 1.0, 1.0) * step(0.7, h) * dash * smoothstep(0.12, 0.75, r) * uAmt;
-    col = mix(col, col * vec3(0.55, 1.0, 0.98) + vec3(0.03, 0.14, 0.14), uAmt * (0.3 + 0.45 * smoothstep(0.1, 0.85, r)));
+    col += mix(vec3(0.20, 0.32, 0.52), vec3(0.86, 1.0, 1.0), uDay) * step(0.7, h) * dash * smoothstep(0.12, 0.75, r) * uAmt;
+    col = mix(col, col * vec3(0.55, 1.0, 0.98) + mix(vec3(0.008, 0.018, 0.04), vec3(0.03, 0.14, 0.14), uDay), uAmt * (0.3 + 0.45 * smoothstep(0.1, 0.85, r)));
   }
-  float cloud = fbm(q * 3.2 + vec2(uTime * 0.25, -uTime * 0.18));
-  vec3 sky = mix(vec3(0.6, 0.92, 0.9), vec3(1.0), smoothstep(0.35, 0.72, cloud));
+  // Fly between two cloud banks, with blue atmosphere visible between them.
+  // Different scales and drift speeds give the foreground and distance depth.
+  float skyTime = uReduced > 0.5 ? 0.0 : uTime;
+  vec2 drift = vec2(skyTime * 0.045, -skyTime * 0.018);
+  float cloud = fbm(q * 3.2 + drift);
+  float nearCloud = fbm(q * 5.0 + vec2(-skyTime * 0.085, skyTime * 0.03) + cloud * 0.65);
+  float horizon = exp(-abs(vUv.y - 0.48) * 4.5);
+  vec3 zenith = mix(vec3(0.012, 0.022, 0.065), vec3(0.16, 0.40, 0.66), uDay);
+  vec3 horizonColor = mix(vec3(0.055, 0.085, 0.16), vec3(0.65, 0.84, 0.91), uDay);
+  vec3 sky = mix(zenith, horizonColor, horizon);
+  float bank = smoothstep(0.06, 0.44, abs(d.y));
+  float distant = smoothstep(0.43, 0.7, cloud + bank * 0.16);
+  sky = mix(sky, mix(vec3(0.09, 0.12, 0.21), vec3(0.80, 0.89, 0.94), uDay), distant * 0.8);
+  float density = smoothstep(0.46, 0.7, nearCloud + bank * 0.22);
+  float light = smoothstep(0.4, 0.72, nearCloud + d.y * 0.16);
+  vec3 cloudShadow = mix(vec3(0.025, 0.04, 0.09), vec3(0.40, 0.59, 0.74), uDay);
+  vec3 cloudLight = mix(vec3(0.16, 0.20, 0.31), vec3(1.0, 0.97, 0.88), uDay);
+  vec3 cloudColor = mix(cloudShadow, cloudLight, light);
+  sky = mix(sky, cloudColor, density);
+  // A broad warm glow on the horizon gives the clouds a light direction.
+  float sunlight = exp(-length((q - vec2(0.32, 0.13)) * vec2(1.0, 1.5)) * 4.0);
+  sky += mix(vec3(0.015, 0.025, 0.055), vec3(0.18, 0.12, 0.045), uDay) * sunlight * (1.0 - density * 0.65);
   if (uReduced > 0.5) {
     col = mix(col, sky, uWhite);
   } else {
-    float edge = uWhite * 1.35 - 0.1 - r + (cloud - 0.5) * 0.28;
-    float m = smoothstep(0.0, 0.06, edge) * smoothstep(0.0, 0.05, uWhite);
-    float rim = (smoothstep(-0.03, 0.0, edge) - smoothstep(0.0, 0.03, edge)) * step(uWhite, 0.985) * smoothstep(0.0, 0.05, uWhite);
+    // Reach every corner even on ultrawide screens; the old fixed radius
+    // could expose the island swap at the sides while loading.
+    float coverRadius = length(asp * 0.5) + 0.3;
+    float edge = uWhite * coverRadius - 0.1 - r + (cloud - 0.5) * 0.2;
+    float m = smoothstep(-0.04, 0.08, edge) * smoothstep(0.0, 0.05, uWhite);
     col = mix(col, sky, m);
-    col = mix(col, vec3(0.04, 0.05, 0.09), rim * 0.85); // inked cloud edge, like the city's outlines
   }
   // First arrival echoes the README HUD: a hot horizontal line opens into
   // an iris. Sample the city at its real proportions behind the light veil.

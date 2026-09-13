@@ -1117,10 +1117,10 @@ export function createExplorer(THREE, deps = {}) {
   const EDGE_R = 320;                                        // world.gateFor's travel radius
   const getWorld = () => { try { return deps.world?.() || null; } catch { return null; } };
   let trip = null;                                           // { gate, phase: 'cover' | 'load' | 'reveal', t0 }
-  let cityRevealAt = null;
+  let cityReveal = null;
   function revealCity() {
     // Island hops already have their own cover/load/reveal lifecycle.
-    if (!trip) cityRevealAt = performance.now();
+    if (!trip) cityReveal = { elapsed: 0, lastFrame: null };
   }
   let edgeHint = null;                                       // login shown in the "keep flying" hint
   const guard = { armed: true, t: 0, x0: 0, z0: 0 };         // no instant hop right after arriving
@@ -1143,8 +1143,8 @@ export function createExplorer(THREE, deps = {}) {
   function armGuard() { Object.assign(guard, { armed: false, t: 0, x0: plane.p.x, z0: plane.p.z }); }
   function startTravel(gate, source = 'edge') { // source: 'edge' | 'next' | 'ui'
     if (trip || typeof deps.travel !== 'function' || !gate?.login) return;
-    cityRevealAt = null;
-    trip = { gate, mode, source, phase: 'cover', t0: performance.now() }; // travel in the current mode
+    cityReveal = null;
+    trip = { gate, mode, source, phase: 'cover', t0: performance.now(), skyDay: deps.dayFactor?.() ?? 1 }; // travel in the current mode
     warpTitle.textContent = `✈ @${gate.login}’s island`;
     warpSub.textContent = gate.via ? `next island · ${gate.via}` : 'next island';
     warpAv.style.visibility = '';
@@ -1204,9 +1204,13 @@ export function createExplorer(THREE, deps = {}) {
   function warpLevels(now) {
     if (warpOverride) return warpOverride;
     if (!trip) {
-      if (cityRevealAt === null) return null;
-      const levels = cityArrivalLevels(now - cityRevealAt, !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-      if (!levels) cityRevealAt = null;
+      if (!cityReveal) return null;
+      // Shader compilation can stall the first frame. Advance on rendered
+      // frames so the reveal isn't consumed while the GPU prepares the city.
+      if (cityReveal.lastFrame !== null) cityReveal.elapsed += Math.min(50, Math.max(0, now - cityReveal.lastFrame));
+      cityReveal.lastFrame = now;
+      const levels = cityArrivalLevels(cityReveal.elapsed, !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+      if (!levels) cityReveal = null;
       return levels;
     }
     const ss = THREE.MathUtils.smoothstep;
@@ -1220,7 +1224,7 @@ export function createExplorer(THREE, deps = {}) {
     if (warpFx) return warpFx;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     const mat = new THREE.ShaderMaterial({
-      uniforms: { tMap: { value: null }, uAmt: { value: 0 }, uWhite: { value: 0 }, uOpening: { value: 1 }, uTime: { value: 0 }, uRes: { value: size.clone() }, uReduced: { value: reducedMotion ? 1 : 0 } },
+      uniforms: { tMap: { value: null }, uAmt: { value: 0 }, uWhite: { value: 0 }, uOpening: { value: 1 }, uDay: { value: 1 }, uTime: { value: 0 }, uRes: { value: size.clone() }, uReduced: { value: reducedMotion ? 1 : 0 } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: WARP_FRAG, depthTest: false, depthWrite: false,
     });
@@ -1248,6 +1252,13 @@ export function createExplorer(THREE, deps = {}) {
     const u = fx.mat.uniforms;
     u.tMap.value = fx.tex; u.uAmt.value = lv.amt; u.uWhite.value = lv.white; u.uTime.value = performance.now() / 1000; u.uRes.value.copy(fx.size);
     u.uOpening.value = lv.opening ?? 1;
+    // Hold the departure lighting until the destination is built, then fade
+    // toward its actual day/night factor as the clouds part. This also follows
+    // automatic time, sunset and the day/night cycle, not just a night toggle.
+    const destinationDay = THREE.MathUtils.clamp(deps.dayFactor?.() ?? 1, 0, 1);
+    const skyBlend = trip?.phase === 'reveal'
+      ? THREE.MathUtils.smoothstep((performance.now() - trip.t0) / REVEAL_MS, 0, 0.55) : 0;
+    u.uDay.value = trip ? THREE.MathUtils.lerp(trip.skyDay, destinationDay, skyBlend) : destinationDay;
     u.uReduced.value = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : 0;
     const auto = renderer.autoClear;
     renderer.autoClear = false;
@@ -1521,7 +1532,7 @@ export function createExplorer(THREE, deps = {}) {
       fly(x, y, z, yaw = 0, arm = true) { if (sim === 'fly') { plane.p.set(x, y, z); plane.yaw = yaw; plane.pitch = plane.roll = 0; if (arm) guard.armed = true; } },
       trip: () => (trip ? { login: trip.gate.login, phase: trip.phase, mode: trip.mode } : null),
       armed: () => guard.armed,
-      warp(levels) { warpOverride = levels ? { amt: +levels.amt || 0, white: +levels.white || 0 } : null; },
+      warp(levels) { warpOverride = levels ? { amt: +levels.amt || 0, white: +levels.white || 0, opening: levels.opening ?? 1 } : null; },
     },
     get state() { return { mode, sim, car: { x: car.p.x, y: car.y, z: car.p.z, speed: car.vf, pitch: car.pitch, roll: car.roll }, plane: { ...plane.p, speed: plane.speed, roll: plane.roll, pitch: plane.pitch }, walker: { ...walker.p } }; },
   };
