@@ -698,15 +698,79 @@ export function createExplorer(THREE, deps = {}) {
   // one the ambient traffic uses. layoutBoulevard indexes the contour by bearing,
   // so "further along" is simply a larger angle about the centre.
   let autopilot = null;
+  const _cityEye = new THREE.Vector3();
+  // Driving stops at each repository the way a visitor would: pull up, press E,
+  // read, move on. The guide freezes the simulation for us while it is open
+  // (see update), so "parked" needs no braking logic of its own.
+  const autoCar = { seen: new Set(), stuck: 0, cruise: 0 };
+  // The next repository worth pulling over for: nearest unvisited building
+  // within sight of the lane. Once they have all been seen the list resets, so
+  // a long-running embed drives the circuit again rather than stopping stopping.
+  // The next repository to visit: nearest unvisited building. Once they have all
+  // been seen the list resets, so a long-running embed tours the city again
+  // rather than driving in circles with nowhere to go.
+  function nextStop() {
+    let best = null, bestD = Infinity;
+    const list = deps.buildings?.() || [];
+    for (const b of list) {
+      const name = b.repo?.full_name; if (!name || autoCar.seen.has(name)) continue;
+      const dx = b.mesh.position.x - car.p.x, dz = b.mesh.position.z - car.p.z;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    if (!best && autoCar.seen.size && list.length) { autoCar.seen.clear(); return nextStop(); }
+    return best;
+  }
+  // Steer for a point: the car's heading convention is fx = cos(yaw),
+  // fz = -sin(yaw), and positive steer turns yaw negative -- hence both minuses.
+  function steerFor(x, z) {
+    return clamp(-wrapAngle(Math.atan2(-(z - car.p.z), x - car.p.x) - car.yaw) * AUTO.CAR_GAIN, -1, 1);
+  }
+  // She drives in off the boulevard to each repository in turn, pulls up at it,
+  // opens its guide the way pressing E would, and moves on. The buildings sit
+  // well inside the ring, so following the ring alone never got near one.
   function autoDrive(dt) {
-    const r = Math.hypot(car.p.x, car.p.z) || 1;
-    const a = Math.atan2(car.p.z, car.p.x) + AUTO.CAR_LOOK;
-    const aim = layoutBoulevard(Math.cos(a) * r, Math.sin(a) * r);
-    if (!aim) return NEUTRAL; // no layout yet: coast rather than steer at nothing
-    // The car's heading convention is fx = cos(yaw), fz = -sin(yaw), and positive
-    // steer turns yaw negative -- hence both minus signs.
-    const err = wrapAngle(Math.atan2(-(aim.z - car.p.z), aim.x - car.p.x) - car.yaw);
-    return { ...NEUTRAL, thr: car.vf < AUTO.CAR_SPEED ? 1 : 0, steer: clamp(-err * AUTO.CAR_GAIN, -1, 1) };
+    // The guide is on air: the sim is already frozen, so there is nothing to drive.
+    if (repoInspector.open) { autoCar.stuck = 0; return NEUTRAL; }
+    autoCar.cruise = Math.max(0, autoCar.cruise - dt);
+    // Just pulled away from a repository: take the long way round for a few
+    // seconds before heading for the next one. Cutting straight from building
+    // to building made it a shuttle run; this makes it a drive.
+    const stop = autoCar.cruise ? null : nextStop();
+    if (!stop) { // cruising, or no buildings yet: keep to the boulevard
+      const r = Math.hypot(car.p.x, car.p.z) || 1;
+      const a = Math.atan2(car.p.z, car.p.x) + AUTO.CAR_LOOK;
+      const aim = layoutBoulevard(Math.cos(a) * r, Math.sin(a) * r);
+      if (!aim) return NEUTRAL;
+      return { ...NEUTRAL, thr: car.vf < AUTO.CAR_SPEED ? 1 : 0, steer: steerFor(aim.x, aim.z) };
+    }
+    const tx = stop.mesh.position.x, tz = stop.mesh.position.z;
+    const dist = Math.hypot(tx - car.p.x, tz - car.p.z);
+    const steer = steerFor(tx, tz);
+    // Wedged against a kerb or a corner of a building she cannot round: give up
+    // on this one and take the next. Better a skipped repo than a parked film.
+    if (Math.abs(car.vf) < 0.5) { autoCar.stuck += dt; } else { autoCar.stuck = 0; }
+    if (autoCar.stuck > AUTO.CAR_STUCK && dist > AUTO.CAR_PARK) {
+      autoCar.stuck = 0; autoCar.seen.add(stop.repo.full_name);
+      return { ...NEUTRAL, thr: -1, steer: -steer }; // back out, and pick another next frame
+    }
+    if (dist > AUTO.CAR_PARK) {
+      // Ease off on the way in so she arrives at a stop rather than through it.
+      const want = dist < AUTO.CAR_SLOW ? AUTO.CAR_SPEED * 0.45 : AUTO.CAR_SPEED;
+      return { ...NEUTRAL, thr: car.vf < want ? 1 : (car.vf > want * 1.4 ? -0.6 : 0), steer };
+    }
+    if (car.vf > AUTO.CAR_STOPPED) return { ...NEUTRAL, thr: -1, steer };
+    autoCar.seen.add(stop.repo.full_name);
+    autoCar.stuck = 0;
+    repoInspector.inspect(stop.repo, {
+      status: 'PARKED', resumeLabel: 'Drive on ', modal: false,
+      note: 'The engine is running.',
+    });
+    setTimeout(() => {
+      repoInspector.close('button');
+      autoCar.cruise = AUTO.CAR_CRUISE; // pull away and drive before the next stop
+    }, AUTO.CAR_DWELL_MS);
+    return NEUTRAL;
   }
   // The plane banks to turn, so the only stick it needs is roll: aim at a point
   // walking around a circle over the city and let simFly's auto-levelling,
@@ -719,7 +783,7 @@ export function createExplorer(THREE, deps = {}) {
   }
   /** Hand the sticks to the autopilot (embed mode), or give them back. */
   function setAutopilot(on) {
-    autopilot = on ? () => (sim === 'drive' ? autoDrive() : sim === 'fly' ? autoFly() : NEUTRAL) : null;
+    autopilot = on ? (dt) => (sim === 'drive' ? autoDrive(dt) : sim === 'fly' ? autoFly(dt) : NEUTRAL) : null;
   }
   function spawnWalk() {
     const cx = camera.position.x, cz = camera.position.z, alongZ = Math.abs(cz) >= Math.abs(cx);
@@ -1139,6 +1203,11 @@ export function createExplorer(THREE, deps = {}) {
     _v.set(p.p.x - cp * Math.cos(yaw) * back, p.p.y - Math.sin(pp) * back + up, p.p.z + cp * Math.sin(yaw) * back);
     const cpf = Math.cos(p.pitch);
     _v2.set(p.p.x + cpf * Math.cos(p.yaw) * 7, p.p.y + Math.sin(p.pitch) * 7 + 0.9, p.p.z - cpf * Math.sin(p.yaw) * 7);
+    // On autopilot the plane is circling something worth looking at, so the
+    // camera turns inward and keeps the city in frame for the whole circuit
+    // instead of staring down the fuselage at open sea. A little of the nose is
+    // left in, or the shot loses any sense of which way she is flying.
+    if (autopilot) _v2.lerp(_cityEye.set(0, 12, 0), 0.82);
     if (snap) { chase.pos.copy(_v); chase.look.copy(_v2); }
     else { chase.pos.lerp(_v, damp(dt, 4.5)); chase.look.lerp(_v2, damp(dt, 8)); }
     chase.pos.y = Math.max(chase.pos.y, Math.max(groundAt(chase.pos.x, chase.pos.z), SEA_Y) + 1.8);
@@ -1169,6 +1238,12 @@ const AUTO = {
   CAR_LOOK: 0.20,   // radians of boulevard to look ahead
   CAR_GAIN: 1.6,    // how hard to correct the heading error
   CAR_SPEED: 13,    // of a top speed of 26: quick enough to feel driven, slow enough to hold a corner
+  CAR_PARK: 11,     // how close to a building counts as arrived
+  CAR_SLOW: 26,     // ...and where to start slowing for it
+  CAR_STOPPED: 0.7, // ...and how slow counts as stopped
+  CAR_DWELL_MS: 28000,
+  CAR_CRUISE: 9,    // seconds of driving the boulevard between stops, so it is a drive and not a shuttle run
+  CAR_STUCK: 3.5,   // seconds of going nowhere before giving up on a building
   AIR_RADIUS: 200,  // well inside EDGE_R (320), or the plane leaves for the next island mid-shot
   AIR_LOOK: 0.32,
   AIR_GAIN: 0.9,

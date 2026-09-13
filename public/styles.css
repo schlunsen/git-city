@@ -1040,6 +1040,11 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
 :root[data-embed] #explorer > :nth-child(4) { animation-delay: 0.95s; }
 /* Nobody to read it, and it would sit there for five and a half seconds. */
 :root[data-embed] .gcx-toast { display: none !important; }
+/* The explore HUD comes up with car and plane mode -- mode buttons, a speedo,
+   an Exit. All of it is for a driver, and in an embed there isn't one. */
+:root[data-embed] .gcx-hud,
+:root[data-embed] .gcx-cross,
+:root[data-embed] .gcx-touch { display: none !important; }
 
 /* ?embed=1&ui=none -- the city and nothing else. */
 :root[data-embed][data-ui="none"] #explorer,
