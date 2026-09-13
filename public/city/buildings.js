@@ -297,13 +297,28 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
       cap.castShadow = true;
       group.add(cap);
     }
-    const hull = t.shape === 'octagon'
-      ? new THREE.Mesh(hullOf(geometry, 0.18), getOutlineMat())
-      : outlineBox(tf + o, t.h + capH, td + o, towerPlan ? 0.15 : 0.34);
-    hull.raycast = noRaycast;
-    hull.rotation.y = t.rotation || 0;
-    hull.position.set(cx, baseY + (t.h + capH) / 2, cz);
-    group.add(hull); hulls.push(hull);
+    // Ink the body and its roof cap as separate hulls. One box around both was
+    // sized to the cap's footprint (tf + o) but ran the full height of the tier,
+    // so on an ordinary building -- where the cap overhangs by 0.45 -- the rim
+    // stood 0.4 units proud of every wall instead of 0.17: not an ink line but a
+    // black shell, and the focus code made it the only full-strength black in
+    // the frame. Two hulls follow the stepped silhouette the building actually
+    // has, and both keep the intended rim.
+    const RIM = towerPlan ? 0.15 : 0.34; // total, so the rim is half this per side
+    const addHull = (mesh, y) => {
+      mesh.raycast = noRaycast;
+      mesh.rotation.y = t.rotation || 0;
+      mesh.position.set(cx, y, cz);
+      group.add(mesh); hulls.push(mesh);
+    };
+    if (t.shape === 'octagon') {
+      addHull(new THREE.Mesh(hullOf(geometry, 0.18), getOutlineMat()), baseY + t.h / 2);
+    } else {
+      addHull(outlineBox(tf, t.h, td, RIM), baseY + t.h / 2);
+    }
+    // The cap is wider than the body, so it carries its own rim or the overhang
+    // reads as an un-inked ledge.
+    if (capH) addHull(outlineBox(tf + o, capH, td + o, RIM), baseY + t.h + capH / 2);
     baseY += t.h + capH; topY = baseY; topF = tf;
   });
 
