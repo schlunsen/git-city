@@ -623,8 +623,8 @@ export function createExplorer(THREE, deps = {}) {
 
   const coarse = globalThis.matchMedia?.('(pointer: coarse)');
   const HINTS = {
-    walk: () => (locked ? '<b>mouse</b> orbit view · <b>←→</b> turn · <b>WASD</b> move · <b>Shift</b> run · hold <b>Space</b> fly · <b>E</b> inspect repo · <b>Esc</b> free mouse'
-      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · hold <b>Space</b> fly · <b>drag</b> orbit view · <b>E</b> inspect repo'),
+    walk: () => (locked ? '<b>mouse</b> orbit view · <b>A/D</b> turn · <b>W/S</b> move · <b>Shift</b> run · hold <b>Space</b> fly · <b>E</b> inspect repo · <b>Esc</b> free mouse'
+      : '<b>W/S</b> move · <b>A/D</b> turn · <b>Shift</b> run · hold <b>Space</b> fly · <b>drag</b> orbit view · <b>E</b> inspect repo'),
     drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look · <b>E</b> inspect repo',
     fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle · <b>N</b> next island',
     game: () => '<b>Space</b>/<b>click</b> fire · <b>B</b>/<b>right-click</b> bomb · <b>A/D</b> bank · <b>W/S</b> dive · climb · <b>Esc</b> end',
@@ -1232,7 +1232,7 @@ export function createExplorer(THREE, deps = {}) {
     const up = k('KeyW', 'ArrowUp'), down = k('KeyS', 'ArrowDown');
     const a = k('KeyA'), d = k('KeyD'), la = k('ArrowLeft'), ra = k('ArrowRight');
     return {
-      fwd: clamp(up - down - joy.y, -1, 1), side: clamp(d - a + joy.x, -1, 1), turn: ra - la,
+      fwd: clamp(up - down - joy.y, -1, 1), side: 0, turn: clamp(d + ra - a - la + joy.x, -1, 1),
       run: !!(k('ShiftLeft', 'ShiftRight') || acts.has('run')), jump: !!(k('Space') || acts.has('jump')),
       thr: clamp(up - down - joy.y, -1, 1), steer: clamp(d + ra - a - la + joy.x, -1, 1), hand: !!(k('Space') || acts.has('brake')),
       pitch: clamp(down - up + joy.y, -1, 1), roll: clamp(d + ra - a - la + joy.x, -1, 1),
