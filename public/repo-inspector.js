@@ -217,7 +217,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       border:1px solid var(--rule);border-radius:8px;padding:8px 12px;
     }
     .gri-history-open:hover{border-color:var(--accent-dim)}
-    @media(max-width:700px){
+    @media(max-width:900px), (max-height:500px){
       /* No room for both on a sheet: the picture is the point, the caption is not.
          The link out is not a caption -- on a handset it is how the replay gets
          watched at a size worth watching -- so it stays, and stretches. */
@@ -253,7 +253,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     }
     /* Keep the reading surface between the measured HUD bars. Compact chrome
        leaves the remaining space to the document, including on short phones. */
-    @media(max-width:700px){
+    @media(max-width:900px), (max-height:500px){
       .gri-dialog,.gri-dialog[data-hud="true"],.gri-dialog[data-hud="true"][data-view="history"]{
         top:calc(var(--topbar-h,58px) + 8px);left:8px;right:8px;width:auto;
         bottom:calc(var(--transport-h,90px) + 8px);
@@ -273,7 +273,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
         flex-shrink:0;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;
       }
       .gri-footer .gri-github,.gri-footer .gri-resume{min-height:44px;padding:10px 8px;font-size:12px}
-      .gri-dialog kbd{display:none}
+      .gri-dialog kbd,.gri-footer-note{display:none}
       .gri-history-open{padding:8px;font-size:12px}
       .gri-dialog[data-view="history"] .gri-screen{min-height:0}
     }
@@ -281,6 +281,17 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       .gri-header{padding-block:8px 4px}
       .gri-header h2{font-size:21px;margin-top:4px}
       .gri-header .gri-eyebrow,.gri-header .gri-status{display:none}
+    }
+    @media(max-height:500px){
+      .gri-dialog,.gri-dialog[data-hud="true"],.gri-dialog[data-hud="true"][data-view="history"]{
+        top:max(8px,env(safe-area-inset-top));bottom:max(8px,env(safe-area-inset-bottom));
+        left:max(8px,env(safe-area-inset-left));right:max(8px,env(safe-area-inset-right));
+      }
+      .gri-header{padding:8px 18px 4px}
+      .gri-header h2{font-size:21px;margin:0 40px 0 0}
+      .gri-header .gri-eyebrow,.gri-header .gri-owner{display:none}
+      .gri-tabs{padding-block:0 4px}
+      .gri-footer{padding-block:6px}
     }
     .gri-warp{background:repeating-linear-gradient(90deg,#fff8e8cc 0 2px,transparent 2px 9px)}
     .gri-beam{background:#fff8e8;box-shadow:0 0 34px 12px #e6d5aec2}

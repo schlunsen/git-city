@@ -44,9 +44,16 @@ export function injectStyle() {
     background: var(--panel, rgba(17, 24, 36, 0.55)); border: 1.5px solid var(--line, rgba(241, 244, 249, 0.3)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
   .gcx-act.on { background: rgba(100, 222, 219, 0.85); color: var(--accent-ink, #082524); }
   .gcx-hud.gcx-touchy .gcx-hint { display: none; }
+  /* Reading pauses exploration; its controls should leave with the simulation. */
+  body:has(.gri-dialog[open]:not([hidden])) :is(.gcx-hud,.gcx-touch,.gcx-menu,.gcx-cross) {
+    visibility: hidden; pointer-events: none;
+  }
   @media (max-width: 900px), (max-height: 500px) {
     .gcx-hint { display: none; }
-    .gcx-hud { bottom: auto; top: calc(var(--topbar-h, 58px) + 10px); gap: 6px; }
+    .gcx-hud { bottom: auto; top: calc(var(--topbar-h, 58px) + 10px); gap: 6px;
+      box-sizing: border-box; width: max-content; flex-wrap: wrap; justify-content: center; border-radius: 18px; }
+    .gcx-hud button { min-height: 40px; }
+    .gcx-gauge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
     .gcx-seg button, .gcx-exit { padding: 6px 9px; }
     .gcx-exit kbd { display: none; }
     /* Touch controls need the corners: tuck the host's floating cards away while exploring. */
