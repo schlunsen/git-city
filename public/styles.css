@@ -698,3 +698,120 @@ body { position: fixed; inset: 0; }
 #transport button, #transport .seg { border-radius: 18px; font-family: var(--ui); font-weight: 600; }
 
 #feed .card, #legend { border-radius: 16px; }
+
+/* ---------------------------------------------------------------------------
+   Themes.
+
+   The first pass made the chrome warm dark -- painted signboards around the
+   park -- on the theory that paper was for reading and dark was for operating.
+   Seen against the island that was still a dark interface standing in front of
+   a bright world. The guide had the right idea; everything else is the same
+   material now.
+
+   Written as two themes rather than as a repaint, because the island already
+   has a night, and a night wants its own paper. Every surface reads its colour
+   and its stock from tokens, so switching is one attribute on <html> and
+   nothing below here has to know which theme is on.
+   --------------------------------------------------------------------------- */
+:root,
+:root[data-theme="paper"] {
+  --ink-100: #241f18;
+  --ink-300: #5d5446;
+  --ink-500: #8b8171;
+  --line: rgba(36, 31, 24, 0.18);
+  /* The bright teal is a light on dark glass; on paper it is illegible. Same
+     hue, the contrast a printed page needs. */
+  --accent: #136b64;
+  --accent-dim: #2a8f86;
+  --accent-ink: #f7f0e2;
+  --panel2: #e3d7bf;
+  --sheet:
+    repeating-linear-gradient(92deg, rgba(0,0,0,.016) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 160% at 18% 0%, #fffaf0, #f7f0e2 52%, #ece0c9);
+  --sheet-solid: #f7f0e2;
+  --sheet-input: #fffaf0;
+  --sheet-edge: rgba(36, 31, 24, 0.20);
+  --sheet-shadow: 0 10px 30px -12px rgba(20, 16, 8, .45), 0 1px 0 #fffdf7 inset;
+  --tint: rgba(36, 31, 24, 0.06);
+  --tint-strong: rgba(36, 31, 24, 0.10);
+  --rail: #e0d3b8;
+}
+
+/* The night the island already keeps: the same page, after dark. */
+:root[data-theme="dark"] {
+  --ink-100: #f7f2e6;
+  --ink-300: #d8cfbb;
+  --ink-500: #9b917e;
+  --line: rgba(247, 240, 226, 0.20);
+  --accent: #64dedb;
+  --accent-dim: #3fb8b5;
+  --accent-ink: #082524;
+  --panel2: #2e2b21;
+  --sheet:
+    repeating-linear-gradient(92deg, rgba(255,255,255,.012) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 160% at 18% 0%, #2b2820, #211f18 52%, #191710);
+  --sheet-solid: #211f18;
+  --sheet-input: #16150f;
+  --sheet-edge: rgba(247, 240, 226, 0.22);
+  --sheet-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,.04) inset;
+  --tint: rgba(247, 240, 226, 0.06);
+  --tint-strong: rgba(247, 240, 226, 0.12);
+  --rail: #34301f;
+}
+
+#topbar, #transport, .card, .feed-card, #legend, #loading {
+  background: var(--sheet);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-color: var(--line);
+  color: var(--ink-100);
+}
+#topbar { border-bottom: 2px solid var(--sheet-edge); box-shadow: 0 2px 18px -6px rgba(20, 16, 8, .35); }
+#transport { border-top: 2px solid var(--sheet-edge); box-shadow: 0 -4px 22px -8px rgba(20, 16, 8, .38); }
+.card, .feed-card, #legend { box-shadow: var(--sheet-shadow); }
+
+.brand .name { color: var(--ink-100); }
+.brand .name b { color: var(--accent); }
+
+/* Controls: outlined, filled only where something is actually on. */
+#toolbar { background: var(--tint); border-color: var(--line); }
+.tb { color: var(--ink-300); }
+.tb:hover { color: var(--ink-100); background: var(--tint-strong); }
+.tb.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+#search-form { background: var(--sheet-input); border-color: var(--sheet-edge); }
+#search-form input { color: var(--ink-100); }
+#search-form input::placeholder { color: var(--ink-500); }
+#search-form button { background: var(--accent); color: var(--accent-ink); }
+#examples a { color: var(--ink-300); border-color: var(--line); }
+#examples a:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* The activity ribbon: unplayed is the sheet's own shadow, played is the accent. */
+#activity span { background: var(--rail); }
+#activity span.played { background: var(--accent-dim); }
+
+/* The load screen is the first thing anyone sees; it sets the expectation. */
+#loading { color: var(--ink-100); }
+#loading h1 { color: var(--ink-100); }
+#loading h1 span { color: var(--accent); }
+#load-status { font-family: var(--ui); font-size: 13px; font-weight: 600; color: var(--ink-500); }
+.loader-city .b { background: var(--accent-dim); }
+
+button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(--accent); }
+
+/* The profile title sat directly on the sky, readable only because it used to
+   be light type over a dark interface. On paper it became ink on a bright
+   horizon, which is no contrast at all -- so it gets a sheet of its own. */
+#profile-head {
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--sheet-shadow);
+  padding: 12px 16px 13px;
+  margin-bottom: 10px;
+  color: var(--ink-100);
+}
+#profile-head > .eyebrow { text-shadow: none; color: var(--ink-500); }
+#hud-login { color: var(--ink-100); }
+#hud-status { color: var(--ink-300); }
+#guide-link { color: var(--accent); }
+#profile-toggle { color: var(--ink-500); }
