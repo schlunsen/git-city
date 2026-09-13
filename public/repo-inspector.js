@@ -13,8 +13,8 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
   dialog.innerHTML = `<div class="gri-warp" aria-hidden="true"></div><div class="gri-beam" aria-hidden="true"></div>
     <div class="gri-transit" aria-hidden="true"><span class="gri-transit-name"></span><span class="gri-transit-sub">tuning in…</span></div>
     <button class="gri-close" type="button" aria-label="Close repository details">×</button>
-    <header class="gri-header"><div class="gri-eyebrow">▣ REPO FIELD GUIDE <span class="gri-status">PAUSED</span></div><h2 id="gri-title"></h2><p class="gri-owner"></p></header>
-    <nav class="gri-tabs" aria-label="Repository views"><button type="button" data-view="overview" aria-pressed="true">01 / Overview</button><button type="button" data-view="readme" aria-pressed="false">02 / README <kbd>R</kbd></button></nav>
+    <header class="gri-header"><div class="gri-eyebrow">Field guide <span class="gri-status">paused</span></div><h2 id="gri-title"></h2><p class="gri-owner"></p></header>
+    <nav class="gri-tabs" aria-label="Repository views"><button type="button" data-view="overview" aria-pressed="true">Overview</button><button type="button" data-view="readme" aria-pressed="false">Readme <kbd>R</kbd></button></nav>
     <div class="gri-content"><section class="gri-overview"><p class="gri-description"></p><p class="gri-stats"></p><p class="gri-updated"></p><p class="gri-reader-hint">Get to know the project. Open its README for setup instructions, examples, and documentation.</p></section>
     <section class="gri-readme" hidden><p class="gri-readme-status" role="status"></p><button type="button" class="gri-retry" hidden>Retry README</button><article class="gri-markdown" aria-label="Repository README"></article></section></div>
     <footer class="gri-footer"><a class="gri-github" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a><button class="gri-resume" type="button">Continue exploring <kbd>Esc</kbd></button><span class="gri-footer-note">Your position is saved while you read.</span></footer>`;
@@ -71,6 +71,105 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     @media(max-width:700px){.gri-dialog{height:calc(100dvh - 24px);width:calc(100vw - 24px)}.gri-header{padding:22px 18px 16px}.gri-header h2{font-size:24px}.gri-tabs{padding:10px 18px}.gri-tabs button{padding:9px 11px}.gri-content{padding:8px 18px 20px}.gri-footer{padding:12px 18px;grid-template-columns:1fr}.gri-footer-note{display:none}.gri-status{font-size:8px}}
     @media(prefers-reduced-motion:reduce){.gri-dialog,.gri-dialog *{animation:none!important}.gri-dialog[data-anim="out"]{opacity:0}}
   `;
+
+  // ---------------------------------------------------------------------
+  // The guide as a printed page.
+  //
+  // The island is hand-drawn: ink outlines, cel shading, cut paper. The guide
+  // was lit like a telemetry readout -- teal on near-black, monospace
+  // micro-caps, hairline rules -- which is a different product's furniture
+  // standing on a storybook. This is the same panel rebuilt as something the
+  // island could plausibly contain: a page from a guidebook, laid on the
+  // scene, with ink for its rules and paper for its ground.
+  //
+  // An override sheet rather than edits in place, so the whole look can be
+  // tuned, or lifted out, as one piece while we settle it.
+  // ---------------------------------------------------------------------
+  style.textContent += `
+    .gri-dialog{
+      --paper:#f7f0e2; --paper-edge:#e8dcc6; --ink:#241f18; --ink-soft:#5d5446;
+      --ink-faint:#8b8171; --accent:#136b64; --rule:#241f1826;
+      --display:'Baloo 2','Trebuchet MS',system-ui,sans-serif;
+      --prose:'Nunito',system-ui,-apple-system,sans-serif;
+      --ui:'Nunito',system-ui,sans-serif;
+      border-radius:16px; border:none; border-top:none;
+      background:
+        repeating-linear-gradient(92deg,#00000004 0 1px,transparent 1px 3px),
+        radial-gradient(120% 90% at 22% 8%,#fffaf0,var(--paper) 46%,var(--paper-edge));
+      box-shadow:0 1px 0 #fffdf7 inset, 0 18px 50px -18px #0e1a20b3, 0 2px 0 var(--ink);
+      color:var(--ink);
+    }
+    .gri-header{border-bottom:none;padding:22px 30px 14px}
+    .gri-eyebrow{
+      font:700 13px/1 var(--ui) !important;
+      letter-spacing:.02em !important; text-transform:none; color:var(--ink-soft) !important;
+    }
+    .gri-status{
+      font:700 11px/1 var(--ui); letter-spacing:.04em; text-transform:lowercase;
+      color:#2c5f2b; background:#cfe6a6; border:1.5px solid #2c5f2b40;
+      border-radius:20px; padding:4px 10px; transform:rotate(-1.2deg);
+    }
+    .gri-header h2{
+      font:700 37px/1.05 var(--display); color:var(--ink);
+      margin:10px 0 3px; letter-spacing:-.01em;
+    }
+    .gri-owner{font:500 13px/1.4 var(--ui);color:var(--ink-faint);letter-spacing:.01em}
+    .gri-close{color:var(--ink-soft);text-shadow:none}
+    .gri-close:hover{color:var(--ink)}
+    .gri-tabs{background:transparent;padding:14px 30px 12px;gap:10px;border-bottom:2px dashed var(--rule)}
+    .gri-tabs button{
+      background:none;border:2px solid transparent;border-radius:20px;padding:7px 14px;
+      font:700 13.5px/1 var(--ui);color:var(--ink-faint);letter-spacing:.01em;
+    }
+    .gri-tabs button[aria-pressed="true"]{
+      background:#f0e3c4;color:var(--ink);border-color:#241f1826;
+    }
+    .gri-tabs kbd{margin-left:8px;color:var(--ink-faint);border-color:var(--rule);background:#0000000a}
+    .gri-content{padding:14px 30px 26px;scrollbar-color:#c9bda5 transparent}
+    .gri-description{font:400 17px/1.62 var(--prose);color:var(--ink)}
+    .gri-stats,.gri-updated{font:500 13px/1.6 var(--ui);color:var(--ink-soft)}
+    .gri-reader-hint{
+      border-left:none !important;background:none !important;padding:18px 0 0 !important;
+      font:400 15.5px/1.7 var(--prose);color:var(--ink-soft);border-top:2px dashed var(--rule);
+    }
+    .gri-markdown{font:400 16.5px/1.7 var(--prose);color:#312a21}
+    .gri-markdown h2,.gri-markdown h3,.gri-markdown h4{
+      font-family:var(--display);font-weight:600;color:var(--ink);letter-spacing:-.005em;
+      border-bottom:1px solid var(--rule);padding-bottom:7px;
+    }
+    .gri-markdown a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+    .gri-markdown code{color:#7a3b12;background:#241f180d;border-radius:2px}
+    .gri-markdown pre{background:#2b2721;border:none;border-radius:3px;color:#efe6d4;box-shadow:0 1px 0 #fffdf7}
+    .gri-markdown pre code{color:#efe6d4}
+    .gri-markdown blockquote{border-left:3px solid var(--ink);background:none;color:var(--ink-soft);font-style:italic}
+    .gri-markdown img{border-radius:2px;box-shadow:0 2px 14px -4px #241f1859}
+    .gri-markdown td,.gri-markdown th{border-color:var(--rule)}
+    .gri-markdown hr{border-top:1px solid var(--rule)}
+    .gri-footer{background:#241f1806;border-top:2px dashed var(--rule);padding:16px 30px 18px}
+    .gri-footer .gri-github,.gri-resume{
+      font:700 14px/1 var(--ui);border:2px solid var(--ink);border-radius:22px;letter-spacing:.01em;
+      background:none;color:var(--ink);padding:11px 14px;text-align:center;
+    }
+    .gri-footer .gri-github{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+    .gri-resume kbd{color:var(--ink-faint);border-color:var(--rule)}
+    .gri-footer-note{
+      font:400 12.5px/1.4 var(--prose) !important;letter-spacing:0 !important;
+      color:var(--ink-faint) !important;
+    }
+    .gri-transit{background:radial-gradient(120% 80% at 50% 50%,#f7f0e2f2,#e8dcc6f7)}
+    .gri-transit-name{font:700 22px var(--display);color:var(--ink)}
+    .gri-transit-sub{
+      font:600 14px var(--prose) !important;letter-spacing:.01em !important;
+      text-transform:none !important;color:var(--ink-soft) !important;
+    }
+    .gri-transit-sub::after{background:linear-gradient(90deg,transparent,var(--ink-soft),transparent)}
+    /* The focus ring was teal on black; on paper it has to be ink too, or the
+       first thing the eye lands on is a leftover from the old palette. */
+    .gri-dialog :focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:2px}
+    .gri-warp{background:repeating-linear-gradient(90deg,#fff8e8cc 0 2px,transparent 2px 9px)}
+    .gri-beam{background:#fff8e8;box-shadow:0 0 34px 12px #e6d5aec2}
+  `;
+
   document.head.append(style); document.body.append(prompt, dialog);
   let target = null, timer = 0, candidates = null, modeNow = 'walk', readVersion = 0, readerRepo = null, loaded = false, inspectClose = null, openNow = false;
   let animTimer = 0, hideTimer = 0;

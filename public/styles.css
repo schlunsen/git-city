@@ -2,22 +2,23 @@
 /* Hallmark palette shared with Gource View: teal-tinted inks, one teal accent,
    orange / blue / purple for data. Mono for chrome + numerals, Grotesk for names. */
 :root {
-  --ink: #0e1420;
-  --stage: #0b111a;
-  --panel: rgba(17, 24, 36, 0.80);
-  --panel-solid: #131b28;
-  --panel2: #1b2536;
-  --line: rgba(110, 135, 175, 0.22);
-  --ink-100: #f1f4f9;
-  --ink-300: #c2cad8;
-  --ink-500: #7f8ca3;
+  --ink: #16180f;
+  --stage: #12140d;
+  --panel: rgba(32, 30, 22, 0.82);
+  --panel-solid: #23211a;
+  --panel2: #2e2b21;
+  --line: rgba(247, 240, 226, 0.20);
+  --ink-100: #f7f2e6;
+  --ink-300: #d8cfbb;
+  --ink-500: #9b917e;
   --accent: #64dedb;
   --accent-dim: #3fb8b5;
   --accent-ink: #082524;
   --orange: #ffa03a;
   --blue: #3abeff;
   --purple: #8c78ff;
-  --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --display: "Baloo 2", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+  --ui: "Nunito", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -30,17 +31,20 @@ html, body {
 }
 #scene { position: fixed; inset: 0; display: block; }
 .tnum { font-variant-numeric: tabular-nums; }
+/* Was 10px mono, uppercase, tracked out to 0.16em -- the typography of a
+   telemetry readout. On an island drawn by hand it read as somebody else's
+   instrument panel. Sentence case, rounded, and large enough to simply read. */
 .eyebrow {
-  font-family: var(--mono); font-size: 10px; font-weight: 600;
-  letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
+  font-family: var(--ui); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.01em; text-transform: none; color: var(--accent);
 }
 .eyebrow.dim { color: var(--ink-500); }
 .card {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
-button, input { font-family: var(--mono); }
+button, input { font-family: var(--ui); font-weight: 600; }
 button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- Loading ---------- */
@@ -646,3 +650,51 @@ body { position: fixed; inset: 0; }
     max-height: calc(100dvh - var(--topbar-h, 58px) - var(--transport-h, 120px) - 28px) !important;
   }
 }
+
+
+/* ---------------------------------------------------------------------------
+   The chrome as painted signage.
+
+   The world is cel-shaded and hand-drawn; the panels were cold navy glass with
+   monospace micro-caps, which is the furniture of a monitoring dashboard. The
+   guide became paper (see repo-inspector.js); everything else becomes the other
+   half of that idea -- painted wooden signboards around a park, warm dark so
+   the island keeps the light, rounded so nothing has a sharp corner the world
+   does not have.
+
+   An override block so the whole treatment can be tuned, or lifted out, as one
+   piece while we settle it.
+   --------------------------------------------------------------------------- */
+.brand .name { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.brand .tag {
+  font-family: var(--ui); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.01em; text-transform: none; color: var(--ink-500);
+}
+#search-form { border-radius: 22px; }
+#search-form .at { font-family: var(--ui); font-weight: 700; }
+#search-form input { font-family: var(--ui); font-weight: 600; }
+#search-form button { border-radius: 18px; font-weight: 700; }
+
+#examples { font-family: var(--ui); font-size: 12px; font-weight: 600; }
+#examples a { border-radius: 20px; padding: 4px 11px; }
+
+/* One rounded signboard rather than eleven buttons in a rack. */
+#toolbar { border-radius: 22px; padding: 4px; gap: 2px; }
+.tb {
+  font-family: var(--ui); font-size: 12.5px; font-weight: 600;
+  border-radius: 18px; padding: 6px 11px;
+}
+.tb.on { color: var(--accent); }
+/* The "on" dot was a bullet glued to the label; give it room to be a lamp. */
+.tb.on::before { content: "●"; font-size: 7px; vertical-align: 2px; margin-right: 5px; opacity: .9; }
+
+#explorer h1, #hud-login { font-family: var(--display); font-weight: 700; letter-spacing: -0.01em; }
+#hud-status { font-family: var(--ui); font-weight: 600; }
+.card.kv, #legend { font-family: var(--ui); }
+.card.kv b, .card.kv strong { font-weight: 700; }
+
+/* The scrubber is the one place a park map would use a ribbon. */
+#transport .eyebrow { color: var(--ink-500); }
+#transport button, #transport .seg { border-radius: 18px; font-family: var(--ui); font-weight: 600; }
+
+#feed .card, #legend { border-radius: 16px; }
