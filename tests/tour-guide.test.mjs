@@ -187,3 +187,17 @@ test('everything describing the island leaves with it', async () => {
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   assert.match(css, /#legend\.landed \{ opacity: 1; \}/, 'the legend has a landed state to come back to');
 });
+
+// The transport bar's height is measured at runtime into --transport-h because
+// it is not a fixed number: the timeline row, the scrubber and the hint line
+// add up differently across viewports. Anything anchored above it has to ride
+// on that variable -- the legend used a flat 112px against a bar that is 123px
+// on a desktop, and spent its life partly behind it.
+test('nothing anchored above the transport bar guesses its height', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  const legend = css.match(/^#legend \{ position: fixed;[^}]*/m);
+  assert.ok(legend, 'the legend is positioned against the bottom of the screen');
+  assert.match(legend[0], /bottom: calc\(var\(--transport-h[^)]*\)[^)]*\)/,
+    'the legend clears the transport bar by measurement, not by a guess');
+  assert.doesNotMatch(legend[0], /bottom: \d+px/, 'a literal bottom offset is the bug this replaced');
+});

@@ -160,7 +160,12 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 @keyframes slidein { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- Legend ---------- */
-#legend { position: fixed; bottom: 112px; right: 20px; z-index: 15; padding: 10px 14px; font-family: var(--mono); font-size: 10px; color: var(--ink-500); }
+/* Clear of the transport bar, whatever height it happens to be. It sat at a
+   flat 112px, measured once against a bar that is taller than that on a desktop
+   -- timeline row, scrubber and hint line -- so the languages went behind it.
+   --transport-h is the bar's real height, observed at runtime; every other
+   thing anchored to the bottom already rides on it. */
+#legend { position: fixed; bottom: calc(var(--transport-h, 90px) + 16px); right: 20px; z-index: 15; padding: 10px 14px; font-family: var(--mono); font-size: 10px; color: var(--ink-500); }
 #legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
 #legend .swatch { width: 7px; height: 7px; border-radius: 50%; }
 
