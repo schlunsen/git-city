@@ -432,7 +432,7 @@ export function createExplorer(THREE, deps = {}) {
   let saved = null;       // { pos, target, fov, autoRotate }
   let blend = null;       // { t, dur, pos, quat, fov } camera transition start
   const want = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: 50, look: new THREE.Vector3() };
-  const walker = { p: new THREE.Vector3(), v: new THREE.Vector3(), vy: 0, yaw: 0, viewYaw: 0, pitch: 0, grounded: true, bob: 0, fov: 70 };
+  const walker = { p: new THREE.Vector3(), v: new THREE.Vector3(), vy: 0, yaw: 0, viewYaw: 0, cameraYaw: 0, lookIdle: 9, pitch: 0, grounded: true, bob: 0, fov: 70 };
   const car = { p: new THREE.Vector3(), v: new THREE.Vector2(), yaw: 0, y: 0, pitch: 0, roll: 0, steer: 0, lean: 0, squat: 0, spin: 0, bump: 0, vf: 0, vl: 0, lastVf: 0, puffT: 0, smokeT: 0 };
   const plane = { p: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, speed: 26, throttle: 0.45, prop: 0, puffT: 0, bump: 0 };
   const chase = { pos: new THREE.Vector3(), look: new THREE.Vector3(), yaw: 0, pitch: 0, idle: 9, zoom: { drive: 1, fly: 1 }, shake: 0 };
@@ -475,6 +475,8 @@ export function createExplorer(THREE, deps = {}) {
   function look(dx, dy, sens) {
     if (mode === 'walk') {
       walker.viewYaw -= dx * sens;
+      walker.cameraYaw -= dx * sens;
+      walker.lookIdle = 0;
       walker.pitch = clamp(walker.pitch - dy * sens, -1.45, 1.45);
     } else if (mode === 'drive' || mode === 'fly') {
       chase.yaw -= dx * sens;
@@ -804,7 +806,7 @@ export function createExplorer(THREE, deps = {}) {
       if (alongZ) { walker.p.set(street, 0, s * edge); walker.yaw = s > 0 ? 0 : Math.PI; }
       else { walker.p.set(s * edge, 0, street); walker.yaw = s > 0 ? Math.PI / 2 : -Math.PI / 2; }
     }
-    walker.viewYaw = 0; walker.pitch = 0.12; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
+    walker.cameraYaw = walker.yaw; walker.lookIdle = 9; walker.viewYaw = 0; walker.pitch = 0.12; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
     collide(walker.p, PLAYER_R, 0.2, 1.8);
     walker.p.y = groundAt(walker.p.x, walker.p.z);
   }
@@ -970,7 +972,18 @@ export function createExplorer(THREE, deps = {}) {
     // feet, so the camera reads the street ahead and not the pavement.
     const elev = clamp(TP_ELEV - w.pitch, -0.12, 1.15);   // look up, camera drops
     _foc.set(w.p.x, w.p.y + TP_FOCUS, w.p.z);
-    const ce = Math.cos(elev), viewYaw = w.yaw + w.viewYaw;
+    // Turn the character first; the camera catches up along the shortest arc.
+    // Manual orbit responds directly and stays put while standing. Once moving,
+    // leave a moment to look around before easing back behind the unicorn.
+    w.lookIdle += dt;
+    if (sp > .15 && w.lookIdle > 1.4 && !drag) {
+      w.viewYaw = Math.atan2(Math.sin(w.viewYaw), Math.cos(w.viewYaw));
+      w.viewYaw *= Math.exp(-dt * 1.5);
+    }
+    const targetYaw = w.yaw + w.viewYaw;
+    const yawGap = Math.atan2(Math.sin(targetYaw - w.cameraYaw), Math.cos(targetYaw - w.cameraYaw));
+    w.cameraYaw += yawGap * damp(dt, 3);
+    const ce = Math.cos(elev), viewYaw = w.cameraYaw;
     let dist = TP_DIST;
     // Pull in rather than push through: a wall behind the shoulder would
     // otherwise put the camera inside a building and the city inside out.
@@ -1366,7 +1379,7 @@ const AUTO = {
           car.y = groundAt(a.x, a.z); tiltCar(1); placeCar(); driveCam(1, true);
         } else {
           walker.p.set(a.x, groundAt(a.x, a.z), a.z); walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h));
-          walker.viewYaw = 0; walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
+          walker.cameraYaw = walker.yaw; walker.lookIdle = 9; walker.viewYaw = 0; walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
         }
         chase.yaw = chase.pitch = 0; blend = null;
       }
