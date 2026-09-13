@@ -12,6 +12,9 @@
  */
 import { hashStr, seededRandom } from './prng.js';
 
+// Bump alongside the plot module URLs in index.html when replacing this set.
+export const LOT_ASSET_VERSION = 'plots-20260913';
+
 // ---------------------------------------------------------------------------
 // Lot kinds. `sprite` is the decal tile index (public/assets/lots-<n>.png);
 // `fallback` is used while the tile set is smaller than this catalogue, so
@@ -20,19 +23,19 @@ import { hashStr, seededRandom } from './prng.js';
 // ---------------------------------------------------------------------------
 export const LOT_KINDS = [
   { kind: 'parking',      sprite: 0,  fallback: 0, organic: false, zone: 'utility' },
-  { kind: 'pond-park',    sprite: 1,  fallback: 1, organic: false,  zone: 'green'   },
+  { kind: 'pond-park',    sprite: 1,  fallback: 1, organic: false, zone: 'green'   },
   { kind: 'construction', sprite: 2,  fallback: 2, organic: false, zone: 'utility' },
   { kind: 'basketball',   sprite: 3,  fallback: 3, organic: false, zone: 'sports'  },
-  { kind: 'lawn',         sprite: 4,  fallback: 1, organic: false,  zone: 'green'   },
+  { kind: 'lawn',         sprite: 4,  fallback: 1, organic: false, zone: 'green'   },
   { kind: 'paved',        sprite: 5,  fallback: 2, organic: false, zone: 'civic'   },
   { kind: 'tennis',       sprite: 6,  fallback: 3, organic: false, zone: 'sports'  },
   { kind: 'soccer',       sprite: 7,  fallback: 3, organic: false, zone: 'sports'  },
   { kind: 'playground',   sprite: 8,  fallback: 1, organic: false, zone: 'green'   },
-  { kind: 'garden',       sprite: 9,  fallback: 1, organic: false,  zone: 'green'   },
+  { kind: 'garden',       sprite: 9,  fallback: 1, organic: false, zone: 'green'   },
   { kind: 'market',       sprite: 10, fallback: 0, organic: false, zone: 'civic'   },
   { kind: 'fountain',     sprite: 11, fallback: 1, organic: false, zone: 'civic'   },
   { kind: 'skate',        sprite: 12, fallback: 3, organic: false, zone: 'sports'  },
-  { kind: 'dog-park',     sprite: 13, fallback: 1, organic: false,  zone: 'green'   },
+  { kind: 'dog-park',     sprite: 13, fallback: 1, organic: false, zone: 'green'   },
   { kind: 'track',        sprite: 14, fallback: 3, organic: false, zone: 'sports'  },
   { kind: 'amphitheater', sprite: 15, fallback: 1, organic: false, zone: 'civic'   },
 ];
@@ -99,7 +102,6 @@ export function planLots(cells, login = '', cell = 9) {
   // -- Kinds: squares first (forced), then singles in sorted order, never
   // repeating a kind that already stands on a planned neighbour (Chebyshev 1).
   const planned = new Map(); // cell key -> kind
-  const byKey = new Map(sorted.map(c => [`${c.gx},${c.gz}`, c]));
   const forcedKind = (s, c) => (c.gx === s.anchor.gx && c.gz === s.anchor.gz) ? s.kind : SQUARE_MEMBER[s.kind];
   for (const s of squares) for (const c of s.cells) planned.set(`${c.gx},${c.gz}`, forcedKind(s, c));
 
@@ -136,22 +138,20 @@ export function planLots(cells, login = '', cell = 9) {
     const s = squareOf.get(key) || null;
     const r = seededRandom(c.seed);
     r(); // skip the kind-pick draw so singles and square members stream alike
-    const organic = LOT_KIND[kind].organic;
     let corner = null, rot;
-    if (s) { // face the shared intersection: snap the 45° diagonal to 90° so
-      // even organic tiles stay axis-aligned at full size (no street overhang)
+    if (s) { // face the shared intersection, snapped to the street grid
       const ix = (Math.min(...s.cells.map(q => q.gx)) + 0.5) * cell; // island.streets moves the cell, so it can't stay a literal 9
       const iz = (Math.min(...s.cells.map(q => q.gz)) + 0.5) * cell;
       corner = { sx: Math.sign(ix - c.x) || 1, sz: Math.sign(iz - c.z) || 1 };
       rot = Math.round(Math.atan2(corner.sz, corner.sx) / (Math.PI / 2)) * (Math.PI / 2);
     } else {
-      rot = organic ? r() * Math.PI * 2 : Math.floor(r() * 4) * Math.PI / 2;
+      rot = Math.floor(r() * 4) * Math.PI / 2;
     }
     const flipX = r() < 0.5, flipZ = r() < 0.5;
-    // A 4.4u decal rotated 45° spans 6.2u — free rotation needs scale <= 0.78
-    // so the diagonal (4.9u) stays inside the 5u lot.
-    const scale = s ? 0.95 + r() * 0.05 : organic ? 0.70 + r() * 0.08 : 0.92 + r() * 0.08;
-    const tint = r() < 0.55 ? 0 : 1 + Math.floor(r() * 3); // plain mostly, else 1..3
+    // The complete tile includes its own sidewalk: uniform footprints and
+    // the original palette keep adjacent plots visually consistent.
+    const scale = 1;
+    const tint = 0;
     return { gx: c.gx, gz: c.gz, x: c.x, z: c.z, seed: c.seed, kind, rot, flipX, flipZ, tint, scale, square: s ? s.id : null, corner, props: [] };
   });
 

@@ -26,7 +26,7 @@
  *
  * THREE is passed in by the host so this module works with its import map.
  */
-import { LOT_KIND } from './city/lots.js';
+import { LOT_KIND, LOT_ASSET_VERSION } from './city/lots.js';
 import { sponsorsFor } from './city/sponsors.js';
 
 // How many sprites each sheet was split into (scripts/assets/, docs/assets.md).
@@ -275,7 +275,8 @@ export function createWorld(THREE, scene, deps) {
     if (texCache.has(name)) return texCache.get(name);
     const entry = { tex: null, ready: null, aspect: 1 };
     entry.ready = new Promise((resolve) => {
-      entry.tex = loader.load(`${base}${name}.png`, (t) => {
+      const revision = name.startsWith('lots-') ? `?v=${LOT_ASSET_VERSION}` : '';
+      entry.tex = loader.load(`${base}${name}.png${revision}`, (t) => {
         entry.aspect = t.image.width / t.image.height;
         resolve(entry);
       }, undefined, () => resolve(entry));
@@ -1982,7 +1983,7 @@ export function createWorld(THREE, scene, deps) {
     for (const lot of plan?.lots || []) {
       const kind = LOT_KIND[lot.kind];
       const idx = kind && kind.sprite < SPRITE_COUNTS.lots ? kind.sprite : (kind?.fallback ?? 0); // works with any tile count
-      const d = decal(`lots-${idx}`, (lotSize - 0.6) * lot.scale, { tint: lot.tint });
+      const d = decal(`lots-${idx}`, (lotSize - 0.3) * lot.scale, { tint: lot.tint });
       d.position.set(lot.x, 0.035, lot.z);
       d.rotation.y = lot.rot;
       if (lot.flipX) d.scale.x *= -1;

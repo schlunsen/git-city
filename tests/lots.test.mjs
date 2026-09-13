@@ -159,3 +159,34 @@ for (const shape of CITY_SHAPE_NAMES) {
     });
   }
 }
+
+test('decorations preserve detailed surfaces, lawn paths and spacing', () => {
+  const seen = new Set();
+  let gardenAnchors = 0;
+  for (let i = 0; i < 40; i++) {
+    const { lots } = planLots(GRID, `plot-regression-${i}`);
+    for (const lot of lots) {
+      seen.add(lot.kind);
+      if (lot.kind === 'garden' && lot.square !== null) gardenAnchors++;
+      if (!['lawn', 'paved'].includes(lot.kind)) {
+        assert.equal(lot.props.length, 0, `${lot.kind}: keep the illustrated surface clear`);
+      }
+      assert.equal(lot.scale, 1, 'bordered tiles fill their plots consistently');
+      assert.equal(lot.tint, 0, 'preserve the shared artwork palette');
+      assert.ok(Math.abs(Math.sin(lot.rot * 2)) < 1e-9, 'borders align with streets');
+      for (const a of lot.props) {
+        if (a.p === 'tree') {
+          assert.ok(a.h <= 3, 'trees fit the small plot');
+          // Undo the decal transform to check against the lawn artwork.
+          const x = (a.dx * Math.cos(lot.rot) - a.dz * Math.sin(lot.rot)) / lot.scale * (lot.flipX ? -1 : 1);
+          assert.ok(x < -1, 'tree stays on grass to the left of the winding path');
+        }
+        for (const b of lot.props) if (a !== b) {
+          assert.ok(Math.hypot(a.dx - b.dx, a.dz - b.dz) >= 2, 'decorations have breathing room');
+        }
+      }
+    }
+  }
+  assert.equal(seen.size, LOT_KINDS.length, 'exercise every plot kind');
+  assert.ok(gardenAnchors > 0, 'exercise the garden-square overlap regression');
+});

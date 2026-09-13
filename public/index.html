@@ -5,7 +5,7 @@
 <!-- Defence in depth (the page renders other developers' city.json): scripts only from here, jsdelivr (three) and
      the import map below (by hash: update it if the map changes); data only from GitHub; the Gource View player
      and the Buy Me a Coffee widget are the only frames. 'unsafe-inline' is for styles only (inline <style> and style attributes). See docs/city-config.md. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.buymeacoffee.com 'sha256-kUzUdVBrUyLBrCt7g8JotJaIo+b+nhfx4QNK2LZsCCw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.buymeacoffee.com https://avatars.githubusercontent.com https://github.com https://raw.githubusercontent.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://camo.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://gitilla.com; frame-src https://schlunsen.github.io https://www.buymeacoffee.com https://buymeacoffee.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.buymeacoffee.com 'sha256-ZmFsdSx3U9TP3dUTK6SWVA11FP+7dODdCTqUhoOgC+o='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://cdn.buymeacoffee.com https://avatars.githubusercontent.com https://github.com https://raw.githubusercontent.com https://user-images.githubusercontent.com https://private-user-images.githubusercontent.com https://camo.githubusercontent.com; connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://gitilla.com; frame-src https://schlunsen.github.io https://www.buymeacoffee.com https://buymeacoffee.com; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Gitilla — code in motion</title>
 <!-- How the link looks when it is shared: Reddit, Slack, Discord, iMessage and
@@ -150,6 +150,8 @@
 <script type="importmap">
 {
   "imports": {
+    "./city/lots.js": "./city/lots.js?v=plots-20260913",
+    "./world.js": "./world.js?v=plots-20260913",
     "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
   }

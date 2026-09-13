@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gitilla — plot collection</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: #18201f; color: #f0eadb; font: 15px/1.5 system-ui, sans-serif; }
+  header { max-width: 1400px; margin: 0 auto 28px; display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 28px; font-weight: 600; }
+  p { margin: 6px 0 0; color: #b6c1b8; }
+  button { border: 1px solid #6c8074; border-radius: 8px; background: #263b32; padding: 10px 16px; font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, a:focus-visible { outline: 3px solid #a9dabb; outline-offset: 4px; }
+  button[aria-pressed="true"] { background: #50664e; }
+  main { max-width: 1400px; margin: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+  figure { margin: 0; }
+  .tile { background: #111923; aspect-ratio: 1; display: grid; place-items: center; overflow: hidden; border-radius: 8px; }
+  img { width: 100%; height: auto; display: block; transition: transform .2s; }
+  body.angled img { transform: scale(.8) rotateX(45deg) rotateZ(45deg); }
+  figcaption { padding-top: 10px; }
+  strong { font-weight: 600; }
+  small { display: block; color: #b6c1b8; margin-top: 2px; }
+  a { color: #cde4d0; }
+  @media(max-width: 850px) { main { grid-template-columns: repeat(2, minmax(0, 1fr)); } body { padding: 20px; } }
+  @media(prefers-reduced-motion: reduce) { img { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Places between buildings</h1><p>Sixteen neighborhood plots, with room to play, grow and gather.</p></div>
+  <button id="angle" type="button" aria-pressed="false">Angled view</button>
+</header>
+<main id="plots"></main>
+<script type="module">
+import { LOT_KINDS, LOT_ASSET_VERSION } from './city/lots.js?v=plots-20260913';
+const details = {
+  parking: ['Parking', 'Open driving aisle and landscaped corners'],
+  'pond-park': ['Pond park', 'A quiet pond with a continuous walking loop'],
+  construction: ['Construction', 'A contained work site with clear access'],
+  basketball: ['Basketball', 'A full court with space beyond the lines'],
+  lawn: ['Pocket lawn', 'An open lawn around a winding footpath'],
+  paved: ['Pedestrian plaza', 'Stone paving with space for seating'],
+  tennis: ['Tennis', 'A blue court with a green surround'],
+  soccer: ['Soccer', 'Two goals and a clear playing field'],
+  playground: ['Playground', 'Separated play areas and safe open space'],
+  garden: ['Community garden', 'Crop beds along accessible garden paths'],
+  market: ['Market', 'Four stalls around a broad central aisle'],
+  fountain: ['Fountain plaza', 'A small fountain, flowers and a walking ring'],
+  skate: ['Skate park', 'Spaced ramps and an open riding surface'],
+  'dog-park': ['Dog park', 'An exercise loop and open central grass'],
+  track: ['Running track', 'Continuous lanes around a grass infield'],
+  amphitheater: ['Amphitheater', 'Curved seating with clear access to the stage'],
+};
+for (const { kind, sprite } of LOT_KINDS) {
+  const [title, description] = details[kind];
+  const figure = document.createElement('figure');
+  const tile = document.createElement('a');
+  tile.className = 'tile'; tile.href = `./assets/lots-${sprite}.png?v=${LOT_ASSET_VERSION}`;
+  const img = new Image(); img.src = tile.href; img.alt = `${title}: ${description}`; img.width = 512; img.height = 512;
+  tile.append(img);
+  const caption = document.createElement('figcaption');
+  const name = document.createElement('strong'); name.textContent = title;
+  const detail = document.createElement('small'); detail.textContent = description;
+  caption.append(name, detail); figure.append(tile, caption); document.querySelector('main').append(figure);
+}
+document.querySelector('#angle').addEventListener('click', (event) => {
+  const angled = document.body.classList.toggle('angled');
+  event.currentTarget.setAttribute('aria-pressed', String(angled));
+});
+</script>
+</body>
+</html>
