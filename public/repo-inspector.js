@@ -1,5 +1,6 @@
 import { pickNearbyRepo } from './city/nearby-repo.js';
 import { readmeDocument } from './city/readme-document.js';
+import { gourceUrl, miniAvailable } from './city/gource-player.js';
 import { renderReadme } from './readme-reader.js';
 import { fmtNum } from './city/util.js';
 
@@ -14,9 +15,10 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     <div class="gri-transit" aria-hidden="true"><span class="gri-transit-name"></span><span class="gri-transit-sub">tuning in…</span></div>
     <button class="gri-close" type="button" aria-label="Close repository details">×</button>
     <header class="gri-header"><div class="gri-eyebrow">Field guide <span class="gri-status">paused</span></div><h2 id="gri-title"></h2><p class="gri-owner"></p></header>
-    <nav class="gri-tabs" aria-label="Repository views"><button type="button" data-view="overview" aria-pressed="true">Overview</button><button type="button" data-view="readme" aria-pressed="false">Readme <kbd>R</kbd></button></nav>
+    <nav class="gri-tabs" aria-label="Repository views"><button type="button" data-view="overview" aria-pressed="true">Overview</button><button type="button" data-view="readme" aria-pressed="false">Readme <kbd>R</kbd></button><button type="button" data-view="history" aria-pressed="false" hidden>History <kbd>H</kbd></button></nav>
     <div class="gri-content"><section class="gri-overview"><p class="gri-description"></p><p class="gri-stats"></p><p class="gri-updated"></p><p class="gri-reader-hint">Get to know the project. Open its README for setup instructions, examples, and documentation.</p></section>
-    <section class="gri-readme" hidden><p class="gri-readme-status" role="status"></p><button type="button" class="gri-retry" hidden>Retry README</button><article class="gri-markdown" aria-label="Repository README"></article></section></div>
+    <section class="gri-readme" hidden><p class="gri-readme-status" role="status"></p><button type="button" class="gri-retry" hidden>Retry README</button><article class="gri-markdown" aria-label="Repository README"></article></section>
+    <section class="gri-history" hidden><div class="gri-screen"></div><p class="gri-history-note">The whole commit history, replayed. Files appear as they are written.</p></section></div>
     <footer class="gri-footer"><a class="gri-github" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a><button class="gri-resume" type="button">Continue exploring <kbd>Esc</kbd></button><span class="gri-footer-note">Your position is saved while you read.</span></footer>`;
   const style = document.createElement('style');
   style.textContent = `
@@ -174,6 +176,30 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     /* The focus ring was teal on black; on paper it has to be ink too, or the
        first thing the eye lands on is a leftover from the old palette. */
     .gri-dialog :focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:2px}
+    /* The replay, let into the page as a screen rather than a panel of its own:
+       the guide is a printed page, and this is the plate on it. The frame keeps
+       a 16/10 picture on a roomy sheet; where the sheet is short, height is the
+       scarce thing, so it takes what is left instead of forcing a scroll. */
+    .gri-history{display:flex;flex-direction:column;gap:12px}
+    .gri-screen{
+      position:relative;flex:none;width:100%;aspect-ratio:16/9;
+      border:1px solid var(--rule);border-radius:10px;overflow:hidden;
+      background:var(--sheet-c,#ece0c9);
+    }
+    .gri-screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+    .gri-history-note{margin:0!important;font:12px/1.6 var(--prose);color:var(--ink-soft)}
+    @media(max-width:700px){
+      /* No room for both on a sheet: the picture is the point, the caption is not. */
+      .gri-history-note{display:none}
+      /* A phone has no R or H key to press. The hints were costing the replay
+         about thirty pixels of height to advertise shortcuts nobody there has. */
+      .gri-tabs kbd{display:none}
+      /* The replay is bound by width here, not height: Gource View letterboxes
+         its own 16:9 picture inside whatever box it gets, so a taller sheet
+         bought nothing but cream bands above and below. The box takes the
+         picture's shape and the sheet stays the size it was. */
+      .gri-screen{width:100%}
+    }
     /* On a phone the guide was the whole screen: 366x672 of a 390x844 display,
        with the tour card stacked on top of it, which measured out at 136% of
        the viewport covered -- the interface overlapping itself and the island
@@ -201,7 +227,18 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
 
   document.head.append(style); document.body.append(prompt, dialog);
   let target = null, timer = 0, candidates = null, modeNow = 'walk', readVersion = 0, readerRepo = null, loaded = false, inspectClose = null, openNow = false;
-  let animTimer = 0, hideTimer = 0;
+  let animTimer = 0, hideTimer = 0, historyRepo = '';
+  // The History tab stands in for the corner screen on anything too small for it.
+  const historyTab = () => !miniAvailable();
+  // On a phone the guide is a 60dvh sheet over the island. Opening it straight
+  // into the README buried the repo under a wall of prose and left no sign the
+  // history was there at all. It opens on the overview instead -- what the repo
+  // is, in a few lines -- and the tabs offer the README and the replay.
+  const compact = () => matchMedia('(max-width:700px)').matches;
+  const openingView = () => (compact() ? 'overview' : 'readme');
+  function syncTabs() {
+    dialog.querySelector('[data-view="history"]').hidden = !historyTab();
+  }
   const forward = new THREE.Vector3(), ray = new THREE.Raycaster();
   const IN_MS = 740, OUT_MS = 400;
   const nameOf = (r) => r?.full_name || r?.name || '';
@@ -219,6 +256,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     const finish = inspectClose; inspectClose = null;
     readVersion++; readerRepo = null;
     openNow = false;
+    stopHistory(); // the replay must not keep running behind a closed guide
     onRepo?.(null);
     delete dialog.dataset.state;
     // Collapse back to the warp line and shoot off to the right before it goes.
@@ -237,6 +275,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
   // Fill the guide with a repo. Shared by a fresh open and by a mid-tour retune.
   function fill(r, options) {
     readerRepo = r; loaded = false; readVersion++;
+    stopHistory(); syncTabs(); // a new repo means a new replay, and a re-check of where it belongs
     onRepo?.(r); // the host's corner screen follows whichever repo is on air
     inspectClose = typeof options.onClose === 'function' ? options.onClose : null;
     delete dialog.dataset.state;
@@ -264,7 +303,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       if (nameOf(readerRepo) === nameOf(repo) && !dialog.dataset.state) return true;
       fill(repo, options);
       animate('tune', IN_MS);
-      setView('readme');
+      setView(openingView());
       return true;
     }
     clearTimeout(hideTimer);
@@ -278,7 +317,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     dialog.hidden = false; dialog.setAttribute('open', ''); openNow = true;
     animate('in', IN_MS);
     dialog.querySelector('.gri-close').focus({ preventScroll: true });
-    setView('readme');
+    setView(openingView());
     return true;
   }
   // Between tour stops: hold the guide open, veiled, while the camera flies on.
@@ -307,12 +346,37 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       retry.hidden = false;
     }
   }
+  // The replay is an iframe, so it only exists while its tab is the one on
+  // screen: leaving the tab, changing repo or closing the guide tears it down,
+  // the way the corner screen does. Otherwise a phone keeps a video decoding
+  // behind a README it is no longer showing.
+  function mountHistory() {
+    const screen = dialog.querySelector('.gri-screen');
+    const repo = readerRepo;
+    if (!repo?.full_name || historyRepo === repo.full_name) return;
+    historyRepo = repo.full_name;
+    const frame = document.createElement('iframe');
+    frame.src = gourceUrl(repo, { chrome: false });
+    frame.title = `Commit history: ${repo.full_name}`;
+    frame.allow = 'autoplay';
+    frame.loading = 'lazy';
+    screen.replaceChildren(frame);
+  }
+  function stopHistory() {
+    historyRepo = '';
+    dialog.querySelector('.gri-screen')?.replaceChildren();
+  }
   function setView(view) {
+    // Nothing to show in a tab that is not there: the History tab is hidden
+    // wherever the corner screen already plays the same thing.
+    if (view === 'history' && !historyTab()) view = 'overview';
     dialog.querySelector('.gri-overview').hidden = view !== 'overview';
     dialog.querySelector('.gri-readme').hidden = view !== 'readme';
+    dialog.querySelector('.gri-history').hidden = view !== 'history';
     dialog.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.view === view)));
     dialog.querySelector('.gri-content').scrollTop = 0;
     if (view === 'readme' && !loaded) loadReadme();
+    if (view === 'history') mountHistory(); else stopHistory();
   }
   dialog.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
   dialog.querySelector('.gri-retry').addEventListener('click', loadReadme);
@@ -327,6 +391,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     key(e) {
       if (e.ctrlKey || e.metaKey || e.altKey) return false;
       if (openNow && e.code === 'KeyR') { e.preventDefault(); e.stopImmediatePropagation(); setView('readme'); return true; }
+      if (openNow && e.code === 'KeyH' && historyTab()) { e.preventDefault(); e.stopImmediatePropagation(); setView('history'); return true; }
       if ((e.code === 'KeyE' && (target || openNow)) || (e.code === 'Escape' && openNow)) {
         e.preventDefault(); e.stopImmediatePropagation();
         if (!e.repeat) { if (openNow) close(); else open(); }

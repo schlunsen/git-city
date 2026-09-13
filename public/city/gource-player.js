@@ -126,9 +126,14 @@ export function closeGource(animated = false) {
 // Desktop only: on a phone the card and the touch controls need that corner.
 // ---------------------------------------------------------------------------
 const MINI_OK = '(min-width: 1100px) and (min-height: 640px) and (hover: hover)';
+// Where the corner screen cannot go, the history has to be reachable some other
+// way -- the field guide grows a History tab instead. One gate, so the two can
+// never both appear (a phone showing the same replay twice) or both be missing
+// (a tablet with no way to the history at all).
+export function miniAvailable() { return matchMedia(MINI_OK).matches; }
 let miniRepo = '', miniOn = null;
 export function tuneGource(repo) {
-  if (!repo?.full_name || !matchMedia(MINI_OK).matches) { stopGource(); return; }
+  if (!repo?.full_name || !miniAvailable()) { stopGource(); return; }
   if (miniRepo === repo.full_name) return;
   stopGource();
   miniRepo = repo.full_name; miniOn = repo;

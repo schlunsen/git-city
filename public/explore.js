@@ -1561,8 +1561,8 @@ export function createExplorer(THREE, deps = {}) {
     /** Host key handlers should ignore events the explorer claims (all but Esc / V while exploring). */
     wantsKey(e) {
       // The field guide is a panel, not a mode: it claims only the keys it uses
-      // (R, E, Esc) so the city keeps ← → T space and the rest while it is open.
-      if (repoInspector.open) return e.code === 'KeyR' || e.code === 'KeyE' || e.key === 'Escape';
+      // (R, H, E, Esc) so the city keeps ← → T space and the rest while it is open.
+      if (repoInspector.open) return e.code === 'KeyR' || e.code === 'KeyH' || e.code === 'KeyE' || e.key === 'Escape';
       return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V';
     },
     update, postRender, dispose, resetColliders, flyToNext, travelTo, revealCity,
