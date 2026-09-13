@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Gitilla city</title>
+  <rect width="64" height="64" rx="15" fill="#16180f"/>
+  <path d="M8 48 32 37 56 48 32 59Z" fill="#81b85b"/>
+  <g stroke="#16180f" stroke-width="2" stroke-linejoin="round">
+    <path d="m10 29 9-4 9 4v20l-9 4-9-4Z" fill="#ffa03a"/>
+    <path d="m19 33 9-4v20l-9 4Z" fill="#cb782a" stroke="none"/>
+    <path d="m10 29 9 4 9-4M19 33v20" fill="none"/>
+    <path d="m25 14 9-4 9 4v32l-9 4-9-4Z" fill="#64dedb"/>
+    <path d="m34 18 9-4v32l-9 4Z" fill="#3a9e9c" stroke="none"/>
+    <path d="m25 14 9 4 9-4M34 18v32" fill="none"/>
+    <path d="m39 34 8-4 8 4v16l-8 4-8-4Z" fill="#a18eff"/>
+    <path d="m47 38 8-4v16l-8 4Z" fill="#7460c5" stroke="none"/>
+    <path d="m39 34 8 4 8-4M47 38v16" fill="none"/>
+  </g>
+  <path d="M29 23v4m0 6v4M14 36v5m29 0v5" fill="none" stroke="#f7f2e6" stroke-width="3"/>
+</svg>

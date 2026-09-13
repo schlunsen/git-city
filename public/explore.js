@@ -25,6 +25,8 @@ import { createRepoInspector } from './repo-inspector.js';
 import { createBombRun } from './game.js'; // the bomb-run mini game (fly mode)
 import { injectStyle, WARP_FRAG, injectTravelStyle } from './explore-style.js'; // CSS + travel-warp shader
 import { cityArrivalLevels } from './city/city-arrival.js';
+import { closeGource } from './city/gource-player.js'; // leaving the island takes the replay with it
+import { endTour } from './city/tour.js';              // ...and the tour, and its card
 
 const MODES = ['orbit', 'walk', 'drive', 'fly'];
 const LABEL = { orbit: 'Orbit', walk: 'Walk', drive: 'Drive', fly: 'Fly' };
@@ -1153,6 +1155,14 @@ export function createExplorer(THREE, deps = {}) {
     warp.classList.remove('show');
     closeMenu();
     setEdgeHint(null);
+    // Everything describing the island we are leaving goes with it, and goes
+    // now: the warp covers the screen in well under a second, and a guide still
+    // reading out the last city's README while the next one arrives is the
+    // clearest way to look broken. Each closes by its own exit animation rather
+    // than being switched off, so they leave the way they came in.
+    if (repoInspector.open) repoInspector.close();
+    endTour();                 // clears the showcase card with it
+    closeGource(true);         // animated: the replay folds away rather than blinking out
   }
   // Advance the trip; true while the world is being swapped (hold the sim still).
   function updateTravel() {

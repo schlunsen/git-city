@@ -186,12 +186,30 @@ function buildCity(repos, user) {
 // ---------------------------------------------------------------------------
 // Day / night cycle
 // ---------------------------------------------------------------------------
+// The interface belongs to the same sky as the island.
+//
+// A fixed-brightness interface over a world that has a night is the one thing
+// in here that does not answer to the time of day: paper reads well over a
+// sunny island and glares over a dark one. So the theme follows the light.
+//
+// The two thresholds are not a mistake. A single one would sit exactly where
+// the sun does at dusk, and the whole interface would strobe between editions
+// -- every frame of the 60-second cycle, and for real minutes at sunset. The
+// gap means it takes a definite change in the sky to turn the page.
+function syncThemeToSky() {
+  const root = document.documentElement;
+  const dark = root.dataset.theme === 'dark';
+  if (!dark && dayFactor < 0.10) root.dataset.theme = 'dark';
+  else if (dark && dayFactor > 0.26) root.dataset.theme = 'paper';
+}
+
 function applyDayFactor(t) {
   // t in [0,1): 0 = midday, 0.5 = midnight.
   if (dayMode === 'sunset') t = 0.2; // city.json look.time "sunset": a fixed low sun (~30% daylight)
   const elev = Math.cos(t * Math.PI * 2);           // 1 noon -> -1 midnight
   const day = THREE.MathUtils.clamp(elev, 0, 1);     // 0..1 daylight amount
   dayFactor = day;
+  syncThemeToSky();
 
   // Sun / moon. Nights are moonlit, not black: a strong cool key light from the
   // moon plus a lifted sky fill, so the island still reads after dark.

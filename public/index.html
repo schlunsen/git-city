@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="paper">
 <head>
 <meta charset="UTF-8" />
 <!-- Defence in depth (the page renders other developers' city.json): scripts only from here, jsdelivr (three) and
@@ -25,14 +25,22 @@
 <meta name="twitter:title" content="Gitilla — turn any GitHub profile into a city" />
 <meta name="twitter:description" content="Every repository becomes a building. Stars make it tall, the language paints it, and 90 days of activity play back across the skyline." />
 <meta name="twitter:image" content="https://gitilla.com/og.jpg?v=2" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%99%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<meta name="theme-color" content="#16180f" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<!-- Baloo 2 and Nunito set the guide. The first pass used a high-contrast
+     serif over a book face, which is a beautiful pairing for an essay and the
+     wrong one entirely for an island with hot-air balloons on it: it read as
+     literature rather than as somewhere you are visiting. These are rounded and
+     friendly -- the lettering of a park map, which is what the guide is. -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Baloo+2:wght@500;600;700&family=Nunito:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
 <!-- The page itself is never edge-cached, but the stylesheet is (four hours at
      the CDN). ?v is how a restyle reaches visitors on the day it ships: bump it
      whenever styles.css changes in a way that must not wait out that window. -->
-<link rel="stylesheet" href="./styles.css?v=2" />
+<link rel="stylesheet" href="./styles.css?v=3" />
 </head>
 <body>
 

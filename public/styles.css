@@ -2,22 +2,23 @@
 /* Hallmark palette shared with Gource View: teal-tinted inks, one teal accent,
    orange / blue / purple for data. Mono for chrome + numerals, Grotesk for names. */
 :root {
-  --ink: #0e1420;
-  --stage: #0b111a;
-  --panel: rgba(17, 24, 36, 0.80);
-  --panel-solid: #131b28;
-  --panel2: #1b2536;
-  --line: rgba(110, 135, 175, 0.22);
-  --ink-100: #f1f4f9;
-  --ink-300: #c2cad8;
-  --ink-500: #7f8ca3;
+  --ink: #16180f;
+  --stage: #12140d;
+  --panel: rgba(32, 30, 22, 0.82);
+  --panel-solid: #23211a;
+  --panel2: #2e2b21;
+  --line: rgba(247, 240, 226, 0.20);
+  --ink-100: #f7f2e6;
+  --ink-300: #d8cfbb;
+  --ink-500: #9b917e;
   --accent: #64dedb;
   --accent-dim: #3fb8b5;
   --accent-ink: #082524;
   --orange: #ffa03a;
   --blue: #3abeff;
   --purple: #8c78ff;
-  --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --display: "Baloo 2", "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+  --ui: "Nunito", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -30,17 +31,20 @@ html, body {
 }
 #scene { position: fixed; inset: 0; display: block; }
 .tnum { font-variant-numeric: tabular-nums; }
+/* Was 10px mono, uppercase, tracked out to 0.16em -- the typography of a
+   telemetry readout. On an island drawn by hand it read as somebody else's
+   instrument panel. Sentence case, rounded, and large enough to simply read. */
 .eyebrow {
-  font-family: var(--mono); font-size: 10px; font-weight: 600;
-  letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent);
+  font-family: var(--ui); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.01em; text-transform: none; color: var(--accent);
 }
 .eyebrow.dim { color: var(--ink-500); }
 .card {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
-button, input { font-family: var(--mono); }
+button, input { font-family: var(--ui); font-weight: 600; }
 button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------- Loading ---------- */
@@ -645,4 +649,326 @@ body { position: fixed; inset: 0; }
     min-height: 0 !important;
     max-height: calc(100dvh - var(--topbar-h, 58px) - var(--transport-h, 120px) - 28px) !important;
   }
+}
+
+
+/* ---------------------------------------------------------------------------
+   The chrome as painted signage.
+
+   The world is cel-shaded and hand-drawn; the panels were cold navy glass with
+   monospace micro-caps, which is the furniture of a monitoring dashboard. The
+   guide became paper (see repo-inspector.js); everything else becomes the other
+   half of that idea -- painted wooden signboards around a park, warm dark so
+   the island keeps the light, rounded so nothing has a sharp corner the world
+   does not have.
+
+   An override block so the whole treatment can be tuned, or lifted out, as one
+   piece while we settle it.
+   --------------------------------------------------------------------------- */
+.brand .name { font-family: var(--display); font-weight: 700; font-size: 20px; }
+.brand .tag {
+  font-family: var(--ui); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.01em; text-transform: none; color: var(--ink-500);
+}
+#search-form { border-radius: 22px; }
+#search-form .at { font-family: var(--ui); font-weight: 700; }
+#search-form input { font-family: var(--ui); font-weight: 600; }
+#search-form button { border-radius: 18px; font-weight: 700; }
+
+#examples { font-family: var(--ui); font-size: 12px; font-weight: 600; }
+#examples a { border-radius: 20px; padding: 4px 11px; }
+
+/* One rounded signboard rather than eleven buttons in a rack. */
+#toolbar { border-radius: 22px; padding: 4px; gap: 2px; }
+.tb {
+  font-family: var(--ui); font-size: 12.5px; font-weight: 600;
+  border-radius: 18px; padding: 6px 11px;
+}
+.tb.on { color: var(--accent); }
+/* The "on" dot was a bullet glued to the label; give it room to be a lamp. */
+.tb.on::before { content: "●"; font-size: 7px; vertical-align: 2px; margin-right: 5px; opacity: .9; }
+
+#explorer h1, #hud-login { font-family: var(--display); font-weight: 700; letter-spacing: -0.01em; }
+#hud-status { font-family: var(--ui); font-weight: 600; }
+.card.kv, #legend { font-family: var(--ui); }
+.card.kv b, .card.kv strong { font-weight: 700; }
+
+/* The scrubber is the one place a park map would use a ribbon. */
+#transport .eyebrow { color: var(--ink-500); }
+#transport button, #transport .seg { border-radius: 18px; font-family: var(--ui); font-weight: 600; }
+
+#feed .card, #legend { border-radius: 16px; }
+
+/* ---------------------------------------------------------------------------
+   Themes.
+
+   The first pass made the chrome warm dark -- painted signboards around the
+   park -- on the theory that paper was for reading and dark was for operating.
+   Seen against the island that was still a dark interface standing in front of
+   a bright world. The guide had the right idea; everything else is the same
+   material now.
+
+   Written as two themes rather than as a repaint, because the island already
+   has a night, and a night wants its own paper. Every surface reads its colour
+   and its stock from tokens, so switching is one attribute on <html> and
+   nothing below here has to know which theme is on.
+   --------------------------------------------------------------------------- */
+:root,
+:root[data-theme="paper"] {
+  --ink-100: #241f18;
+  --ink-300: #5d5446;
+  --ink-500: #8b8171;
+  --line: rgba(36, 31, 24, 0.18);
+  /* The bright teal is a light on dark glass; on paper it is illegible. Same
+     hue, the contrast a printed page needs. */
+  --accent: #136b64;
+  --accent-dim: #2a8f86;
+  --accent-ink: #f7f0e2;
+  --panel2: #e3d7bf;
+  --sheet-a: #fffaf0; --sheet-b: #f7f0e2; --sheet-c: #ece0c9;
+  --sheet-solid: #f7f0e2;
+  --sheet-input: #fffaf0;
+  --sheet-edge: rgba(36, 31, 24, 0.20);
+  --sheet-shadow: 0 10px 30px -12px rgba(20, 16, 8, .45), 0 1px 0 #fffdf7 inset;
+  --tint: rgba(36, 31, 24, 0.06);
+  --tint-strong: rgba(36, 31, 24, 0.10);
+  --rail: #e0d3b8;
+}
+
+/* The night the island already keeps: the same page, after dark. */
+:root[data-theme="dark"] {
+  --ink-100: #f7f2e6;
+  --ink-300: #d8cfbb;
+  --ink-500: #9b917e;
+  --line: rgba(247, 240, 226, 0.20);
+  --accent: #64dedb;
+  --accent-dim: #3fb8b5;
+  --accent-ink: #082524;
+  --panel2: #2e2b21;
+  --sheet-a: #2b2820; --sheet-b: #211f18; --sheet-c: #191710;
+  --sheet-solid: #211f18;
+  --sheet-input: #16150f;
+  --sheet-edge: rgba(247, 240, 226, 0.22);
+  --sheet-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255,255,255,.04) inset;
+  --tint: rgba(247, 240, 226, 0.06);
+  --tint-strong: rgba(247, 240, 226, 0.12);
+  --rail: #34301f;
+}
+
+#topbar, #transport, .card, .feed-card, #legend, #loading {
+  background-image:
+    repeating-linear-gradient(92deg, rgba(128,128,128,.05) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 160% at 18% 0%, var(--sheet-a), var(--sheet-b) 52%, var(--sheet-c));
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  border-color: var(--line);
+  color: var(--ink-100);
+}
+#topbar { border-bottom: 2px solid var(--sheet-edge); box-shadow: 0 2px 18px -6px rgba(20, 16, 8, .35); }
+#transport { border-top: 2px solid var(--sheet-edge); box-shadow: 0 -4px 22px -8px rgba(20, 16, 8, .38); }
+.card, .feed-card, #legend { box-shadow: var(--sheet-shadow); }
+
+.brand .name { color: var(--ink-100); }
+.brand .name b { color: var(--accent); }
+
+/* Controls: outlined, filled only where something is actually on. */
+#toolbar { background: var(--tint); border-color: var(--line); }
+.tb { color: var(--ink-300); }
+.tb:hover { color: var(--ink-100); background: var(--tint-strong); }
+.tb.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+#search-form { background: var(--sheet-input); border-color: var(--sheet-edge); }
+#search-form input { color: var(--ink-100); }
+#search-form input::placeholder { color: var(--ink-500); }
+#search-form button { background: var(--accent); color: var(--accent-ink); }
+#examples a { color: var(--ink-300); border-color: var(--line); }
+#examples a:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* The activity ribbon: unplayed is the sheet's own shadow, played is the accent. */
+#activity span { background: var(--rail); }
+#activity span.played { background: var(--accent-dim); }
+
+/* The load screen is the first thing anyone sees; it sets the expectation. */
+#loading { color: var(--ink-100); }
+#loading h1 { color: var(--ink-100); }
+#loading h1 span { color: var(--accent); }
+#load-status { font-family: var(--ui); font-size: 13px; font-weight: 600; color: var(--ink-500); }
+.loader-city .b { background: var(--accent-dim); }
+
+button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(--accent); }
+
+/* The profile title sat directly on the sky, readable only because it used to
+   be light type over a dark interface. On paper it became ink on a bright
+   horizon, which is no contrast at all -- so it gets a sheet of its own. */
+#profile-head {
+  background-image:
+    repeating-linear-gradient(92deg, rgba(128,128,128,.05) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 160% at 18% 0%, var(--sheet-a), var(--sheet-b) 52%, var(--sheet-c));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--sheet-shadow);
+  padding: 12px 16px 13px;
+  margin-bottom: 10px;
+  color: var(--ink-100);
+}
+#profile-head > .eyebrow { text-shadow: none; color: var(--ink-500); }
+#hud-login { color: var(--ink-100); }
+#hud-status { color: var(--ink-300); }
+#guide-link { color: var(--accent); }
+#profile-toggle { color: var(--ink-500); }
+
+/* Turning the page, rather than flipping a switch: the sky takes a while to
+   change and the interface should look like it is keeping up, not reacting. */
+/* A gradient cannot be interpolated, so transitioning background-image does
+   nothing and the sheet snaps between editions. Registering the colours it is
+   built from makes each of them an animatable value: the gradient is then
+   rebuilt every frame from colours that are themselves mid-transition, and the
+   page turns rather than flicking. */
+@property --sheet-a { syntax: "<color>"; inherits: true; initial-value: #fffaf0; }
+@property --sheet-b { syntax: "<color>"; inherits: true; initial-value: #f7f0e2; }
+@property --sheet-c { syntax: "<color>"; inherits: true; initial-value: #ece0c9; }
+@property --ink-100 { syntax: "<color>"; inherits: true; initial-value: #241f18; }
+@property --ink-300 { syntax: "<color>"; inherits: true; initial-value: #5d5446; }
+@property --ink-500 { syntax: "<color>"; inherits: true; initial-value: #8b8171; }
+@property --accent  { syntax: "<color>"; inherits: true; initial-value: #136b64; }
+@property --accent-dim { syntax: "<color>"; inherits: true; initial-value: #2a8f86; }
+@property --rail    { syntax: "<color>"; inherits: true; initial-value: #e0d3b8; }
+
+:root {
+  transition:
+    --sheet-a 1.1s ease, --sheet-b 1.1s ease, --sheet-c 1.1s ease,
+    --ink-100 1.1s ease, --ink-300 1.1s ease, --ink-500 1.1s ease,
+    --accent 1.1s ease, --accent-dim 1.1s ease, --rail 1.1s ease;
+}
+#topbar, #transport, .card, .feed-card, #legend, #loading, #profile-head,
+#toolbar, #search-form, .tb, #examples a, #showcase-card {
+  transition: background-color 1.1s ease, color 1.1s ease,
+              border-color 1.1s ease, box-shadow 1.1s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root, #topbar, #transport, .card, .feed-card, #legend, #loading, #profile-head,
+  #toolbar, #search-form, .tb, #examples a, #showcase-card { transition: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   The tour card as a postcard from the next stop.
+
+   It was built as a CRT: scanlines, a recording LED, README TRANSMISSION in
+   tracked-out micro-caps. A screen is a defensible idea in a city that has a
+   television in it, but on the tour this is the one thing narrating the
+   journey, and it was doing it in the voice of surveillance equipment. Same
+   card, same language stripe, read as something handed to you at the gate.
+   --------------------------------------------------------------------------- */
+#showcase-card {
+  background-image:
+    repeating-linear-gradient(92deg, rgba(128,128,128,.05) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 160% at 18% 0%, var(--sheet-a), var(--sheet-b) 52%, var(--sheet-c));
+  border: 1px solid var(--line);
+  box-shadow: var(--sheet-shadow);
+  color: var(--ink-100);
+  padding: 0 0 8px;
+}
+#showcase-card .sc-screen {
+  background: none;
+  box-shadow: none;
+  border-left: none;
+  /* The language keeps its stripe, along the top edge where a ticket carries it. */
+  border-top: 4px solid var(--sc-lang, var(--accent));
+  border-radius: 17px 17px 0 0;
+  padding: 14px 17px 12px;
+}
+#showcase-card .sc-screen::after { content: none; }        /* the scanlines go */
+#showcase-card .sc-kicker {
+  font-family: var(--ui); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.01em; text-transform: none; color: var(--ink-500);
+}
+#showcase-card .sc-name { font-family: var(--display); font-size: 25px; color: var(--ink-100); }
+#showcase-card .sc-desc { font-family: var(--ui); font-size: 13px; color: var(--ink-300); }
+#showcase-card .sc-meta { font-family: var(--ui); font-size: 12px; font-weight: 600; color: var(--ink-500); }
+#showcase-card .sc-meta span:first-child { color: #b3820f; }
+#showcase-card .sc-readme-panel { border-top: 2px dashed var(--line); }
+#showcase-card .sc-readme-signal {
+  font-family: var(--ui); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.01em; text-transform: none; color: var(--ink-500);
+}
+#showcase-card .sc-readme-signal i { background: none; border-top: 1px dashed var(--line); opacity: 1; }
+#showcase-card .sc-readme-signal b { display: none; }      /* nothing is transmitting */
+#showcase-card .sc-readme { font-family: var(--ui); color: var(--ink-300); }
+#showcase-card .sc-chin { font-family: var(--ui); font-size: 12px; font-weight: 600; color: var(--ink-500); padding: 8px 14px 0; }
+#showcase-card .sc-led { display: none; }                  /* and nothing is recording */
+#showcase-card .sc-ch { border-radius: 50%; border: 1.5px solid var(--line); color: var(--ink-300); background: none; }
+#showcase-card .sc-read {
+  font-family: var(--ui); font-size: 12px; font-weight: 700; letter-spacing: 0.01em;
+  border-radius: 18px; padding: 6px 13px;
+  border: 1.5px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent);
+}
+#showcase-card .sc-read:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+
+/* ---------------------------------------------------------------------------
+   One voice at a time on a small screen.
+
+   The field guide and the tour card carry the same four things: the name, the
+   description, the numbers and an excerpt of the readme. On a wide screen they
+   sit apart and the duplication reads as emphasis. On a phone they were drawn
+   on top of one another, both saying "git-city", with the island visible only
+   as a strip above them.
+
+   So on a phone the card narrates and the guide answers: open the guide and the
+   card stands down, and while the card is narrating it is a strip rather than a
+   panel -- no screenshot, no excerpt, just where the camera is and a way in.
+   --------------------------------------------------------------------------- */
+@media (max-width: 700px), (max-height: 560px) {
+  body:has(.gri-dialog[open]:not([hidden])) #showcase-card {
+    opacity: 0; pointer-events: none; transform: translate(-50%, 14px) scale(0.96);
+  }
+  #showcase-card { width: min(420px, calc(100vw - 20px)); }
+  #showcase-card .sc-readme-panel { display: none; }   /* the guide has the readme */
+  #showcase-card .sc-pic { display: none; }
+  #showcase-card .sc-screen { padding: 12px 14px 10px; }
+  #showcase-card .sc-name { font-size: 21px; }
+  #showcase-card .sc-desc {
+    font-size: 12.5px; margin-top: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #showcase-card .sc-hint { display: none; }           /* no arrow keys to press */
+  #showcase-card .sc-chin { padding: 7px 12px 0; gap: 6px; }
+}
+
+/* ---------------------------------------------------------------------------
+   The replay, mounted rather than embedded.
+
+   The obvious move was to make the Gource View embed match the rest of the
+   interface. Looking at what it actually renders says otherwise: it is a dark
+   field with glowing nodes drifting across it, and that darkness is the medium
+   -- lighten it and there is nothing for the lights to be seen against.
+
+   So the picture stays exactly as it is and the frame around it changes: paper
+   mount, ink caption, a dark well for the image to sit in. A photograph on the
+   page instead of a window cut through it, which is also why the corner it
+   sits in stops looking like a different application.
+   --------------------------------------------------------------------------- */
+#gource-mini {
+  background-image:
+    repeating-linear-gradient(92deg, rgba(128,128,128,.05) 0 1px, transparent 1px 3px),
+    radial-gradient(120% 160% at 18% 0%, var(--sheet-a), var(--sheet-b) 52%, var(--sheet-c));
+  border: 1px solid var(--line);
+  box-shadow: var(--sheet-shadow);
+  color: var(--ink-100);
+}
+/* The well: a printed picture sits slightly *in* the page, not on top of it. */
+#gource-mini .gn-screen {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink-100) 22%, transparent),
+              inset 0 2px 10px rgba(0, 0, 0, .55);
+}
+#gource-mini .gn-title {
+  font-family: var(--ui); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.01em; text-transform: none; color: var(--ink-500);
+}
+#gource-mini .gn-ch, #gource-mini .gn-close {
+  border-color: var(--line); color: var(--ink-300); background: none;
+}
+#gource-mini .gn-open::after {
+  background: color-mix(in srgb, var(--ink-100) 62%, transparent);
+  color: var(--sheet-b);
+  border-radius: 14px;
 }
