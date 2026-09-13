@@ -2,3 +2,6 @@ node_modules/
 .DS_Store
 # raw image-model sheets (scripts/assets/generate.py); only the keyed PNGs in public/assets/ are committed
 scripts/assets/raw/
+
+# Written at deploy time so the live site can be matched to a commit.
+public/.deployed-stamp
