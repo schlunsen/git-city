@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Sponsors for Gitilla. Edit this file, commit, deploy -- nothing else to do.",
+    "",
+    "They appear on ONE island only: the login named in \"island\" below. Every",
+    "other developer's city is untouched, whoever is looking at it. That is the",
+    "point -- the author sells space on his own island, not on other people's.",
+    "",
+    "cars:  each entry paints one car in the traffic with the sponsor's name on",
+    "       its doors. Order matters: the first entries get the cars nearest the",
+    "       plaza. Six or so is the most that reads as traffic rather than a",
+    "       motor show.",
+    "plane: one big sponsor at a time. The prop plane that circles the city tows",
+    "       their banner instead of the coffee one.",
+    "",
+    "name:  what goes on the door / the banner. Short is better -- a long name is",
+    "       shrunk to fit and stops being readable from the road.",
+    "color: the car's paintwork (hex). ink: the lettering on it.",
+    "url:   optional. Clicking the plane's banner opens it."
+  ],
+  "island": "schlunsen",
+  "cars": [],
+  "plane": null
+}

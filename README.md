@@ -155,6 +155,50 @@ node scripts/scrape.mjs torvalds antfu                          # just a few
 Snapshots only name repositories the profile owns — activity elsewhere is kept
 for the daily heatmap but anonymised.
 
+## Sponsors
+
+Gitilla is free and has no ads. One island carries sponsorship: **mine**. A
+sponsor gets a car in the traffic with their name on its doors; a headline
+sponsor gets the banner behind the plane that circles the city.
+
+They appear on that one island and nowhere else. Every other developer's city is
+untouched — whoever is looking at it, however they got there. That is enforced
+in code, not by convention: [`public/sponsors.json`](public/sponsors.json) names
+the single login sponsors apply to, and
+[`public/city/sponsors.js`](public/city/sponsors.js) returns nothing for any
+other login.
+
+Taking a sponsorship is an edit to that file, so it goes through the same review
+and history as everything else:
+
+```jsonc
+{
+  "island": "schlunsen",
+  "cars": [
+    { "name": "ACME", "color": "#e4574f", "ink": "#fff8e8" }
+  ],
+  "plane": {
+    "name": "ACME",
+    "text": "ACME ✈ proudly supports Gitilla",
+    "url": "https://acme.example"
+  }
+}
+```
+
+- **`cars`** — one entry, one car. The first entries take the boulevard, where
+  the tour and the drive-mode camera actually pass them. Six or so is the most
+  that still reads as traffic rather than a motor show; eight is the cap. Taxis
+  and buses are never repainted (a yellow taxi that is not yellow stops being a
+  taxi). Short names are better: a long one is shrunk to fit and stops being
+  readable from the road.
+- **`plane`** — one at a time. Their banner replaces the *Buy me a coffee* one,
+  which is the house ad that runs when nobody has bought it. `url` is optional;
+  with it, clicking the plane opens the sponsor instead of the coffee widget.
+- Colours must be `#rgb` or `#rrggbb` and links must be `http(s)` — both end up
+  in a canvas and a link, so both are validated rather than trusted.
+
+Leave `cars` empty and `plane` null for no sponsors, which is the default.
+
 ## Companion: Gource View
 
 [Gource View](https://github.com/schlunsen/gource-view) replays a single

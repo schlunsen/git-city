@@ -4,6 +4,7 @@ import { toonMat, getOutlineMat, noRaycast, box, hullOf, mergeParts, hashStr, se
 import { CELL, LANE_OFFSET, STREET_W, makeCityLayout } from './layout.js';
 import { cityLayout, boulevardLane } from './block.js';
 import { roundedRect } from '../world.js';
+import { sponsorsFor } from './sponsors.js';
 
 // ---------------------------------------------------------------------------
 // Cars — cute cel-shaded traffic (sedan, compact, taxi, pickup, van, bus) on
@@ -62,7 +63,7 @@ function makeCarType(o) {
     tail.push(box(0.08, 0.13, 0.22, x0 + 0.01, ly, s * (W / 2 - 0.22)));
   }
   o.extra?.({ paint, fixed, head, hull, x0, x1, W, wc });
-  return { L, paint: mergeParts(paint), fixed: mergeParts(fixed, true), head: mergeParts(head), tail: mergeParts(tail), hull: mergeParts(hull) };
+  return { L, W, paint: mergeParts(paint), fixed: mergeParts(fixed, true), head: mergeParts(head), tail: mergeParts(tail), hull: mergeParts(hull) };
 }
 
 function getCarKit() {
@@ -131,6 +132,52 @@ function getCarKit() {
   return carKit;
 }
 
+// A sponsor's name painted on both doors. Canvas rather than geometry: it is a
+// sign, it has to be legible from the pavement, and a texture costs one draw
+// call per car instead of a mesh per letter. Built per sponsor and reused by
+// both sides of the car.
+const liveryCache = new Map();
+function liveryMaterial(sponsor) {
+  const key = `${sponsor.name}|${sponsor.color}|${sponsor.ink}`;
+  if (liveryCache.has(key)) return liveryCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = sponsor.color; g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = '#1a2233'; g.lineWidth = 10; g.strokeRect(5, 5, c.width - 10, c.height - 10);
+  g.fillStyle = sponsor.ink;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  let px = 74;
+  const font = () => `800 ${px}px ui-rounded, "Baloo 2", "Nunito", "Trebuchet MS", system-ui, sans-serif`;
+  g.font = font();
+  // Shrink to fit rather than clip: a name that runs off the door is worse than
+  // a small one, and the sponsor paid for the name.
+  while (g.measureText(sponsor.name).width > c.width - 70 && px > 22) { px -= 3; g.font = font(); }
+  g.fillText(sponsor.name, c.width / 2, c.height / 2 + 3);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  tex.userData.shared = true;
+  const mat = toonMat({ map: tex });
+  mat.userData.shared = true;
+  liveryCache.set(key, mat);
+  return mat;
+}
+function addLivery(car, sponsor) {
+  const { len: L, wide: W, body } = car.userData;
+  const w = Math.min(L * 0.52, 2.1), h = w / 4;
+  const geo = new THREE.PlaneGeometry(w, h);
+  for (const side of [-1, 1]) {
+    const board = new THREE.Mesh(geo, liveryMaterial(sponsor));
+    // Just clear of the bodywork, facing out; the far side is mirrored so the
+    // lettering reads the right way round from either pavement.
+    board.position.set(-L * 0.04, 0.78, side * (W / 2 + 0.012));
+    board.rotation.y = side > 0 ? 0 : Math.PI;
+    board.raycast = noRaycast;
+    body.add(board);
+  }
+}
+
 function makeCar(kind, hex) {
   const kit = getCarKit(), t = kit.types[kind];
   const paint = new THREE.Mesh(t.paint, kit.paint(hex)), fixed = new THREE.Mesh(t.fixed, kit.fixed);
@@ -142,7 +189,7 @@ function makeCar(kind, hex) {
   const car = new THREE.Group();
   car.add(body, beam);
   car.traverse(o => { if (o.isMesh) o.raycast = noRaycast; });
-  car.userData = { body, len: t.L };
+  car.userData = { body, len: t.L, wide: t.W };
   return car;
 }
 
@@ -154,6 +201,11 @@ export function buildCars(user) {
     for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
     return a;
   };
+  // Sponsors, if this island has any (it is one named login, see sponsors.js).
+  // They take the first cars built, which are the ones on the boulevard, where
+  // the tour and the drive-mode camera actually pass them.
+  const sponsors = sponsorsFor(user?.login)?.cars || [];
+  let nextSponsor = 0;
   const boulevard = shuffle(['sedan', 'compact', 'taxi', 'van', 'pickup', 'bus', 'sedan', 'compact', 'taxi', 'van', 'compact', 'sedan']);
   const inner = shuffle(['compact', 'sedan', 'taxi', 'van']);
   const paints = shuffle([...CAR_PAINTS, ...CAR_PAINTS]);
@@ -171,9 +223,15 @@ export function buildCars(user) {
     const path = spec.path;
     const lane = { path, dir: spec.dir, length: path.getLength(), cars: [] };
     spec.kinds.forEach((kind, k) => {
-      const hex = kind === 'taxi' ? TAXI_YELLOW
+      // A sponsored car wears the sponsor's colour instead of drawing from the
+      // fleet palette; taxis and buses keep theirs, since a yellow taxi that is
+      // not yellow stops being a taxi.
+      const sponsor = kind !== 'taxi' && kind !== 'bus' && nextSponsor < sponsors.length ? sponsors[nextSponsor++] : null;
+      const hex = sponsor ? new THREE.Color(sponsor.color).getHex()
+        : kind === 'taxi' ? TAXI_YELLOW
         : kind === 'bus' ? BUS_PAINTS[Math.floor(rnd() * BUS_PAINTS.length)] : paints.pop();
       const car = makeCar(kind, hex), d = car.userData;
+      if (sponsor) addLivery(car, sponsor);
       d.u = (k + 0.15 + rnd() * 0.5) / spec.kinds.length;
       d.speed = spec.speed * (kind === 'bus' ? 0.8 : 0.88 + rnd() * 0.24);
       d.v = d.speed; d.roll = 0; d.yaw = null;

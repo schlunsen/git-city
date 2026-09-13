@@ -10,8 +10,37 @@ import * as THREE from 'three';
 import { scene, camera, cityGroup } from './scene.js';
 import { toonMat, getOutlineMat, hullOf, noRaycast } from './toon.js';
 
+import { sponsorsFor } from './sponsors.js';
+
 const SUPPORT_URL = 'https://buymeacoffee.com/schlunsen';
 const TEXT = 'Enjoying Gitilla?  Buy me a coffee ☕';
+// A headline sponsor takes the banner on their island, and the plane becomes
+// theirs: the coffee line is the house ad that runs when nobody has bought it.
+// Set by app.js as each city is built, and cleared for every other developer.
+let sponsor = null;
+export function setPlaneSponsor(login) {
+  const next = sponsorsFor(login)?.plane || null;
+  if ((next?.text || '') === (sponsor?.text || '')) return;
+  sponsor = next;
+  // The banner is two cloth meshes -- front and back -- not one mesh, so repaint
+  // both. Their materials may be the same object or two; dispose each old map
+  // once, and never the new one.
+  if (rig) {
+    const tex = bannerTexture();
+    const done = new Set();
+    for (const face of [rig.front, rig.back]) {
+      const mat = face?.material;
+      if (!mat || done.has(mat)) continue;
+      done.add(mat);
+      const old = mat.map;
+      mat.map = tex;
+      mat.needsUpdate = true;
+      if (old && old !== tex) old.dispose();
+    }
+  }
+}
+const bannerText = () => sponsor?.text || TEXT;
+const bannerLink = () => sponsor?.url || SUPPORT_URL;
 // Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
 const FLIGHT_SPEED = 11;                    // world units per second around the city
 const FIRST_WAIT = 6;                       // the first pass comes soon after the city is up
@@ -31,9 +60,10 @@ function bannerTexture() {
   g.fillStyle = '#1a2233'; g.textAlign = 'center'; g.textBaseline = 'middle';
   let px = 112;
   const font = () => `800 ${px}px ui-rounded, "Nunito", "Trebuchet MS", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif`;
+  const text = bannerText();
   g.font = font();
-  while (g.measureText(TEXT).width > c.width - 130 && px > 40) { px -= 4; g.font = font(); }
-  g.fillText(TEXT, c.width / 2, c.height / 2 + 6);
+  while (g.measureText(text).width > c.width - 130 && px > 40) { px -= 4; g.font = font(); }
+  g.fillText(text, c.width / 2, c.height / 2 + 6);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
@@ -352,8 +382,12 @@ export function summonBannerPlane() {
   return true;
 }
 
-// Open the Buy Me a Coffee widget (index.html loads it); the page itself if it's unavailable.
+// Clicking the plane or its banner. A sponsor's banner goes to the sponsor, if
+// they gave a link; otherwise the Buy Me a Coffee widget (index.html loads it),
+// and its own page if the widget is unavailable.
 export function openSupport() {
+  const href = bannerLink();
+  if (href !== SUPPORT_URL) { window.open(href, '_blank', 'noopener'); return; }
   const btn = document.getElementById('bmc-wbtn');
   if (btn) { btn.click(); return; }
   window.open(SUPPORT_URL, '_blank', 'noopener');

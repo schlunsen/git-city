@@ -59,10 +59,11 @@ import {
 } from './city/tour.js';
 import { actor, initActor, buildActor, buildAvatar, updateActor } from './city/actor.js';
 import { carKit, buildCars, updateCars } from './city/cars.js';
+import { loadSponsors } from './city/sponsors.js';
 import { gourceUrl, gourceCovering, openGource, closeGource, tuneGource, stopGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
-import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
+import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane, setPlaneSponsor } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
 
 // ---------------------------------------------------------------------------
 // App state (what the city modules own lives with them)
@@ -233,6 +234,7 @@ function buildCity(repos, user) {
   world?.setLots(planLots(vacant, user.login, CELL));
 
   buildAvatar(user);
+  setPlaneSponsor(user?.login); // headline sponsor's banner, on their island only
   buildCars(user);
   return rankRepos(repos).sort((a, b) => b.stargazers_count - a.stargazers_count); // what's built, tallest first
 }
@@ -1119,6 +1121,7 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
   clearFeed();
   customizer?.reset(); // a different city: drop any Customize draft
   const configPending = fetchCityConfig(login, { timeout: 12000 }); // the developer's city.json, alongside the profile (never throws)
+  await loadSponsors(); // one small same-origin file, fetched once per page; never throws
   try {
     const demo = new URLSearchParams(location.search).has('demo');
     let user, repos, sample = null;
