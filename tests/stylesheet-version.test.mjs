@@ -13,8 +13,8 @@ import { createHash } from 'node:crypto';
 // So the version is pinned to the file's content. Change styles.css and this
 // fails with the new hash: bump the ?v= in index.html and paste the hash in.
 const STYLESHEET = {
-  version: 5,
-  sha256: 'e3f1b1495942938ed00e232d1840bf3ff0c424403bed5fcbe3a90860417a1589',
+  version: 6,
+  sha256: '24fc299da552377baa44cce558cd616075a62845221f8dd85016390972891a8c',
 };
 
 test('the stylesheet version is bumped whenever the stylesheet changes', async () => {

@@ -40,7 +40,7 @@
 <!-- The page itself is never edge-cached, but the stylesheet is (four hours at
      the CDN). ?v is how a restyle reaches visitors on the day it ships: bump it
      whenever styles.css changes in a way that must not wait out that window. -->
-<link rel="stylesheet" href="./styles.css?v=5" />
+<link rel="stylesheet" href="./styles.css?v=6" />
 </head>
 <body>
 
@@ -53,6 +53,38 @@
   </div>
   <h1>Git<span>illa</span></h1>
   <p id="load-status">contacting the GitHub API…</p>
+</div>
+
+<!-- The welcome card, and the same card the ? button reopens. It is shown once
+     on a visitor's first ever load, over the load screen, which app.js holds
+     open long enough to read it. Without it the city arrives with no
+     explanation of what the towers mean and no sign that you can walk, drive
+     or fly between them: the controls are invisible until something says they
+     exist. Never in an embed -- that is a picture on someone else's page.
+     ?primer=1 forces it back for a look; ?primer=0 suppresses it. -->
+<div id="primer" hidden>
+  <div class="primer-card" role="dialog" aria-modal="true" aria-labelledby="primer-title">
+    <h2 id="primer-title">Welcome to Gitilla</h2>
+    <p class="primer-lede">This is a <b>GitHub profile as a city</b>. Every repository is a
+      building: <b>stars</b> make it tall, its <b>language</b> paints it, and the last 90 days
+      of activity play back across the skyline.</p>
+    <ul class="primer-keys" aria-label="Keyboard controls">
+      <li><span class="pk"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd></span><span>orbit &middot; walk &middot; drive &middot; fly</span></li>
+      <li><span class="pk"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>move and steer</span></li>
+      <li><span class="pk"><kbd>Space</kbd></span><span>hold to fly &mdash; the unicorn has wings</span></li>
+      <li><span class="pk"><kbd>E</kbd></span><span>read the README of the building you&rsquo;re at</span></li>
+      <li><span class="pk"><kbd>T</kbd></span><span>cinematic tour of the city</span></li>
+      <li><span class="pk"><kbd>N</kbd></span><span>sail to a neighbour&rsquo;s island</span></li>
+      <li><span class="pk"><kbd>Esc</kbd></span><span>back out to the map</span></li>
+    </ul>
+    <ul class="primer-taps" aria-label="Touch controls">
+      <li><span class="pk"><span class="tap">Explore</span></span><span>walk, drive or fly around the city</span></li>
+      <li><span class="pk"><span class="tap">stick</span></span><span>move &middot; drag the city to look around</span></li>
+      <li><span class="pk"><span class="tap">Fly &uarr;</span></span><span>hold to lift off</span></li>
+      <li><span class="pk"><span class="tap">tap a sign</span></span><span>read that repository&rsquo;s README</span></li>
+    </ul>
+    <button id="primer-go" type="button">Start exploring</button>
+  </div>
 </div>
 
 <header id="topbar">
@@ -77,6 +109,7 @@
     <a href="?user=schlunsen" data-user="schlunsen">schlunsen</a>
   </nav>
   <div id="toolbar">
+    <button id="help-btn" class="tb" type="button" title="What is this, and how do I move around? (?)">Help</button>
     <button id="reset-btn" class="tb" title="Reset camera">Reset view</button>
     <button id="flyover-btn" class="tb on" title="Slow orbit when idle">Flyover</button>
     <button id="follow-btn" class="tb on" title="Camera drifts toward activity">Follow</button>

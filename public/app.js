@@ -877,6 +877,7 @@ function wireUI() {
   syncBars();
   window.addEventListener('keydown', (e) => {
     if (e.target.closest?.('input, textarea, [contenteditable=true]')) return;
+    if (e.key === '?') { e.preventDefault(); openPrimer(); return; } // before the explorer: help is never claimed by a mode
     if (explorer?.wantsKey(e)) return; // exploring: Space jumps/drifts, T is ignored (Esc and V still pass)
     if (tour.active && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); tourJump(e.key === 'ArrowRight' ? 1 : -1); return; }
     if (e.key === 't' || e.key === 'T') { tour.active ? endTour() : startTour(); }
@@ -885,6 +886,9 @@ function wireUI() {
     else if (e.key === 'v' || e.key === 'V') { setTv(!tvOn, { remember: cfgNow()?.look.tv === undefined }); }
   });
   hookCoffeeButton(); // the Buy Me a Coffee button flies you to the plane too
+  $('help-btn').addEventListener('click', () => { setMenu(false); openPrimer(); });
+  $('primer-go').addEventListener('click', dismissPrimer);
+  $('primer').addEventListener('click', (e) => { if (e.target.id === 'primer') dismissPrimer(); }); // the scrim
   $('panel-close').addEventListener('click', closePanel);
   $('reset-btn').addEventListener('click', resetCamera);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
@@ -1216,6 +1220,58 @@ function resetCamera() {
   controls.update();
 }
 
+// ---------------------------------------------------------------------------
+// Welcome primer (and the Help panel: the same card, without the hold)
+// ---------------------------------------------------------------------------
+// A first-time visitor lands on a city with no caption. The towers mean
+// something, and you can walk, drive and fly between them -- but nothing on
+// screen says either, so most people watch the orbit for a while and leave.
+// The card says what they are looking at and which keys move them, and on a
+// first visit the load screen is held open long enough to read it.
+const PRIMER_SEEN = 'gc-primer-seen';
+const PRIMER_HOLD = 5000; // ms; the button skips it from the first frame
+const primer = { timer: null, release: null, opener: null };
+// loadCity waits on this before uncovering the city, so the first thing anyone
+// sees is the explanation rather than a skyline they have to interpret.
+let primerGate = Promise.resolve();
+
+/** Show the card. `hold` (ms) also drains a bar across the button; 0 is the Help panel. */
+function openPrimer({ hold = 0 } = {}) {
+  const el = $('primer');
+  if (!el || !el.hidden) return Promise.resolve();
+  primer.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  el.hidden = false;
+  el.classList.toggle('manual', !hold);
+  el.style.setProperty('--primer-hold', `${hold}ms`);
+  // Reopened from Help you are already exploring, so the button stops pretending to start it.
+  $('primer-go').textContent = hold ? 'Start exploring' : 'Got it';
+  writePref(PRIMER_SEEN, '1'); // shown is seen: it never opens itself twice, pressed or not
+  addEventListener('keydown', onPrimerKey, true);
+  if (hold) primer.timer = setTimeout(dismissPrimer, hold);
+  $('primer-go').focus({ preventScroll: true });
+  return new Promise((resolve) => { primer.release = resolve; });
+}
+
+function dismissPrimer() {
+  const el = $('primer');
+  if (!el || el.hidden) return;
+  clearTimeout(primer.timer);
+  removeEventListener('keydown', onPrimerKey, true);
+  el.classList.add('closing');
+  setTimeout(() => { el.hidden = true; el.classList.remove('closing'); }, 250);
+  primer.opener?.focus?.({ preventScroll: true }); // Help: back to the button that opened it
+  primer.opener = null;
+  primer.release?.();
+  primer.release = null;
+}
+
+// Capture, and swallowed: the card is over a city that reads 1-4, W A S D,
+// Space and T, and none of that may fire at a page you are still reading.
+function onPrimerKey(e) {
+  if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dismissPrimer(); }
+  e.stopPropagation();
+}
+
 async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js portal travel, fired once the new city stands
   login = login.trim().replace(/^@/, '');
   const version = ++cityVersion;
@@ -1277,6 +1333,8 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     buildCommitShuttles(repos, user);
     buildForkBeams(repos);
     resetCamera();
+    await primerGate; // a first visit reads the welcome card before the city arrives
+    if (version !== cityVersion) return;
     loading.classList.add('hidden');
     explorer?.revealCity(); // the same light-and-warp language as island travel and the README
     settleProfileCard();   // the island arrives first; its card follows it in
@@ -1422,6 +1480,13 @@ function main() {
   const startUser = (fromUrl || (EMBED ? randomDeveloper() : DEFAULT_USER)).replace(/^@/, '');
   document.getElementById('search-input').value = startUser;
   animate();
+  // ?primer=1 forces the card back (testing, screenshots), ?primer=0 suppresses
+  // it. An embed is a picture on someone else's page: it gets no welcome card,
+  // and no five seconds of held load screen either.
+  const askedPrimer = PARAMS.get('primer');
+  if (!EMBED && askedPrimer !== '0' && (askedPrimer !== null || !readPref(PRIMER_SEEN))) {
+    primerGate = openPrimer({ hold: PRIMER_HOLD });
+  }
   loadCity(startUser);
   // A showcase tour ends at its last stop. With nobody there to start another,
   // the city would stand still for the rest of the scene -- so watch for it.
