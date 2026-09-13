@@ -959,9 +959,18 @@ export function createWorld(THREE, scene, deps) {
     }
     const sh = col(B.shallow);
     const bright = 1.35;
-    shoreBand((R) => R * 0.97, (R) => R + 16 + 14 * B.beach, [sh.r * bright, sh.g * bright, sh.b * bright, 0.85], [sh.r, sh.g, sh.b, 0], SEA_Y + 0.02, shallowMat);
+    const shallow = shoreBand((R) => R * 0.97, (R) => R + 16 + 14 * B.beach, [sh.r * bright, sh.g * bright, sh.b * bright, 0.85], [sh.r, sh.g, sh.b, 0], SEA_Y + 0.02, shallowMat);
     const foam = shoreBand((R) => R * 0.99, (R) => R + 0.9, [1, 1, 1, 0.95], [1, 1, 1, 0.7], SEA_Y + 0.04, foamMat);
     const foam2 = shoreBand((R) => R + 3.4, (R) => R + 4.1, [1, 1, 1, 0.55], [1, 1, 1, 0.3], SEA_Y + 0.035, foam2Mat);
+    // The shoreline blinked as the camera moved. Three transparent rings, two
+    // hundredths of a unit apart, all centred on the island: three.js sorts the
+    // transparent pass by distance to the bounding-sphere centre, and those
+    // centres are the same point, so which one drew last came down to floating
+    // point and changed from frame to frame. Say it outright instead, bottom to
+    // top -- shallows, outer foam, breaking foam -- and the order stops moving.
+    shallow.renderOrder = 1;
+    foam2.renderOrder = 2;
+    foam.renderOrder = 3;
 
     // ---- roads, village squares, fields ----------------------------------------
     function ribbon(pts, width, lift, mat) {
