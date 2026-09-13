@@ -153,7 +153,7 @@ function miniBox() {
   // The frame is cross-origin, so a click never reaches this page: an overlay
   // button on the glass is what makes the small screen open into the big one.
   box.innerHTML = `<div class="gn-screen"><div class="gn-frame"></div><div class="gn-crt"></div>
-      <button class="gn-open" type="button" aria-label="Watch this history full size" title="Full size"></button></div>
+      <button class="gn-open" type="button" aria-label="Watch this history full size"></button></div>
     <div class="gn-head"><span class="gn-led"></span><span class="gn-title"></span>
       <button class="gn-ch" type="button" data-dir="-1" aria-label="Previous repo">‹</button>
       <button class="gn-ch" type="button" data-dir="1" aria-label="Next repo">›</button>
@@ -178,7 +178,11 @@ export function expandGource(want) {
   box.classList.remove('arriving');
   box.classList.toggle('big', big);
   document.body.classList.toggle('gource-mini-big', big);
-  box.querySelector('.gn-open').title = big ? 'Back to the corner' : 'Full size';
+  // The label lives on aria-label only. As a `title` the browser paints its own
+  // tooltip over the replay a second after the pointer lands -- a grey box in
+  // the middle of the picture, which is exactly what the corner chip exists to
+  // avoid. Screen readers still get the wording.
+  box.querySelector('.gn-open').setAttribute('aria-label', big ? 'Back to the corner' : 'Watch this history full size');
   document[big ? 'addEventListener' : 'removeEventListener']('keydown', miniKeys, true);
 }
 function miniKeys(e) {
