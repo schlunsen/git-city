@@ -108,6 +108,60 @@ function onResize() {
 }
 
 // ---------------------------------------------------------------------------
+// Embed mode  --  gitilla.com/?embed=1
+// ---------------------------------------------------------------------------
+// The city with nothing around it: no search bar, no transport, no cursor --
+// just the place, flying itself. Written for the Git Visualizer screen saver,
+// which used to paper over the interface from outside (inject CSS to hide the
+// bars, then poll the toolbar and click the tour button every twelve seconds),
+// and equally what you want when dropping the city into an iframe.
+//
+//   ?embed=1            a developer at random, chrome off, tours running
+//   ?embed=1&user=x     ...that developer (a saver or a page's own playlist)
+//   ?embed=1&users=a,b  ...from this pool instead of the bundled six
+//   &tour=0             still turns the tours off
+const PARAMS = new URLSearchParams(location.search);
+// Bare ?embed counts; only an explicit 0/false turns it off.
+const flag = (name) => { const v = PARAMS.get(name); return v !== null && v !== '0' && v !== 'false'; };
+const EMBED = flag('embed');
+const EMBED_MODE = EMBED ? embedMode() : 'tour'; // decided once, so a reload is a new draw
+// The chrome goes before first paint. The loading overlay is covering the page
+// at this point, so nothing is seen to disappear.
+if (EMBED) {
+  document.documentElement.dataset.embed = '1';
+  // ?ui=none strips the cards too, leaving the city alone. Anything else keeps
+  // them: they say whose city this is and what the camera is circling, which is
+  // the part of the interface that is still doing something when nobody is there.
+  const ui = (PARAMS.get('ui') || '').toLowerCase();
+  if (ui) document.documentElement.dataset.ui = ui;
+  // How many repositories a round visits before moving on, and whether it moves
+  // on at all. ?stops=0 tours the whole city; ?islands=0 stays on this one.
+  document.documentElement.dataset.stops = PARAMS.get('stops') ?? '5';
+  // Note this one defaults ON, so it is not flag(): only an explicit 0/false stops it.
+  const off = (name) => ['0', 'false'].includes((PARAMS.get(name) || '').toLowerCase());
+  if (off('islands')) document.documentElement.dataset.islands = '0';
+}
+// The bundled six by default: their snapshots ship with the page, so an embed
+// left running for hours keeps drawing cities long after GitHub's 60 requests
+// an hour are gone.
+// How an embed shows the city: the cinematic tour, the car driving the
+// boulevard, or the plane circling overhead. Random by default, so a screen
+// saver left on all day is not the same thirty seconds each time.
+function embedMode() {
+  // Declared inside: this is called while the module's own consts are still
+  // being initialised, so anything at module scope would be in the dead zone.
+  const NAMES = { tour: 'tour', car: 'drive', drive: 'drive', plane: 'fly', fly: 'fly', air: 'fly' };
+  const asked = (PARAMS.get('mode') || 'random').toLowerCase();
+  if (asked === 'random' || !asked) return ['tour', 'drive', 'fly'][Math.floor(Math.random() * 3)];
+  return NAMES[asked] || 'tour';
+}
+function randomDeveloper() {
+  const asked = (PARAMS.get('users') || '').split(',').map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
+  const pool = asked.length ? asked : Object.keys(FIXTURES);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ---------------------------------------------------------------------------
 // City footprint (per profile)
 // ---------------------------------------------------------------------------
 // Pick the footprint for a profile: deterministic per login (and account
@@ -1113,8 +1167,21 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     explorer?.revealCity(); // the same light-and-warp language as island travel and the README
     onBuilt?.(user.login); // explore.js portal travel: the new island is ready
     // Open on the showcase flight around the buildings (the activity playback is one press of ▶ away).
-    if (!prefersReducedMotion() && new URLSearchParams(location.search).get('tour') !== '0') {
-      autoTourTimer = setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !explorer?.inspectorOpen && !tour.active) startTour(); }, 10000); // a look around first
+    // An embed is nothing but the flight, so it starts sooner; reduced motion
+    // is a preference about interfaces the visitor is driving, and this one was
+    // asked for -- in System Settings, or in the URL -- to move on its own.
+    if (EMBED && EMBED_MODE !== 'tour') {
+      // Hand the city to a vehicle instead. setMode ends any tour for us, and
+      // the autopilot moves the same sticks a driver would, so the car still
+      // collides and the plane still keeps itself off the rooftops.
+      setTimeout(() => {
+        if (version !== cityVersion) return;
+        explorer?.setMode(EMBED_MODE);
+        explorer?.setAutopilot(true);
+      }, 2500);
+    } else if (PARAMS.get('tour') !== '0' && (EMBED || !prefersReducedMotion())) {
+      autoTourTimer = setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !explorer?.inspectorOpen && !tour.active) startTour(); },
+        EMBED ? 2500 : 10000); // a look around first
     }
     // The activity timeline arrives second so the city never waits on it.
     const events = sample ? sample.events : await fetchEvents(user.login, { org: isOrg(user) });
@@ -1165,6 +1232,7 @@ function main() {
     transitInspect: (repo) => explorer?.transitInspector(repo) || false,
     guideOpen: () => !!explorer?.inspectorOpen,
     stopGource, // the corner history screen stops with the tour
+    nextIsland: () => explorer?.flyToNext(), // embed: a finished round sails on to a neighbour
     explorer: () => explorer, flyover: () => flyover,
   });
   initActor({ version: () => cityVersion, playback: () => ({ timeline, play }), onStep: announceStep, onClock: updateClock });
@@ -1228,11 +1296,20 @@ function main() {
     motion: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
   });
   setDayMode('auto');
-  const fromUrl = new URLSearchParams(location.search).get('user');
-  const startUser = (fromUrl || DEFAULT_USER).replace(/^@/, '');
+  const fromUrl = PARAMS.get('user');
+  const startUser = (fromUrl || (EMBED ? randomDeveloper() : DEFAULT_USER)).replace(/^@/, '');
   document.getElementById('search-input').value = startUser;
   animate();
   loadCity(startUser);
+  // A showcase tour ends at its last stop. With nobody there to start another,
+  // the city would stand still for the rest of the scene -- so watch for it.
+  if (EMBED && EMBED_MODE === 'tour' && PARAMS.get('tour') !== '0') {
+    setInterval(() => {
+      if (!document.getElementById('loading')?.classList.contains('hidden')) return; // still being built
+      if (tour.active || explorer?.ownsCamera || explorer?.inspectorOpen) return;
+      startTour();
+    }, 6000);
+  }
   window.__city = { scene, world, camera, controls, explorer, get cityConfig() { return cityConfig; }, cityPlayerSettings, get buildingFiles() { return buildingFiles; }, debug: { get orbitReturn() { return orbitReturn; }, get tour() { return tour.active && { paused: tour.paused, stop: tour.stop, leg: tour.leg }; }, get cine() { return cine && { leg: cine.leg, legs: cine.legs.length }; } } }; // debug handle
 }
 

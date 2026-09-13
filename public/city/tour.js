@@ -120,7 +120,14 @@ function tourStops() {
   return picks;
 }
 function buildShowcase(start = 0) {
-  if (!tour.stops) { const picks = tourStops(); tour.stops = picks.map(p => p.b); tour.highlights = picks.map(p => p.highlight); }
+  if (!tour.stops) {
+    let picks = tourStops();
+    // Embed mode visits the top few and then moves on, rather than working
+    // through forty repositories before anyone sees a second island.
+    const cap = Number(document.documentElement.dataset.stops || 0);
+    if (cap > 0) picks = picks.slice(0, cap);
+    tour.stops = picks.map(p => p.b); tour.highlights = picks.map(p => p.highlight);
+  }
   const stops = tour.stops;
   if (!stops.length) return null;
   const legs = [];
@@ -151,7 +158,14 @@ export function updateTour(dt) {
     if (leg.hold && deps.guideOpen()) break;
     leg = tour.legs[++tour.leg];
   }
-  if (!leg) { tour.legs = null; tour.t = 0; return; } // loop: the next frame plans a new round from here
+  if (!leg) {
+    tour.legs = null; tour.t = 0; // the next frame plans a new round from here
+    // ...unless this is an embed, where a finished round is the cue to leave:
+    // a screen saver that tours one developer forever is a screen saver of one
+    // developer. ?islands=0 keeps it home and lets the round repeat.
+    if (document.documentElement.dataset.embed && document.documentElement.dataset.islands !== '0') deps.nextIsland?.();
+    return;
+  }
   if (!leg.next && leg.repo && !leg.planned) {
     leg.planned = true; // entering this stop: stay longer if its README has a picture to show
     if (readmeKnown.get(leg.repo.full_name)?.image) leg.dur = Math.max(leg.dur, 11);
@@ -186,6 +200,11 @@ function holdLeg(leg, from) {
   return Object.assign(orbitLeg(leg.b, 0, { dur: 64, sweep: Math.PI * 2, loop: true, from }),
     { stop: leg.stop, of: leg.of, highlight: leg.highlight, autoInspected: true, planned: true, hold: true });
 }
+// How long an embedded stop lingers before the tour moves on. Long enough to
+// read a good part of the README and watch the commit replay get going; short
+// enough that a screen saver is never a still picture.
+const EMBED_DWELL_MS = 21000;
+let embedDwell = 0;
 // Closing the guide lets the held stop go: the tour moves on from the next frame.
 function releaseHold() {
   const leg = tour.legs?.[tour.leg];
@@ -225,6 +244,13 @@ function openTourReadme(repo) {
     // key. Escape now leaves the tour and flies back out to the city.
     onClose: (why) => (why === 'escape' ? exitTourToCity() : releaseHold()),
   });
+  // Embed mode (?embed=1) has no hands. The stop is held open until the guide
+  // is closed, and nobody is going to close it -- so it closes itself, which
+  // releases the hold and moves the tour along exactly as a visitor would.
+  if (opened && document.documentElement.dataset.embed) {
+    clearTimeout(embedDwell);
+    embedDwell = setTimeout(() => deps.closeInspect(), EMBED_DWELL_MS);
+  }
   return opened;
 }
 // A small TV set for the showcase: which repo the camera is heading to or
@@ -335,6 +361,7 @@ export function startTour() {
 export function endTour() {
   tour.active = false; tour.paused = false; tour.legs = null; tour.stops = null;
   warping = false;
+  clearTimeout(embedDwell); embedDwell = 0; // a stop that is gone must not release a later one
   deps.stopGource();
   deps.closeInspect(); // the field guide belongs to the tour: it leaves with it
   showcaseCard(null);

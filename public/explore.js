@@ -694,6 +694,33 @@ export function createExplorer(THREE, deps = {}) {
     const p = pts[k], q = pts[(k + 2) % N], tl = Math.hypot(q.x - p.x, q.z - p.z) || 1;
     return { x: p.x, z: p.z, tx: (q.x - p.x) / tl, tz: (q.z - p.z) / tl };
   }
+  // Steer the car along the boulevard's outer lane, the one it spawns on and the
+  // one the ambient traffic uses. layoutBoulevard indexes the contour by bearing,
+  // so "further along" is simply a larger angle about the centre.
+  let autopilot = null;
+  function autoDrive(dt) {
+    const r = Math.hypot(car.p.x, car.p.z) || 1;
+    const a = Math.atan2(car.p.z, car.p.x) + AUTO.CAR_LOOK;
+    const aim = layoutBoulevard(Math.cos(a) * r, Math.sin(a) * r);
+    if (!aim) return NEUTRAL; // no layout yet: coast rather than steer at nothing
+    // The car's heading convention is fx = cos(yaw), fz = -sin(yaw), and positive
+    // steer turns yaw negative -- hence both minus signs.
+    const err = wrapAngle(Math.atan2(-(aim.z - car.p.z), aim.x - car.p.x) - car.yaw);
+    return { ...NEUTRAL, thr: car.vf < AUTO.CAR_SPEED ? 1 : 0, steer: clamp(-err * AUTO.CAR_GAIN, -1, 1) };
+  }
+  // The plane banks to turn, so the only stick it needs is roll: aim at a point
+  // walking around a circle over the city and let simFly's auto-levelling,
+  // ceiling, floor and roof-skimming do the rest.
+  function autoFly(dt) {
+    const a = Math.atan2(plane.p.z, plane.p.x) + AUTO.AIR_LOOK;
+    const tx = Math.cos(a) * AUTO.AIR_RADIUS, tz = Math.sin(a) * AUTO.AIR_RADIUS;
+    const err = wrapAngle(Math.atan2(-(tz - plane.p.z), tx - plane.p.x) - plane.yaw);
+    return { ...NEUTRAL, roll: clamp(-err * AUTO.AIR_GAIN, -1, 1) };
+  }
+  /** Hand the sticks to the autopilot (embed mode), or give them back. */
+  function setAutopilot(on) {
+    autopilot = on ? () => (sim === 'drive' ? autoDrive() : sim === 'fly' ? autoFly() : NEUTRAL) : null;
+  }
   function spawnWalk() {
     const cx = camera.position.x, cz = camera.position.z, alongZ = Math.abs(cz) >= Math.abs(cx);
     const end = layoutStreetEnd(cx, cz);
@@ -1131,6 +1158,21 @@ export function createExplorer(THREE, deps = {}) {
     };
   }
   const NEUTRAL = { fwd: 0, side: 0, turn: 0, run: false, jump: false, thr: 0, steer: 0, hand: false, pitch: 0, roll: 0, faster: 0, slower: 0 };
+// ---------------------------------------------------------------------------
+// Autopilot (embed mode): the same sticks, moved by something other than hands.
+// ---------------------------------------------------------------------------
+// Nothing about the simulation changes -- these return the very input object a
+// keyboard would, so the car still understeers, the plane still auto-levels,
+// and both keep their collision, terrain and soft-bound handling. Pure pursuit:
+// look at a point a little further along the path and steer at it.
+const AUTO = {
+  CAR_LOOK: 0.20,   // radians of boulevard to look ahead
+  CAR_GAIN: 1.6,    // how hard to correct the heading error
+  CAR_SPEED: 13,    // of a top speed of 26: quick enough to feel driven, slow enough to hold a corner
+  AIR_RADIUS: 200,  // well inside EDGE_R (320), or the plane leaves for the next island mid-shot
+  AIR_LOOK: 0.32,
+  AIR_GAIN: 0.9,
+};
 
   let hudT = 0;
   function updateGauge(dt) {
@@ -1484,7 +1526,7 @@ export function createExplorer(THREE, deps = {}) {
         if (!onLand(car.p.x, car.p.z)) spawnDrive(); else unstickCar();
       }
     }
-    const input = exiting ? NEUTRAL : readInput();
+    const input = exiting ? NEUTRAL : (autopilot ? autopilot(dt) : readInput());
     // The figure belongs to walk mode only: driving past yourself standing in
     // the road, or seeing yourself from the plane, would be a ghost.
     if (person && sim !== 'walk') person.group.visible = false;
@@ -1565,7 +1607,7 @@ export function createExplorer(THREE, deps = {}) {
       if (repoInspector.open) return e.code === 'KeyR' || e.code === 'KeyH' || e.code === 'KeyE' || e.key === 'Escape';
       return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V';
     },
-    update, postRender, dispose, resetColliders, flyToNext, travelTo, revealCity,
+    update, postRender, dispose, resetColliders, flyToNext, travelTo, revealCity, setAutopilot,
     inspectRepo(repo, options) { return repoInspector.inspect(repo, options); },
     closeInspector(reason) { repoInspector.close(reason); },
     /** Tour hop: hold the field guide open (veiled) while the camera flies to the next repo. */

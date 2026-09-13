@@ -984,3 +984,65 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
   color: var(--sheet-b);
   border-radius: 14px;
 }
+
+/* ---------------------------------------------------------------------------
+   Embed mode (?embed=1)
+   ---------------------------------------------------------------------------
+   The Git Visualizer screen saver used to inject this from outside. Keeping it
+   here means the rule travels with the markup it depends on: when an id changes
+   the stylesheet changes with it, instead of an embed quietly showing a toolbar.
+
+   What goes is what you would reach for -- the search bar, the transport, the
+   tooltip, the coffee button. What stays is what the city is telling you: the
+   profile card, the showcase card and the field guide are the visualisation. */
+:root[data-embed] #topbar,
+:root[data-embed] #transport,
+:root[data-embed] #tooltip,
+:root[data-embed] #panel,
+:root[data-embed] #error,
+:root[data-embed] #bmc-wbtn,
+:root[data-embed] #bmc-wbtn-container,
+:root[data-embed] .bmc-btn { display: none !important; }
+/* Nothing is pointing at it, and an unattended city with a cursor looks broken. */
+:root[data-embed], :root[data-embed] * { cursor: none !important; }
+/* Every control that invites a click, on a thing nobody can click: the card's
+   prev/next and "Open full README", the keyboard hint, the customize link, the
+   profile disclosure, and the field guide (which embed mode never opens
+   anyway -- this is only so it cannot appear by some other route). */
+:root[data-embed] .sc-ch,
+:root[data-embed] .sc-read,
+:root[data-embed] .sc-hint,
+:root[data-embed] #guide-link,
+:root[data-embed] #profile-toggle,
+:root[data-embed] .gri-prompt,
+:root[data-embed] .gri-close,
+:root[data-embed] .gri-footer,
+:root[data-embed] .gri-tabs { display: none !important; }
+
+/* The README keeps its place on the right, where it has always been -- it is
+   the one panel with something to read, and it reads better as a column than
+   as a caption. Stripped of everything you would press, and narrower, so the
+   city it belongs to is still the larger half of the screen. The showcase card
+   stands down: with the guide naming the repo, two captions is one too many. */
+:root[data-embed] .gri-dialog[data-hud="true"] { width: min(400px, 31vw); }
+:root[data-embed] #showcase-card { display: none !important; }
+
+/* The left column arrived by simply existing -- profile, stats, most-active,
+   all at once, hard on. Everything else in embed mode eases in (the city warps
+   up, the guide flies in from the right), so they were the one thing that
+   snapped. They now drift up and fade, staggered, so the corner assembles
+   itself while the camera is still finding the island. */
+@keyframes gc-embed-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+:root[data-embed] #explorer > * { animation: gc-embed-in 0.9s cubic-bezier(0.2, 0.85, 0.25, 1) both; }
+:root[data-embed] #explorer > :nth-child(1) { animation-delay: 0.35s; }
+:root[data-embed] #explorer > :nth-child(2) { animation-delay: 0.55s; }
+:root[data-embed] #explorer > :nth-child(3) { animation-delay: 0.75s; }
+:root[data-embed] #explorer > :nth-child(4) { animation-delay: 0.95s; }
+/* Nobody to read it, and it would sit there for five and a half seconds. */
+:root[data-embed] .gcx-toast { display: none !important; }
+
+/* ?embed=1&ui=none -- the city and nothing else. */
+:root[data-embed][data-ui="none"] #explorer,
+:root[data-embed][data-ui="none"] #showcase-card,
+:root[data-embed][data-ui="none"] #legend,
+:root[data-embed][data-ui="none"] #gource-mini { display: none !important; }
