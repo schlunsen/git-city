@@ -9,7 +9,7 @@ export function injectStyle() {
   const s = document.createElement('style');
   s.id = 'gcx-style';
   s.textContent = `
-  .gcx-hud { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--transport-h, 96px) + 14px); z-index: 30;
+  .gcx-hud { position: fixed; touch-action: none; left: 50%; transform: translateX(-50%); bottom: calc(var(--transport-h, 96px) + 14px); z-index: 30;
     display: flex; align-items: center; gap: 12px; padding: 5px 5px 5px 6px; max-width: calc(100vw - 24px);
     background: var(--panel, rgba(17, 24, 36, 0.8)); border: 1px solid var(--line, rgba(110, 135, 175, 0.22)); border-radius: 999px;
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -24,7 +24,7 @@ export function injectStyle() {
   .gcx-gauge { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-300, #c2cad8); flex: none; }
   .gcx-exit { flex: none; background: var(--glass, rgba(255, 255, 255, 0.06)); }
   .gcx-hud kbd, .gcx-menu kbd { font: 600 9px/1 var(--mono, monospace); padding: 2px 4px; border-radius: 4px; border: 1px solid var(--line, rgba(110, 135, 175, 0.3)); color: var(--ink-500, #7f8ca3); margin-right: 4px; }
-  .gcx-menu { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 2px; padding: 5px; min-width: 150px;
+  .gcx-menu { position: fixed; touch-action: none; z-index: 60; display: flex; flex-direction: column; gap: 2px; padding: 5px; min-width: 150px;
     background: var(--panel, rgba(17, 24, 36, 0.97)); border: 1px solid var(--line, rgba(110, 135, 175, 0.22)); border-radius: 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45); }
   .gcx-menu button { display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 0; background: none; cursor: pointer;
     font: 600 13px var(--ui, system-ui), sans-serif; color: var(--ink-300, #c2cad8); padding: 9px 10px; border-radius: 7px; text-align: left; }

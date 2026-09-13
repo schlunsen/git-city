@@ -201,3 +201,33 @@ test('nothing anchored above the transport bar guesses its height', async () => 
     'the legend clears the transport bar by measurement, not by a guess');
   assert.doesNotMatch(legend[0], /bottom: \d+px/, 'a literal bottom offset is the bug this replaced');
 });
+
+// Pinch-to-zoom is a visual-viewport gesture that touch-action cannot reach, so
+// on a phone it fired over the plane and scaled the whole interface up with no
+// way back -- a fixed page has nothing to pinch out of, and leaving the bomb
+// run to escape ends the run. It is refused while a vehicle is being driven and
+// left alone in orbit, where zooming a page is how some people read one.
+test('the plane refuses pinch-zoom without taking it from the page', async () => {
+  const ex = await read('explore.js');
+  assert.match(ex, /const driving = \(\) => mode !== 'orbit';/,
+    'the refusal is scoped to actually driving something');
+  assert.match(ex, /function onGesture\(e\) \{ if \(driving\(\)\) e\.preventDefault\(\); \}/,
+    "Safari's own pinch events are refused");
+  assert.match(ex, /e\.touches\?\.length > 1\) e\.preventDefault\(\)/,
+    'and the two-finger move every other browser uses');
+  for (const t of ['gesturestart', 'gesturechange', 'gestureend']) {
+    assert.ok(ex.includes(t), `${t} must be handled`);
+  }
+  assert.match(ex, /document\.addEventListener\(t, onGesture, \{ passive: false \}\)/,
+    'a passive listener cannot preventDefault, which would make all of this decorative');
+  assert.match(ex, /document\.removeEventListener\('touchmove', onTouchMove\)/,
+    'and it all comes off again when explore is disposed');
+});
+
+// The chase camera has one framing per vehicle. A scroll wheel used to push it
+// in and out with nothing to put it back.
+test('the chase camera has no zoom to get stuck in', async () => {
+  const ex = await read('explore.js');
+  assert.doesNotMatch(ex, /chase\.zoom/, 'no zoom state to strand the camera in');
+  assert.doesNotMatch(ex, /addEventListener\('wheel'/, 'and nothing driving one');
+});
