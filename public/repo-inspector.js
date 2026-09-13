@@ -166,6 +166,27 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     /* The focus ring was teal on black; on paper it has to be ink too, or the
        first thing the eye lands on is a leftover from the old palette. */
     .gri-dialog :focus-visible{outline:2px solid var(--ink);outline-offset:2px;border-radius:2px}
+    /* On a phone the guide was the whole screen: 366x672 of a 390x844 display,
+       with the tour card stacked on top of it, which measured out at 136% of
+       the viewport covered -- the interface overlapping itself and the island
+       reduced to a strip at the top. It becomes a sheet pulled up from the
+       bottom instead, so the thing being described stays on screen above the
+       description of it. */
+    @media(max-width:700px){
+      .gri-dialog[data-hud="true"]{
+        top:auto; left:8px; right:8px; width:auto;
+        height:min(60dvh, 560px); max-height:60dvh;
+        bottom:calc(var(--transport-h,90px) + 8px);
+        border-radius:20px 20px 12px 12px;
+      }
+      /* A handle, because it now reads as something you could pull. */
+      .gri-dialog[data-hud="true"] .gri-header::before{
+        content:"";position:absolute;left:50%;top:8px;transform:translateX(-50%);
+        width:38px;height:4px;border-radius:4px;background:var(--rule);
+      }
+      .gri-dialog[data-hud="true"] .gri-header{padding-top:20px}
+      .gri-header h2{font-size:27px}
+    }
     .gri-warp{background:repeating-linear-gradient(90deg,#fff8e8cc 0 2px,transparent 2px 9px)}
     .gri-beam{background:#fff8e8;box-shadow:0 0 34px 12px #e6d5aec2}
   `;

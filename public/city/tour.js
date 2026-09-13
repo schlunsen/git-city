@@ -37,6 +37,32 @@ function signBearing(b, fallback) {
   return Math.abs(gx) > Math.abs(gz) ? (gx > 0 ? 0 : Math.PI) : (gz >= 0 ? Math.PI / 2 : -Math.PI / 2);
 }
 // A leg is { dur, pos(u, out), look(u, out), repo? } with u running 0..1.
+// How far up the frame the subject has to move, as a fraction of the viewport.
+//
+// A building is framed in the middle of the canvas, which is right until
+// something is covering the middle of the canvas. On a phone the guide is a
+// sheet across the bottom half, so the thing being described sits behind the
+// description of it. This measures what is still clear and reports how far the
+// composition has to shift for the subject to sit in the middle of *that*.
+//
+// Zero on a wide screen: the guide is a column down one side there, and a
+// column does not hide the subject, so desktop framing is untouched.
+function framingBias() {
+  const sheet = document.querySelector('.gri-dialog[open]:not([hidden])');
+  if (!sheet) return 0;
+  const vh = window.innerHeight || 1, vw = window.innerWidth || 1;
+  const r = sheet.getBoundingClientRect();
+  if (r.width < vw * 0.72) return 0;          // a side column, not a sheet
+  const covered = Math.max(0, vh - r.top) / vh;
+  if (covered < 0.25) return 0;
+  const clearCentre = (1 - covered) / 2;      // middle of the strip still showing
+  return Math.min(0.42, 0.5 - clearCentre);   // how far up, capped so it never overshoots
+}
+
+// The vertical world distance that one screen-height spans at distance d, for
+// the scene camera's 50 degree field of view: 2 * tan(25 deg) = 0.933.
+const SCREEN_SPAN = 0.933;
+
 function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 0.9, loop = false, from = null } = {}) {
   const cx = b.mesh.position.x, cz = b.mesh.position.z, h = b.h || 8;
   const r = Math.max(20, h * 0.8 + 16);
@@ -49,8 +75,19 @@ function orbitLeg(b, fallbackBearing, { dur = 6.5, sweep = 0.9, loop = false, fr
   const a0 = from == null ? signBearing(b, fallbackBearing) : from;
   return {
     dur, loop, repo: b.repo, b,
-    pos: (u, o) => o.set(cx + Math.cos(a0 + sweep * u) * r, y + (loop ? 0 : Math.sin(u * Math.PI) * 2), cz + Math.sin(a0 + sweep * u) * r),
-    look: (u, o) => o.set(cx, h * 0.55, cz),
+    // The radius grows with the bias: a building pushed into the top third of
+    // the screen needs more room around it, or the sheet clips its feet.
+    pos: (u, o) => {
+      const d = r * (1 + framingBias() * 0.55);
+      return o.set(cx + Math.cos(a0 + sweep * u) * d, y + (loop ? 0 : Math.sin(u * Math.PI) * 2), cz + Math.sin(a0 + sweep * u) * d);
+    },
+    // Aiming below the building tips the camera down, which carries the
+    // building up the frame and into the strip the sheet has left clear.
+    look: (u, o) => {
+      const bias = framingBias();
+      const d = r * (1 + bias * 0.55);
+      return o.set(cx, h * 0.55 - bias * d * SCREEN_SPAN, cz);
+    },
   };
 }
 function flyLeg(fromPos, fromLook, toPos, toLook, dur) {
@@ -196,7 +233,7 @@ function showcaseCard(leg) {
     el.innerHTML = `<div class="sc-screen"><div class="sc-kicker"></div><div class="sc-name"></div>
         <div class="sc-desc"></div><div class="sc-meta"></div>
         <section class="sc-readme-panel" aria-label="README preview">
-          <div class="sc-readme-signal"><span>README transmission</span><i></i><b>live</b></div>
+          <div class="sc-readme-signal"><span>From the readme</span><i></i><b>live</b></div>
           <div class="sc-pic"><img alt="" referrerpolicy="no-referrer" decoding="async"></div>
           <div class="sc-readme"></div>
         </section></div>
@@ -319,6 +356,12 @@ export function updateCine(dt) {
   const u = Math.min(1, cine.t / leg.dur);
   camera.position.copy(leg.pos(u, _tp));
   controls.target.copy(leg.look(u, _tl));
+  // The tour fades the city back behind whichever stop is in focus, and a
+  // click is the same act of attention -- it just arrived by a different
+  // route. cine.focus rather than leg.b so the fade is already on during the
+  // approach, instead of snapping in when the orbit leg takes over; the flight
+  // home carries no focus, so the city comes back up by itself.
+  setFocusedBuilding(cine.focus || leg.b || null);
 }
 export function flyToBuilding(b) {
   if (deps.explorer()?.ownsCamera) return; // walk / drive / fly own the camera
@@ -327,7 +370,7 @@ export function flyToBuilding(b) {
   controls.autoRotate = false;
   // Arc up over the rooftops into a framing orbit, then circle slowly while its panel is open.
   const circle = orbitLeg(b, Math.atan2(camera.position.z, camera.position.x), { dur: 40, sweep: Math.PI * 2, loop: true });
-  cine = { legs: [flyLeg(camera.position, controls.target, circle.pos(0, new THREE.Vector3()), circle.look(0, new THREE.Vector3()), 2.6), circle], leg: 0, t: 0 };
+  cine = { legs: [flyLeg(camera.position, controls.target, circle.pos(0, new THREE.Vector3()), circle.look(0, new THREE.Vector3()), 2.6), circle], leg: 0, t: 0, focus: b };
 }
 export function returnToOrbit() {
   if (!orbitReturn || deps.explorer()?.ownsCamera) { orbitReturn = null; cine = null; return; }
