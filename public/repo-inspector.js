@@ -439,17 +439,23 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     note.querySelector('b').textContent = 'Winding back to the first commit';
     note.querySelector('i').textContent = `${repo.full_name} \u00b7 every file, as it was written`;
     screen.classList.add('loading');
+    const origin = new URL(frame.src, location.href).origin;
+    // An embedded Gource View opens paused on its title card and waits to be
+    // told to start; left alone it begins on a four-second fallback of its own.
+    // That wait was the gap between the replay having loaded and anything
+    // appearing to happen -- the picture was there, standing still. The mini
+    // screen and the full player have always sent this; this one did not.
     const reveal = () => {
       clearTimeout(historyTimer); historyTimer = 0;
       screen.classList.remove('loading');
       note.remove();
+      frame.contentWindow?.postMessage({ source: 'git-city', type: 'play' }, origin);
     };
     clearTimeout(historyTimer);
     historyTimer = setTimeout(reveal, 20000);
     const out = dialog.querySelector('.gri-history-open');
     out.href = gourceUrl(repo);
     out.setAttribute('aria-label', `Open ${repo.full_name} in Gource View, new tab`);
-    const origin = new URL(frame.src, location.href).origin;
     historyListener = (e) => {
       if (e.origin !== origin || e.data?.source !== 'gource-view') return;
       if (e.source !== frame.contentWindow) return; // the mini screen and the full player answer for themselves

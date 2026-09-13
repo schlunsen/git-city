@@ -140,3 +140,22 @@ test('a long press does not turn the city into a document', async () => {
   assert.ok(exceptions > css.indexOf('/* Touch-and-hold.'), 'prose exceptions must be restated after the opt-out');
   assert.match(css.slice(exceptions, exceptions + 300), /user-select: text/, 'prose stays selectable');
 });
+
+// An embedded Gource View opens paused on its title card and waits to be told
+// to start, falling back to starting itself after four seconds. Miss the
+// handshake and nothing looks broken -- the replay loads, sits still, and
+// eventually begins -- which is the hardest kind of bug to see. Every player
+// this app mounts has to send it.
+test('every embedded replay is told to start', async () => {
+  const player = await read('city/gource-player.js');
+  const inspector = await read('repo-inspector.js');
+  const PLAY = /postMessage\(\{ source: 'git-city', type: 'play' \}/g;
+  assert.equal((player.match(PLAY) || []).length, 2,
+    'the corner screen and the full player each start their own frame');
+  assert.match(inspector, PLAY, 'the guide\'s History tab starts its frame too');
+  // ...and it goes with the reveal, so the replay is seen from its first frame
+  // rather than starting behind a placeholder.
+  const reveal = inspector.match(/const reveal = \(\) => \{[\s\S]*?\n    \};/)[0];
+  assert.match(reveal, /type: 'play'/, 'the replay starts as it is revealed');
+  assert.match(reveal, /screen\.classList\.remove\('loading'\)/, 'and the placeholder goes at the same moment');
+});
