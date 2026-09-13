@@ -86,17 +86,25 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
   // tuned, or lifted out, as one piece while we settle it.
   // ---------------------------------------------------------------------
   style.textContent += `
+    /* The guide had its own palette baked in, from before the page had themes.
+       That was invisible until the rest of the interface learned to follow the
+       sky: everything else went dark at night and the guide stayed cream, lit
+       like a window into another time of day. It reads the same tokens now, so
+       there is one page and it turns all at once. The literals are fallbacks,
+       for the guide standing on its own. */
     .gri-dialog{
-      --paper:#f7f0e2; --paper-edge:#e8dcc6; --ink:#241f18; --ink-soft:#5d5446;
-      --ink-faint:#8b8171; --accent:#136b64; --rule:#241f1826;
+      --paper:var(--sheet-b,#f7f0e2); --paper-edge:var(--sheet-c,#e8dcc6);
+      --ink:var(--ink-100,#241f18); --ink-soft:var(--ink-300,#5d5446);
+      --ink-faint:var(--ink-500,#8b8171); --accent:var(--accent,#136b64);
+      --rule:var(--line,#241f1826);
       --display:'Baloo 2','Trebuchet MS',system-ui,sans-serif;
       --prose:'Nunito',system-ui,-apple-system,sans-serif;
       --ui:'Nunito',system-ui,sans-serif;
       border-radius:16px; border:none; border-top:none;
       background:
-        repeating-linear-gradient(92deg,#00000004 0 1px,transparent 1px 3px),
-        radial-gradient(120% 90% at 22% 8%,#fffaf0,var(--paper) 46%,var(--paper-edge));
-      box-shadow:0 1px 0 #fffdf7 inset, 0 18px 50px -18px #0e1a20b3, 0 2px 0 var(--ink);
+        repeating-linear-gradient(92deg,rgba(128,128,128,.05) 0 1px,transparent 1px 3px),
+        radial-gradient(120% 90% at 22% 8%,var(--sheet-a,#fffaf0),var(--paper) 46%,var(--paper-edge));
+      box-shadow:0 18px 50px -18px #0e1a20b3, 0 2px 0 var(--rule);
       color:var(--ink);
     }
     .gri-header{border-bottom:none;padding:22px 30px 14px}
@@ -122,7 +130,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       font:700 13.5px/1 var(--ui);color:var(--ink-faint);letter-spacing:.01em;
     }
     .gri-tabs button[aria-pressed="true"]{
-      background:#f0e3c4;color:var(--ink);border-color:#241f1826;
+      background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink);border-color:var(--rule);
     }
     .gri-tabs kbd{margin-left:8px;color:var(--ink-faint);border-color:var(--rule);background:#0000000a}
     .gri-content{padding:14px 30px 26px;scrollbar-color:#c9bda5 transparent}
@@ -132,31 +140,31 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       border-left:none !important;background:none !important;padding:18px 0 0 !important;
       font:400 15.5px/1.7 var(--prose);color:var(--ink-soft);border-top:2px dashed var(--rule);
     }
-    .gri-markdown{font:400 16.5px/1.7 var(--prose);color:#312a21}
+    .gri-markdown{font:400 16.5px/1.7 var(--prose);color:var(--ink)}
     .gri-markdown h2,.gri-markdown h3,.gri-markdown h4{
       font-family:var(--display);font-weight:600;color:var(--ink);letter-spacing:-.005em;
       border-bottom:1px solid var(--rule);padding-bottom:7px;
     }
     .gri-markdown a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
-    .gri-markdown code{color:#7a3b12;background:#241f180d;border-radius:2px}
-    .gri-markdown pre{background:#2b2721;border:none;border-radius:3px;color:#efe6d4;box-shadow:0 1px 0 #fffdf7}
-    .gri-markdown pre code{color:#efe6d4}
+    .gri-markdown code{color:var(--accent);background:color-mix(in srgb,var(--ink) 7%,transparent);border-radius:2px}
+    .gri-markdown pre{background:color-mix(in srgb,var(--ink) 88%,var(--paper));border:none;border-radius:3px;color:var(--paper)}
+    .gri-markdown pre code{color:var(--paper)}
     .gri-markdown blockquote{border-left:3px solid var(--ink);background:none;color:var(--ink-soft);font-style:italic}
     .gri-markdown img{border-radius:2px;box-shadow:0 2px 14px -4px #241f1859}
     .gri-markdown td,.gri-markdown th{border-color:var(--rule)}
     .gri-markdown hr{border-top:1px solid var(--rule)}
-    .gri-footer{background:#241f1806;border-top:2px dashed var(--rule);padding:16px 30px 18px}
+    .gri-footer{background:color-mix(in srgb,var(--ink) 4%,transparent);border-top:2px dashed var(--rule);padding:16px 30px 18px}
     .gri-footer .gri-github,.gri-resume{
       font:700 14px/1 var(--ui);border:2px solid var(--ink);border-radius:22px;letter-spacing:.01em;
       background:none;color:var(--ink);padding:11px 14px;text-align:center;
     }
-    .gri-footer .gri-github{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+    .gri-footer .gri-github{background:var(--accent);color:var(--paper);border-color:var(--accent)}
     .gri-resume kbd{color:var(--ink-faint);border-color:var(--rule)}
     .gri-footer-note{
       font:400 12.5px/1.4 var(--prose) !important;letter-spacing:0 !important;
       color:var(--ink-faint) !important;
     }
-    .gri-transit{background:radial-gradient(120% 80% at 50% 50%,#f7f0e2f2,#e8dcc6f7)}
+    .gri-transit{background:radial-gradient(120% 80% at 50% 50%,var(--paper),var(--paper-edge))}
     .gri-transit-name{font:700 22px var(--display);color:var(--ink)}
     .gri-transit-sub{
       font:600 14px var(--prose) !important;letter-spacing:.01em !important;
