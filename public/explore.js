@@ -24,6 +24,7 @@ import { bumpTrafficCars } from './city/cars.js'; // drive mode barges the traff
 import { createRepoInspector } from './repo-inspector.js';
 import { createBombRun } from './game.js'; // the bomb-run mini game (fly mode)
 import { injectStyle, WARP_FRAG, injectTravelStyle } from './explore-style.js'; // CSS + travel-warp shader
+import { cityArrivalLevels } from './city/city-arrival.js';
 
 const MODES = ['orbit', 'walk', 'drive', 'fly'];
 const LABEL = { orbit: 'Orbit', walk: 'Walk', drive: 'Drive', fly: 'Fly' };
@@ -1116,6 +1117,11 @@ export function createExplorer(THREE, deps = {}) {
   const EDGE_R = 320;                                        // world.gateFor's travel radius
   const getWorld = () => { try { return deps.world?.() || null; } catch { return null; } };
   let trip = null;                                           // { gate, phase: 'cover' | 'load' | 'reveal', t0 }
+  let cityRevealAt = null;
+  function revealCity() {
+    // Island hops already have their own cover/load/reveal lifecycle.
+    if (!trip) cityRevealAt = performance.now();
+  }
   let edgeHint = null;                                       // login shown in the "keep flying" hint
   const guard = { armed: true, t: 0, x0: 0, z0: 0 };         // no instant hop right after arriving
   const COVER_MS = 1100, REVEAL_MS = 1200;
@@ -1137,6 +1143,7 @@ export function createExplorer(THREE, deps = {}) {
   function armGuard() { Object.assign(guard, { armed: false, t: 0, x0: plane.p.x, z0: plane.p.z }); }
   function startTravel(gate, source = 'edge') { // source: 'edge' | 'next' | 'ui'
     if (trip || typeof deps.travel !== 'function' || !gate?.login) return;
+    cityRevealAt = null;
     trip = { gate, mode, source, phase: 'cover', t0: performance.now() }; // travel in the current mode
     warpTitle.textContent = `✈ @${gate.login}’s island`;
     warpSub.textContent = gate.via ? `next island · ${gate.via}` : 'next island';
@@ -1196,7 +1203,12 @@ export function createExplorer(THREE, deps = {}) {
   let warpOverride = null; // debug: pin the effect for screenshots
   function warpLevels(now) {
     if (warpOverride) return warpOverride;
-    if (!trip) return null;
+    if (!trip) {
+      if (cityRevealAt === null) return null;
+      const levels = cityArrivalLevels(now - cityRevealAt, !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+      if (!levels) cityRevealAt = null;
+      return levels;
+    }
     const ss = THREE.MathUtils.smoothstep;
     if (trip.phase === 'load') return { amt: 1, white: 1 };
     if (trip.phase === 'cover') { const e = (now - trip.t0) / COVER_MS; return { amt: ss(e, 0, 1), white: ss(e, 0.45, 1) }; }
@@ -1208,7 +1220,7 @@ export function createExplorer(THREE, deps = {}) {
     if (warpFx) return warpFx;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     const mat = new THREE.ShaderMaterial({
-      uniforms: { tMap: { value: null }, uAmt: { value: 0 }, uWhite: { value: 0 }, uTime: { value: 0 }, uRes: { value: size.clone() }, uReduced: { value: reducedMotion ? 1 : 0 } },
+      uniforms: { tMap: { value: null }, uAmt: { value: 0 }, uWhite: { value: 0 }, uOpening: { value: 1 }, uTime: { value: 0 }, uRes: { value: size.clone() }, uReduced: { value: reducedMotion ? 1 : 0 } },
       vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
       fragmentShader: WARP_FRAG, depthTest: false, depthWrite: false,
     });
@@ -1235,6 +1247,8 @@ export function createExplorer(THREE, deps = {}) {
     renderer.copyFramebufferToTexture(fx.tex);
     const u = fx.mat.uniforms;
     u.tMap.value = fx.tex; u.uAmt.value = lv.amt; u.uWhite.value = lv.white; u.uTime.value = performance.now() / 1000; u.uRes.value.copy(fx.size);
+    u.uOpening.value = lv.opening ?? 1;
+    u.uReduced.value = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 1 : 0;
     const auto = renderer.autoClear;
     renderer.autoClear = false;
     renderer.render(fx.sc, fx.cam);
@@ -1488,7 +1502,7 @@ export function createExplorer(THREE, deps = {}) {
       if (repoInspector.open) return e.code === 'KeyR' || e.code === 'KeyE' || e.key === 'Escape';
       return mode !== 'orbit' && e.key !== 'Escape' && e.key !== 'v' && e.key !== 'V';
     },
-    update, postRender, dispose, resetColliders, flyToNext, travelTo,
+    update, postRender, dispose, resetColliders, flyToNext, travelTo, revealCity,
     inspectRepo(repo, options) { return repoInspector.inspect(repo, options); },
     closeInspector() { repoInspector.close(); },
     /** Tour hop: hold the field guide open (veiled) while the camera flies to the next repo. */

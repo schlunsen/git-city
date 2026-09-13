@@ -61,6 +61,7 @@ export function injectStyle() {
 export const WARP_FRAG = /* glsl */ `
 uniform sampler2D tMap;
 uniform float uAmt, uWhite, uTime, uReduced;
+uniform float uOpening;
 uniform vec2 uRes;
 varying vec2 vUv;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -100,6 +101,20 @@ void main() {
     float rim = (smoothstep(-0.03, 0.0, edge) - smoothstep(0.0, 0.03, edge)) * step(uWhite, 0.985) * smoothstep(0.0, 0.05, uWhite);
     col = mix(col, sky, m);
     col = mix(col, vec3(0.04, 0.05, 0.09), rim * 0.85); // inked cloud edge, like the city's outlines
+  }
+  // First arrival echoes the README HUD: a hot horizontal line opens into
+  // an iris. Sample the city at its real proportions behind the light veil.
+  // Travel leaves uOpening at 1 and keeps its original cloud morph.
+  if (uOpening < 1.0 && uReduced < 0.5) {
+    float halfHeight = mix(0.002, 0.56, uOpening);
+    float edge = abs(d.y) - halfHeight;
+    float veil = smoothstep(-0.008, 0.008, edge);
+    vec3 dark = vec3(0.025, 0.065, 0.085);
+    col = mix(col, dark, veil);
+    float beam = exp(-abs(edge) * 190.0);
+    float halo = exp(-abs(edge) * 30.0) * 0.22;
+    float streak = 0.8 + 0.2 * sin(vUv.x * 90.0 - uTime * 18.0);
+    col += vec3(0.5, 1.0, 0.94) * (beam + halo) * streak * (1.0 - uOpening);
   }
   gl_FragColor = vec4(col, 1.0);
 }`;

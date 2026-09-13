@@ -408,7 +408,13 @@ function onPointerUp(e) {
 // commit history — the same arrival city/tour.js gives a tour stop, and the same
 // guide walking or driving up to a building opens with E.
 let visitChaining = false; // a click straight from one building to the next
+// The opening showcase flight is on a timer. Clicking a building in the meantime
+// is the visitor saying where they want to look, so the flight is called off
+// rather than hijacking the camera ten seconds into their reading.
+let autoTourTimer = null;
+function cancelAutoTour() { clearTimeout(autoTourTimer); autoTourTimer = null; }
 function visitRepo(building, at) {
+  cancelAutoTour(); // they picked a building themselves; do not fly them away from it
   const repo = building.repo;
   ensureBuildingConfig(repo); // its .git-city/building.json (restyles the building when it lands)
   if (isCompact()) { setMenu(false); setProfile(false); }
@@ -1030,6 +1036,7 @@ function resetCamera() {
 async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js portal travel, fired once the new city stands
   login = login.trim().replace(/^@/, '');
   const version = ++cityVersion;
+  cancelAutoTour(); // a pending flight belongs to the city we are leaving
   currentLogin = login;
   const err = $('error');
   err.classList.remove('show');
@@ -1086,10 +1093,11 @@ async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js
     buildForkBeams(repos);
     resetCamera();
     loading.classList.add('hidden');
+    explorer?.revealCity(); // the same light-and-warp language as island travel and the README
     onBuilt?.(user.login); // explore.js portal travel: the new island is ready
     // Open on the showcase flight around the buildings (the activity playback is one press of ▶ away).
     if (!prefersReducedMotion() && new URLSearchParams(location.search).get('tour') !== '0') {
-      setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !tour.active) startTour(); }, 10000); // a look around first
+      autoTourTimer = setTimeout(() => { if (version === cityVersion && !explorer?.ownsCamera && !explorer?.inspectorOpen && !tour.active) startTour(); }, 10000); // a look around first
     }
     // The activity timeline arrives second so the city never waits on it.
     const events = sample ? sample.events : await fetchEvents(user.login, { org: isOrg(user) });
