@@ -1,0 +1,20 @@
+{
+  "_comment": [
+    "An example of public/sponsors.json with sponsors in it. Not loaded by the",
+    "site -- copy the shape, not the file. The names below are invented; nothing",
+    "here is a real sponsor, and no real company should appear in the live file",
+    "until they actually are one."
+  ],
+  "island": "schlunsen",
+  "cars": [
+    { "name": "Northwind", "color": "#e4574f", "ink": "#fff8e8" },
+    { "name": "Kestrel", "color": "#2f8f83", "ink": "#fdf6e3" },
+    { "name": "Fieldnote", "color": "#4d9be6", "ink": "#ffffff" },
+    { "name": "Tallow & Co", "color": "#f39a4b", "ink": "#2b1d10" }
+  ],
+  "plane": {
+    "name": "Northwind",
+    "text": "Northwind  ✈  proudly supports Gitilla",
+    "url": "https://example.com"
+  }
+}

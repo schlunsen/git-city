@@ -6,10 +6,15 @@
     "other developer's city is untouched, whoever is looking at it. That is the",
     "point -- the author sells space on his own island, not on other people's.",
     "",
-    "cars:  each entry paints one car in the traffic with the sponsor's name on",
-    "       its doors. Order matters: the first entries get the cars nearest the",
-    "       plaza. Six or so is the most that reads as traffic rather than a",
-    "       motor show.",
+    "What is in here now is the empty inventory advertising itself: the cars and",
+    "the banner say the space is for sale. Replace an entry with a real sponsor",
+    "as it sells, and delete the rest when they all have. sponsors.example.json",
+    "shows the same file with sponsors in it.",
+    "",
+    "cars:  each entry paints one car in the traffic with the name on its doors.",
+    "       Order matters: the first entries get the boulevard, where the tour",
+    "       and the drive-mode camera pass them. Six or so is the most that",
+    "       reads as traffic rather than a motor show; eight is the cap.",
     "plane: one big sponsor at a time. The prop plane that circles the city tows",
     "       their banner instead of the coffee one.",
     "",
@@ -19,6 +24,13 @@
     "url:   optional. Clicking the plane's banner opens it."
   ],
   "island": "schlunsen",
-  "cars": [],
-  "plane": null
+  "cars": [
+    { "name": "YOUR BRAND", "color": "#e4574f", "ink": "#fff8e8" },
+    { "name": "HERE", "color": "#2f8f83", "ink": "#fdf6e3" }
+  ],
+  "plane": {
+    "name": "Sponsor Gitilla",
+    "text": "This banner is for sale  ✈  sponsor Gitilla",
+    "url": "https://github.com/schlunsen/git-city#sponsors"
+  }
 }
