@@ -432,7 +432,7 @@ export function createExplorer(THREE, deps = {}) {
   let saved = null;       // { pos, target, fov, autoRotate }
   let blend = null;       // { t, dur, pos, quat, fov } camera transition start
   const want = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: 50, look: new THREE.Vector3() };
-  const walker = { p: new THREE.Vector3(), v: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, grounded: true, bob: 0, fov: 70 };
+  const walker = { p: new THREE.Vector3(), v: new THREE.Vector3(), vy: 0, yaw: 0, viewYaw: 0, pitch: 0, grounded: true, bob: 0, fov: 70 };
   const car = { p: new THREE.Vector3(), v: new THREE.Vector2(), yaw: 0, y: 0, pitch: 0, roll: 0, steer: 0, lean: 0, squat: 0, spin: 0, bump: 0, vf: 0, vl: 0, lastVf: 0, puffT: 0, smokeT: 0 };
   const plane = { p: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, speed: 26, throttle: 0.45, prop: 0, puffT: 0, bump: 0 };
   const chase = { pos: new THREE.Vector3(), look: new THREE.Vector3(), yaw: 0, pitch: 0, idle: 9, zoom: { drive: 1, fly: 1 }, shake: 0 };
@@ -474,7 +474,7 @@ export function createExplorer(THREE, deps = {}) {
 
   function look(dx, dy, sens) {
     if (mode === 'walk') {
-      walker.yaw -= dx * sens;
+      walker.viewYaw -= dx * sens;
       walker.pitch = clamp(walker.pitch - dy * sens, -1.45, 1.45);
     } else if (mode === 'drive' || mode === 'fly') {
       chase.yaw -= dx * sens;
@@ -623,8 +623,8 @@ export function createExplorer(THREE, deps = {}) {
 
   const coarse = globalThis.matchMedia?.('(pointer: coarse)');
   const HINTS = {
-    walk: () => (locked ? '<b>WASD</b> move · <b>Shift</b> run · hold <b>Space</b> fly · <b>E</b> inspect repo · <b>Esc</b> free mouse'
-      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · hold <b>Space</b> fly · <b>click</b> to mouse-look · <b>E</b> inspect repo'),
+    walk: () => (locked ? '<b>mouse</b> orbit view · <b>←→</b> turn · <b>WASD</b> move · <b>Shift</b> run · hold <b>Space</b> fly · <b>E</b> inspect repo · <b>Esc</b> free mouse'
+      : '<b>WASD</b> move · <b>←→</b> turn · <b>Shift</b> run · hold <b>Space</b> fly · <b>drag</b> orbit view · <b>E</b> inspect repo'),
     drive: () => '<b>W/S</b> gas · brake · <b>A/D</b> steer · <b>Space</b> drift · drag to look · <b>E</b> inspect repo',
     fly: () => '<b>S</b> climb · <b>W</b> dive · <b>A/D</b> bank · <b>E/Q</b> throttle · <b>N</b> next island',
     game: () => '<b>Space</b>/<b>click</b> fire · <b>B</b>/<b>right-click</b> bomb · <b>A/D</b> bank · <b>W/S</b> dive · climb · <b>Esc</b> end',
@@ -804,7 +804,7 @@ export function createExplorer(THREE, deps = {}) {
       if (alongZ) { walker.p.set(street, 0, s * edge); walker.yaw = s > 0 ? 0 : Math.PI; }
       else { walker.p.set(s * edge, 0, street); walker.yaw = s > 0 ? Math.PI / 2 : -Math.PI / 2; }
     }
-    walker.pitch = 0.12; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
+    walker.viewYaw = 0; walker.pitch = 0.12; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
     collide(walker.p, PLAYER_R, 0.2, 1.8);
     walker.p.y = groundAt(walker.p.x, walker.p.z);
   }
@@ -970,12 +970,12 @@ export function createExplorer(THREE, deps = {}) {
     // feet, so the camera reads the street ahead and not the pavement.
     const elev = clamp(TP_ELEV - w.pitch, -0.12, 1.15);   // look up, camera drops
     _foc.set(w.p.x, w.p.y + TP_FOCUS, w.p.z);
-    const ce = Math.cos(elev);
+    const ce = Math.cos(elev), viewYaw = w.yaw + w.viewYaw;
     let dist = TP_DIST;
     // Pull in rather than push through: a wall behind the shoulder would
     // otherwise put the camera inside a building and the city inside out.
     for (let i = 0; i < 6; i++) {
-      _cam.set(_foc.x + Math.sin(w.yaw) * dist * ce, _foc.y + dist * Math.sin(elev), _foc.z + Math.cos(w.yaw) * dist * ce);
+      _cam.set(_foc.x + Math.sin(viewYaw) * dist * ce, _foc.y + dist * Math.sin(elev), _foc.z + Math.cos(viewYaw) * dist * ce);
       if (!collide(_c.copy(_cam), 0.34, _cam.y - 0.3, _cam.y + 0.3) && _cam.y > groundAt(_cam.x, _cam.z) + 0.45) break;
       dist *= 0.76;
       if (dist < 1.1) break;
@@ -1366,7 +1366,7 @@ const AUTO = {
           car.y = groundAt(a.x, a.z); tiltCar(1); placeCar(); driveCam(1, true);
         } else {
           walker.p.set(a.x, groundAt(a.x, a.z), a.z); walker.yaw = Math.atan2(-Math.cos(h), -Math.sin(h));
-          walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
+          walker.viewYaw = 0; walker.pitch = 0.08; walker.v.set(0, 0, 0); walker.vy = 0; walker.grounded = true;
         }
         chase.yaw = chase.pitch = 0; blend = null;
       }
