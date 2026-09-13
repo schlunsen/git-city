@@ -11,8 +11,17 @@ import { cine, tour, tourJump } from './tour.js';
 // shortcuts and no focus grab inside the frame — the tour's mini screen supplies
 // its own controls, and the city keeps its own keys.
 export function gourceUrl(repo, { video = true, chrome = true } = {}) {
+  // The replay takes the island's own time of day. A dark screen let into a
+  // paper page was the last thing still dressed for the old interface -- and a
+  // paper one would be just as wrong once the city is lit by streetlamps.
+  //
+  // Read once, when the frame is built. The theme can turn later, at dusk or on
+  // the demo cycle, and the frame does not follow: changing its src would
+  // restart the replay from the title card, which is a worse thing to do to
+  // somebody watching than a screen that stays the brightness it opened at.
+  const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
   // music=none: the embedded player plays without music.
-  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000${video ? '&video=1&embed=1&music=none' : ''}${chrome ? '' : '&chrome=0'}`;
+  return `${GOURCE_VIEW}?repo=${encodeURIComponent(repo.full_name)}&max=3000&theme=${theme}${video ? '&video=1&embed=1&music=none' : ''}${chrome ? '' : '&chrome=0'}`;
 }
 // The player loads hidden: a small chip shows progress at the clicked
 // building, and once Gource View's video is ready the player morphs out of that
