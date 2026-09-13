@@ -549,6 +549,10 @@ export function createExplorer(THREE, deps = {}) {
     <span class="gcx-gauge"></span>
     <button type="button" class="gcx-exit" title="Back to the orbit view (Esc)"><kbd>Esc</kbd> Exit</button>`);
   hud.hidden = true;
+  const hudObserver = new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--explore-hud-h', hud.getBoundingClientRect().height + 'px');
+  });
+  hudObserver.observe(hud);
   const hintEl = hud.querySelector('.gcx-hint'), gaugeEl = hud.querySelector('.gcx-gauge');
   const menu = el('div', 'gcx-menu', MODES.map((m, i) =>
     `<button type="button" data-mode="${m}"><span>${LABEL[m]}</span><kbd>${i + 1}</kbd></button>`).join(''));
@@ -1689,6 +1693,8 @@ const AUTO = {
     document.removeEventListener('pointerlockchange', onLockChange);
     button?.removeEventListener('click', onButton);
     if (mode !== 'orbit' || exiting) { mode = 'orbit'; exiting = true; blend = null; finishExit(); }
+    hudObserver.disconnect();
+    document.documentElement.style.removeProperty('--explore-hud-h');
     for (const n of [hud, menu, cross, touch]) n.remove();
     document.body.classList.remove('gcx-on');
     const free = (o) => o?.traverse((m) => { if (m.geometry) m.geometry.dispose(); });

@@ -293,6 +293,22 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       .gri-tabs{padding-block:0 4px}
       .gri-footer{padding-block:6px}
     }
+    @media(max-width:900px), (max-height:500px){
+      .gri-prompt{
+        top:calc(var(--topbar-h,58px) + var(--explore-hud-h,52px) + 18px);
+        bottom:auto;left:12px;right:12px;width:auto;min-height:48px;
+        display:flex;align-items:center;gap:12px;padding:10px 14px;
+        background:var(--panel-solid,#211f18);color:var(--ink-100,#f7f0e2);
+        border-color:var(--line,#ffffff26);border-radius:14px;
+      }
+      .gri-prompt .gri-eyebrow,.gri-prompt .gri-summary,.gri-prompt kbd{display:none}
+      .gri-prompt strong{flex:1;min-width:0;margin:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .gri-prompt .gri-action{flex:none;border:0;margin:0;padding:0;font-size:12px;color:var(--accent,#74d8d8)}
+      .gri-prompt .gri-action span{margin-left:0}
+    }
+    @media(max-height:500px){
+      .gri-prompt{left:50%;right:auto;transform:translateX(-50%);width:min(290px,calc(100vw - 340px))}
+    }
     .gri-warp{background:repeating-linear-gradient(90deg,#fff8e8cc 0 2px,transparent 2px 9px)}
     .gri-beam{background:#fff8e8;box-shadow:0 0 34px 12px #e6d5aec2}
   `;
