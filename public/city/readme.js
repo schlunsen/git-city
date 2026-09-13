@@ -6,6 +6,8 @@
 // (no API quota), cached per repo. Text is plain text only (never HTML). The
 // picture is the README's first real image, and only if GitHub hosts it —
 // visitors' browsers never fetch from arbitrary sites a README points at.
+import { readmeSource } from './readme-source.js';
+
 const readmeCache = new Map();
 export const readmeKnown = new Map(); // resolved excerpts, readable synchronously (the tour plans stop lengths with it)
 const README_IMG_HOSTS = new Set(['raw.githubusercontent.com', 'user-images.githubusercontent.com',
@@ -14,22 +16,15 @@ export function readmeExcerpt(repo) {
   const key = repo?.full_name;
   if (!key) return Promise.resolve({ text: '', image: '' });
   if (!readmeCache.has(key)) readmeCache.set(key, (async () => {
-    // Raw URLs are case-sensitive: README.md is most common, readme.md next (e.g. sindresorhus).
-    for (const name of ['README.md', 'readme.md']) {
-      const ctrl = new AbortController();
-      const to = setTimeout(() => ctrl.abort(), 4000);
-      try {
-        const r = await fetch(`https://raw.githubusercontent.com/${key}/HEAD/${name}`, { signal: ctrl.signal });
-        if (r.ok) {
-          const md = (await r.text()).slice(0, 30000);
-          const found = { text: markdownExcerpt(md), image: readmeImage(md, key) };
-          readmeKnown.set(key, found);
-          return found;
-        }
-      } catch { /* offline or slow: try the next spelling */ } finally { clearTimeout(to); }
-    }
-    readmeKnown.set(key, { text: '', image: '' });
-    return readmeKnown.get(key);
+    // The spelling is somebody else's problem now: readme-source works it out
+    // once and the in-game reader gets the same download.
+    const got = await readmeSource(key, { timeout: 4000 });
+    const md = got.status === 'ready' ? got.markdown.slice(0, 30000) : '';
+    const found = md
+      ? { text: markdownExcerpt(md), image: readmeImage(md, key) }
+      : { text: '', image: '' };
+    readmeKnown.set(key, found);
+    return found;
   })());
   return readmeCache.get(key);
 }

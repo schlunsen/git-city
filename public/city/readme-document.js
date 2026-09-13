@@ -1,28 +1,17 @@
-// Full README text for the in-game reader. Successful downloads are shared by
-// repeat visits; failures stay retryable and one timeout covers all spellings.
-const cache = new Map();
+// Full README text for the in-game reader. The spelling is resolved once per
+// repository by readme-source, and shared with the showcase TV, so opening the
+// reader for a repo the TV has already shown costs no request at all.
+import { readmeSource } from './readme-source.js';
+
+const LIMIT = 100000;
 export async function readmeDocument(repo) {
-  const key = repo?.full_name;
-  if (!/^[\w.-]+\/[\w.-]+$/.test(key || '')) return { status: 'missing', markdown: '' };
-  if (cache.has(key)) return cache.get(key);
-  const request = (async () => {
-    const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 8000);
-    try {
-      for (const name of ['README.md', 'readme.md', 'README.MD', 'README']) {
-        const response = await fetch(`https://raw.githubusercontent.com/${key}/HEAD/${name}`, { signal: ctrl.signal });
-        if (response.status === 404) continue;
-        if (!response.ok) throw new Error('README unavailable');
-        const text = await response.text();
-        return { status: 'ready', markdown: text.slice(0, 100000), truncated: text.length > 100000 };
-      }
-      return { status: 'missing', markdown: '' };
-    } catch { return { status: 'error', markdown: '' }; }
-    finally { clearTimeout(timer); }
-  })();
-  cache.set(key, request);
-  const result = await request;
-  if (result.status !== 'ready') cache.delete(key);
-  return result;
+  const found = await readmeSource(repo?.full_name);
+  if (found.status !== 'ready') return { status: found.status, markdown: '' };
+  return {
+    status: 'ready',
+    markdown: found.markdown.slice(0, LIMIT),
+    truncated: found.markdown.length > LIMIT,
+  };
 }
 
 export function readmeLink(raw, repo) {
