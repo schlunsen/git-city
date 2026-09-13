@@ -27,10 +27,15 @@ import { injectStyle, WARP_FRAG, injectTravelStyle } from './explore-style.js'; 
 import { cityArrivalLevels } from './city/city-arrival.js';
 import { closeGource } from './city/gource-player.js'; // leaving the island takes the replay with it
 import { endTour } from './city/tour.js';              // ...and the tour, and its card
+import { buildPerson, posePerson, disposePerson } from './city/townlife.js'; // the figure you walk around as
 
 const MODES = ['orbit', 'walk', 'drive', 'fly'];
 const LABEL = { orbit: 'Orbit', walk: 'Walk', drive: 'Drive', fly: 'Fly' };
 const EYE = 1.65, PLAYER_R = 0.45, WALK_SPEED = 5.2, RUN_SPEED = 11, JUMP_V = 7.4, GRAVITY = 22;
+// Third-person framing: how far back the camera sits, what it aims at, and how
+// high it rides when the look is level. Close enough that a doorway still has
+// scale, far enough that the figure is a person rather than a shoulder.
+const TP_DIST = 4.6, TP_FOCUS = 1.15, TP_ELEV = 0.26;
 const SEA_LIMIT = -0.9;      // heightAt below this is water: no walking or driving
 const SEA_Y = -1.25;         // the sea plane, the plane's floor over water
 const BOX_PAD = 0.3;         // grow building boxes past the roof overhang and ink rim
@@ -431,6 +436,11 @@ export function createExplorer(THREE, deps = {}) {
   const car = { p: new THREE.Vector3(), v: new THREE.Vector2(), yaw: 0, y: 0, pitch: 0, roll: 0, steer: 0, lean: 0, squat: 0, spin: 0, bump: 0, vf: 0, vl: 0, lastVf: 0, puffT: 0, smokeT: 0 };
   const plane = { p: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, speed: 26, throttle: 0.45, prop: 0, puffT: 0, bump: 0 };
   const chase = { pos: new THREE.Vector3(), look: new THREE.Vector3(), yaw: 0, pitch: 0, idle: 9, zoom: { drive: 1, fly: 1 }, shake: 0 };
+  // The figure on the pavement. Built the first time somebody walks, then kept:
+  // it is nine small meshes and rebuilding it on every mode change would throw
+  // its walk cycle away mid-stride.
+  let person = null;
+  const _cam = new THREE.Vector3(), _foc = new THREE.Vector3(), _m4 = new THREE.Matrix4(), _up = new THREE.Vector3(0, 1, 0);
 
   // ---- input ---------------------------------------------------------------------
   const keys = new Set(), acts = new Set();
@@ -834,13 +844,41 @@ export function createExplorer(THREE, deps = {}) {
       if (w.p.y <= g) { w.p.y = g; w.vy = 0; w.grounded = true; }
     }
     const sp = Math.hypot(w.v.x, w.v.z);
+
+    // Somebody to walk as, rather than a pair of eyes.
+    //
+    // Walking a city you cannot see yourself in reads as a camera on a stick:
+    // there is no sense of being a person among the buildings, and no scale to
+    // measure them against. The figure is the scale -- a doorway means
+    // something once there is a body beside it.
+    if (!person) person = buildPerson();
+    person.group.visible = true;
+    const step = posePerson(person, { speed: sp, dt, airborne: !w.grounded });
+    person.group.position.set(w.p.x, w.p.y + step, w.p.z);
+    // Model faces -Z, which is also the walker's forward at yaw 0.
+    person.group.rotation.y = w.yaw;
+
     w.bob += sp * dt;
-    const bob = w.grounded && !reducedMotion ? Math.sin(w.bob * 2.4) * 0.05 * Math.min(1, sp / WALK_SPEED) : 0;
-    w.fov += ((sp > WALK_SPEED + 1 ? 75 : 70) - w.fov) * damp(dt, 4);
-    want.pos.set(w.p.x, w.p.y + EYE + bob, w.p.z);
-    want.quat.setFromEuler(_e.set(w.pitch, w.yaw, 0, 'YXZ'));
+    w.fov += ((sp > WALK_SPEED + 1 ? 68 : 63) - w.fov) * damp(dt, 4);
+
+    // Third person: behind and above, looking at the chest rather than the
+    // feet, so the camera reads the street ahead and not the pavement.
+    const elev = clamp(TP_ELEV - w.pitch, -0.12, 1.15);   // look up, camera drops
+    _foc.set(w.p.x, w.p.y + TP_FOCUS, w.p.z);
+    const ce = Math.cos(elev);
+    let dist = TP_DIST;
+    // Pull in rather than push through: a wall behind the shoulder would
+    // otherwise put the camera inside a building and the city inside out.
+    for (let i = 0; i < 6; i++) {
+      _cam.set(_foc.x + Math.sin(w.yaw) * dist * ce, _foc.y + dist * Math.sin(elev), _foc.z + Math.cos(w.yaw) * dist * ce);
+      if (!collide(_c.copy(_cam), 0.34, _cam.y - 0.3, _cam.y + 0.3) && _cam.y > groundAt(_cam.x, _cam.z) + 0.45) break;
+      dist *= 0.76;
+      if (dist < 1.1) break;
+    }
+    want.pos.copy(_cam);
+    want.look.copy(_foc);
+    want.quat.setFromRotationMatrix(_m4.lookAt(want.pos, want.look, _up));
     want.fov = w.fov;
-    want.look.set(0, 0, -12).applyQuaternion(want.quat).add(want.pos);
   }
 
   function unstickCar() {
@@ -1447,6 +1485,9 @@ export function createExplorer(THREE, deps = {}) {
       }
     }
     const input = exiting ? NEUTRAL : readInput();
+    // The figure belongs to walk mode only: driving past yourself standing in
+    // the road, or seeing yourself from the plane, would be a ghost.
+    if (person && sim !== 'walk') person.group.visible = false;
     if (repoInspector.open) { /* Hold position and camera while reading repo details. */ }
     else if (sim === 'walk') simWalk(dt, input);
     else if (sim === 'drive') simDrive(dt, input);
@@ -1484,6 +1525,7 @@ export function createExplorer(THREE, deps = {}) {
   }
   function resetColliders() { repoInspector.reset(); syncDims(); boxes = null; needUnstick = !!sim; game?.resync(); }
   function dispose() {
+    disposePerson(person); person = null;
     repoInspector.dispose();
     game?.dispose();
     canvas.removeEventListener('contextmenu', onCtx);

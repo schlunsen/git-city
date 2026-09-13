@@ -256,6 +256,94 @@ export function buildPedestrians() {
   pedestrians = { people, dogs, meshes, dogMesh, dogInk, leash };
 }
 
+export function disposePerson(person) {
+  if (!person) return;
+  scene.remove(person.group);
+  disposeObject(person.group);
+}
+
+/*
+ * One walkable person, built from exactly the parts the townsfolk are built
+ * from.
+ *
+ * Walk mode used to be a pair of eyes: the camera sat at eye height and the
+ * city was seen down a nose. Putting somebody on the pavement means there has
+ * to be somebody to look at, and they have to belong to the place -- a figure
+ * modelled differently from the two dozen already strolling round the fountain
+ * would read as a visitor from another game. So this is the same geometry, the
+ * same toon material and the same ink hull, assembled as ordinary meshes rather
+ * than instances because there is only ever one of them and it needs its own
+ * limbs to move.
+ */
+const PERSON_SKINS = SKIN_TONES, PERSON_SHIRTS = SHIRTS, PERSON_PANTS = PANTS, PERSON_HAIR = HAIR;
+
+export function buildPerson({ skin, shirt, pants, hair } = {}) {
+  const rnd = seededRandom(Date.now() & 0xffff);
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const c = {
+    skin: skin ?? pick(PERSON_SKINS), shirt: shirt ?? pick(PERSON_SHIRTS),
+    pants: pants ?? pick(PERSON_PANTS), hair: hair ?? pick(PERSON_HAIR),
+  };
+  const legGeo = box(0.12, 0.4, 0.14, 0, -0.2, 0);   // pivots at the hip
+  const armGeo = box(0.09, 0.34, 0.1, 0, -0.17, 0);  // pivots at the shoulder
+  const torsoGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.44, 8).translate(0, 0.62, 0);
+  const headGeo = new THREE.IcosahedronGeometry(0.19, 1).translate(0, 1.03, 0);
+  const hairGeo = new THREE.SphereGeometry(0.205, 10, 5, 0, TAU, 0, Math.PI * 0.55).rotateX(-0.45).translate(0, 1.04, 0);
+  const eyesGeo = mergeParts([box(0.035, 0.055, 0.03, 0.065, 1.02, 0.185), box(0.035, 0.055, 0.03, -0.065, 1.02, 0.185)]);
+  const hullGeo = mergeParts([hullOf(torsoGeo, 0.07), hullOf(headGeo, 0.07)]);
+
+  const group = new THREE.Group();
+  const mesh = (geo, mat, cast = false) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = cast; m.raycast = noRaycast;
+    group.add(m);
+    return m;
+  };
+  const body = mesh(torsoGeo, toonMat({ color: c.shirt }), true);
+  const head = mesh(headGeo, toonMat({ color: c.skin }), true);
+  const hairM = mesh(hairGeo, toonMat({ color: c.hair }));
+  const eyes = mesh(eyesGeo, new THREE.MeshBasicMaterial({ color: 0x1a1d26 }));
+  const hull = mesh(hullGeo, getOutlineMat());
+  const legMat = toonMat({ color: c.pants }), armMat = toonMat({ color: c.shirt });
+  // Limbs hang off pivots so a swing is a rotation, as it is for the crowd.
+  const pivot = (geo, mat, x, y, cast) => {
+    const g = new THREE.Group(); g.position.set(x, y, 0);
+    const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.raycast = noRaycast;
+    g.add(m); group.add(g); return g;
+  };
+  const legL = pivot(legGeo, legMat, 0.075, 0.4, true), legR = pivot(legGeo, legMat, -0.075, 0.4, true);
+  const armL = pivot(armGeo, armMat, 0.22, 0.8, false), armR = pivot(armGeo, armMat, -0.22, 0.8, false);
+  armL.rotation.z = 0.12; armR.rotation.z = -0.12;
+
+  group.visible = false;
+  scene.add(group);
+  return { group, parts: { body, head, hair: hairM, eyes, hull, legL, legR, armL, armR }, phase: 0, colors: c };
+}
+
+/**
+ * Pose the character for this frame.
+ * `speed` in metres a second; `airborne` freezes the cycle into a jump shape.
+ */
+export function posePerson(person, { speed = 0, dt = 0, airborne = false } = {}) {
+  if (!person) return 0;
+  const { legL, legR, armL, armR } = person.parts;
+  if (airborne) {
+    // Tucked: one leg forward, arms up. Held, not cycling, so a jump reads as
+    // one shape rather than a stride caught mid-air.
+    legL.rotation.x = -0.6; legR.rotation.x = 0.35;
+    armL.rotation.x = -1.1; armR.rotation.x = -1.1;
+    return 0;
+  }
+  person.phase += speed * 2.2 * dt;
+  const moving = speed > 0.15;
+  const swing = moving ? Math.sin(person.phase) : Math.sin(person.phase * 0.12) * 0.06; // idle: a slight breathing sway
+  const amp = moving ? 0.55 : 1;
+  legL.rotation.x = swing * amp; legR.rotation.x = -swing * amp;
+  armL.rotation.x = -swing * 0.5; armR.rotation.x = swing * 0.5;
+  // The step bob is what sells a walk; it is the same |cos| the crowd uses.
+  return moving ? Math.abs(Math.cos(person.phase)) * 0.045 : 0;
+}
+
 // Weather: rain (streaking points) or snow (soft points). Toggleable.
 export function buildWeather() {
   const N = 900;
