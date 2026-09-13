@@ -121,3 +121,22 @@ test('the replay never leaves the city frozen', async () => {
   assert.match(app, /dataset\.replay && handheld\(\)/,
     'the render gate re-checks the screen, so a stale flag cannot freeze a desktop city');
 });
+
+// Resting a finger is a gesture of its own on iOS, and touch-action says
+// nothing about it: without this the city answers a long press with a text
+// magnifier. The pairing is the point -- the canvas and chrome opt out, and
+// the prose stays selectable, so a README can still be read and copied.
+test('a long press does not turn the city into a document', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  const block = css.slice(css.indexOf('/* Touch-and-hold.'));
+  const optOut = block.slice(0, block.indexOf('}') + 1);
+  for (const sel of ['#scene', '#topbar', '#transport', '#showcase-card']) {
+    assert.ok(optOut.includes(sel), `${sel} must opt out of the long-press callout`);
+  }
+  assert.match(optOut, /-webkit-touch-callout: none/, 'the iOS callout is the thing being turned off');
+  assert.match(optOut, /-webkit-user-select: none/, 'and the selection it comes with');
+  // The exceptions have to come after, or the block above wins over them.
+  const exceptions = css.indexOf('.gri-markdown, .gri-description');
+  assert.ok(exceptions > css.indexOf('/* Touch-and-hold.'), 'prose exceptions must be restated after the opt-out');
+  assert.match(css.slice(exceptions, exceptions + 300), /user-select: text/, 'prose stays selectable');
+});

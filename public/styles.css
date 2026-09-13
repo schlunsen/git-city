@@ -594,6 +594,28 @@ body { position: fixed; inset: 0; }
 #topbar, #transport, #feed, #legend, #loading { touch-action: none; }
 #search-input { touch-action: manipulation; }
 #menu, #explorer, #panel-body { overscroll-behavior: contain; touch-action: pan-y; }
+/* Touch-and-hold. touch-action settles what a drag does; it says nothing about
+   what happens when a finger simply rests. On iOS that is still a gesture: hold
+   on the canvas and the city picks up a text-selection magnifier and a callout
+   menu, hold on a button and it offers to copy the label -- an interface for
+   reading a document, thrown over one you are supposed to be flying through.
+   The chrome and the canvas opt out of it. Prose does not: a README, a repo
+   description and a profile are there to be read, and holding a word to copy it
+   is the right thing to happen. */
+#scene, #topbar, #transport, #feed, #legend, #loading, #showcase-card,
+.gri-tabs, .gri-footer, .gri-header, .gri-prompt, .gri-status {
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+/* ...and no grey flash on the way: every tappable thing here has a state of its
+   own to show, so the platform's is a second answer to the same press. */
+html { -webkit-tap-highlight-color: transparent; }
+/* The exceptions, restated after the block above so they win: anything worth
+   copying stays selectable, including the repo name in the guide's header. The
+   showcase card is not one of them -- it is a screen the camera narrates, not a
+   page, and the README it teases is one tap away in the guide. */
+.gri-markdown, .gri-description, .gri-owner, .gri-header h2, .gri-readme-status, #panel-body {
+  -webkit-touch-callout: default; -webkit-user-select: text; user-select: text;
+}
 @media (hover: none) { #tooltip { display: none; } }
 @media (max-width: 900px), (max-height: 500px) {
   #topbar {
