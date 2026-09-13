@@ -4,7 +4,7 @@
  */
 
 export const API = 'https://api.github.com';
-export const DEFAULT_USER = 'torvalds';
+export const DEFAULT_USER = 'schlunsen'; // the author's island: the one that carries the sponsors
 // Bundled sample profiles, used when GitHub rate-limits us (60 req/h unauthenticated)
 // or when the page is opened with ?demo=1. Captured via `gh api`; see fixtures/.
 export const DEFAULT_DEVELOPERS = ['torvalds', 'gaearon', 'sindresorhus', 'tj', 'antfu', 'schlunsen'];

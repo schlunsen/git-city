@@ -137,27 +137,45 @@ function getCarKit() {
 // call per car instead of a mesh per letter. Built per sponsor and reused by
 // both sides of the car.
 const liveryCache = new Map();
-function liveryMaterial(sponsor) {
-  const key = `${sponsor.name}|${sponsor.color}|${sponsor.ink}`;
-  if (liveryCache.has(key)) return liveryCache.get(key);
-  const c = document.createElement('canvas');
-  c.width = 512; c.height = 128;
+function paintLivery(c, sponsor, logoImg) {
   const g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
   g.fillStyle = sponsor.color; g.fillRect(0, 0, c.width, c.height);
-  g.strokeStyle = '#1a2233'; g.lineWidth = 10; g.strokeRect(5, 5, c.width - 10, c.height - 10);
+  g.strokeStyle = sponsor.ink; g.lineWidth = 8; g.strokeRect(4, 4, c.width - 8, c.height - 8);
+  let left = 24, right = c.width - 24;
+  if (logoImg) {
+    const box = c.height - 34, x = 20;
+    g.save();
+    g.beginPath(); g.roundRect(x, 17, box, box, 14); g.clip();
+    g.drawImage(logoImg, x, 17, box, box);
+    g.restore();
+    left = x + box + 18;
+  }
   g.fillStyle = sponsor.ink;
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  let px = 74;
+  let px = 84;
   const font = () => `800 ${px}px ui-rounded, "Baloo 2", "Nunito", "Trebuchet MS", system-ui, sans-serif`;
   g.font = font();
   // Shrink to fit rather than clip: a name that runs off the door is worse than
   // a small one, and the sponsor paid for the name.
-  while (g.measureText(sponsor.name).width > c.width - 70 && px > 22) { px -= 3; g.font = font(); }
-  g.fillText(sponsor.name, c.width / 2, c.height / 2 + 3);
+  while (g.measureText(sponsor.name).width > right - left && px > 20) { px -= 3; g.font = font(); }
+  g.fillText(sponsor.name, (left + right) / 2, c.height / 2 + 3);
+}
+function liveryMaterial(sponsor) {
+  const key = `${sponsor.name}|${sponsor.color}|${sponsor.ink}|${sponsor.logo || ''}`;
+  if (liveryCache.has(key)) return liveryCache.get(key);
+  const c = document.createElement('canvas');
+  c.width = 640; c.height = 160;
+  paintLivery(c, sponsor, null);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   tex.userData.shared = true;
+  if (sponsor.logo) { // same-origin, vendored: it cannot taint the canvas
+    const img = new Image();
+    img.onload = () => { paintLivery(c, sponsor, img); tex.needsUpdate = true; };
+    img.src = sponsor.logo;
+  }
   const mat = toonMat({ map: tex });
   mat.userData.shared = true;
   liveryCache.set(key, mat);
@@ -165,13 +183,16 @@ function liveryMaterial(sponsor) {
 }
 function addLivery(car, sponsor) {
   const { len: L, wide: W, body } = car.userData;
-  const w = Math.min(L * 0.52, 2.1), h = w / 4;
+  // Most of the flank, not a sticker. The first pass used half the length at a
+  // quarter of that in height, which measured 1.35 by 0.34 on a 2.6-unit car --
+  // there, but far too small to notice from anywhere you actually look at a car.
+  const w = Math.min(L * 0.74, 2.6), h = w / 2.9;
   const geo = new THREE.PlaneGeometry(w, h);
   for (const side of [-1, 1]) {
     const board = new THREE.Mesh(geo, liveryMaterial(sponsor));
     // Just clear of the bodywork, facing out; the far side is mirrored so the
     // lettering reads the right way round from either pavement.
-    board.position.set(-L * 0.04, 0.78, side * (W / 2 + 0.012));
+    board.position.set(-L * 0.03, 0.82, side * (W / 2 + 0.012));
     board.rotation.y = side > 0 ? 0 : Math.PI;
     board.raycast = noRaycast;
     body.add(board);

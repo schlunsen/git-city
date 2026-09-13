@@ -47,6 +47,7 @@ export function sponsorsFor(login) {
       name: clean(c?.name, 18),
       color: colour(c?.color, '#e4574f'),
       ink: colour(c?.ink, '#fff8e8'),
+      logo: localLogo(c?.logo),
     }))
     .filter((c) => c.name)
     .slice(0, 8); // more than this stops reading as traffic
@@ -63,7 +64,7 @@ export function sponsorsFor(login) {
   const p = data.plane;
   const plane = p && clean(p.name, 28)
     ? { name: clean(p.name, 28), text: clean(p.text, 64) || `${clean(p.name, 28)} supports Gitilla`,
-        url: httpUrl(p.url), logo: localLogo(p.logo) }
+        blurb: clean(p.blurb, 180), url: httpUrl(p.url), logo: localLogo(p.logo) }
     : null;
   return cars.length || plots.length || plane ? { cars, plots, plane } : null;
 }

@@ -63,7 +63,7 @@ import { loadSponsors } from './city/sponsors.js';
 import { gourceUrl, gourceCovering, openGource, closeGource, tuneGource, stopGource } from './city/gource-player.js';
 import { devTz, setTimezoneSource, updateDevClock, detectDevOffset, localClockPhase } from './city/timezone.js';
 import { renderExplorer, renderTopCard, announceStep, clearFeed } from './city/hud.js';
-import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane, setPlaneSponsor, bannerNow } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
+import { buildBannerPlane, updateBannerPlane, bannerPlaneHit, openSupport, bannerPlaneView, holdBannerPass, bannerPlaneFlying, summonBannerPlane, setPlaneSponsor, bannerNow, planeSponsor } from './city/banner-plane.js'; // the Buy Me a Coffee sponsor plane
 
 // ---------------------------------------------------------------------------
 // App state (what the city modules own lives with them)
@@ -332,7 +332,7 @@ function doHover(cx, cy) {
       hovered = 'plane';
       tip.textContent = planeHit.house
         ? '\u2615 Enjoying Gitilla? Click to fly alongside'
-        : 'Sponsor \u00b7 click to open in a new tab';
+        : 'Sponsor \u00b7 click to fly alongside';
       tip.classList.add('show');
       document.body.style.cursor = 'pointer';
     }
@@ -395,17 +395,26 @@ function onPointerDown(e) {
 const PLANE_WATCH_MAX = 14;
 const _pcEye = new THREE.Vector3(), _pcLook = new THREE.Vector3();
 // Ride along with the plane, if there is a pass to ride. A click lengthens it.
-function startPlaneWatch() {
+function startPlaneWatch(rig) {
   if (explorer?.ownsCamera) return false;               // walk / drive / fly own the camera
-  if (!holdBannerPass(PLANE_WATCH_MAX + 1)) return false; // keep the full camera climb within the pass
+  if (!holdBannerPass(rig)) return false;                // nothing to ride if it is not flying
   endTour();
-  if (!planeCam) planeCam = { home: { position: camera.position.clone(), target: controls.target.clone(), autoRotate: controls.autoRotate }, t: 0, phase: 'watch' };
+  if (!planeCam) planeCam = { home: { position: camera.position.clone(), target: controls.target.clone(), autoRotate: controls.autoRotate }, t: 0, phase: 'watch', rig };
   controls.autoRotate = false;
   return true;
 }
-function watchPlane() {          // clicking the plane in the city
+function watchPlane() {          // clicking the house plane in the city
   openSupport();                 // the coffee panel opens straight away ...
   startPlaneWatch();             // ... and we fly alongside if the pass is still on
+}
+// Clicking a sponsor's plane. It used to open their site on the spot, which
+// threw you out of the city mid-click. It now does what the coffee plane does
+// -- flies you alongside so the banner can actually be read -- and puts their
+// card on screen, with the link to follow if you want it.
+function watchSponsorPlane(rig) {
+  const flying = startPlaneWatch(rig);
+  showSponsorCard(planeSponsor(), rig?.link);
+  if (!flying) return;           // no pass to ride: the card alone still gives them the link
 }
 // The widget's own button, bottom left. It opens its panel itself; we add the
 // flypast, summoning the plane if it is resting between passes.
@@ -436,15 +445,58 @@ function hookCoffeeButton() {
   if (attach()) return;
   const iv = setInterval(() => { if (attach()) clearInterval(iv); }, 500);
 }
+// ---------------------------------------------------------------------------
+// The sponsor card: who is on the banner you are flying alongside.
+// ---------------------------------------------------------------------------
+// Built once, on first use, and reused. Everything in it comes from the
+// validated record in sponsors.js -- the name and blurb through textContent,
+// the logo as a same-origin path, the link already checked to be http(s) -- so
+// nothing here re-parses anything a sponsor wrote.
+let sponsorCardEl = null;
+function showSponsorCard(sp, href) {
+  if (!sp) return;
+  if (!sponsorCardEl) {
+    sponsorCardEl = document.createElement('aside');
+    sponsorCardEl.id = 'sponsor-card';
+    sponsorCardEl.className = 'card';
+    sponsorCardEl.setAttribute('role', 'complementary');
+    sponsorCardEl.innerHTML = `<button class="sc-x" type="button" aria-label="Close">&times;</button>
+      <div class="sc-top"><img class="sc-logo" alt="" decoding="async"><div>
+        <div class="eyebrow dim">Sponsor</div><strong class="sc-name"></strong></div></div>
+      <p class="sc-blurb"></p>
+      <a class="sc-go" target="_blank" rel="noopener noreferrer"></a>`;
+    sponsorCardEl.querySelector('.sc-x').addEventListener('click', () => { releasePlaneCam(); hideSponsorCard(); });
+    document.body.appendChild(sponsorCardEl);
+  }
+  const logo = sponsorCardEl.querySelector('.sc-logo');
+  logo.hidden = !sp.logo;
+  if (sp.logo) logo.src = sp.logo;
+  sponsorCardEl.querySelector('.sc-name').textContent = sp.name;
+  const blurb = sponsorCardEl.querySelector('.sc-blurb');
+  blurb.textContent = sp.blurb || '';
+  blurb.hidden = !sp.blurb;
+  const go = sponsorCardEl.querySelector('.sc-go');
+  const link = href || sp.url;
+  go.hidden = !link;
+  if (link) {
+    go.href = link;
+    // Their domain, not their prose: the label says exactly where it goes.
+    go.textContent = `${new URL(link).host.replace(/^www\./, '')} \u2197`;
+  }
+  sponsorCardEl.classList.add('show');
+}
+function hideSponsorCard() { sponsorCardEl?.classList.remove('show'); }
+
 function releasePlaneCam() {
   if (!planeCam) return;
   controls.autoRotate = planeCam.home.autoRotate;
   planeCam = null;
+  hideSponsorCard(); // the card belongs to the flypast, not to the city
 }
 function updatePlaneCam(dt) {
   const pc = planeCam;
   pc.t += dt;
-  const live = bannerPlaneView(_pcEye, _pcLook, pc.t);
+  const live = bannerPlaneView(_pcEye, _pcLook, pc.t, pc.rig);
   if (pc.phase === 'watch' && (!live || pc.t > PLANE_WATCH_MAX)) { // the pass is over: drift home
     pc.phase = 'back';
     pc.t = 0;
@@ -478,7 +530,7 @@ function onPointerUp(e) {
   const clickedPlane = bannerPlaneHit(raycaster);
   if (clickedPlane) {
     if (clickedPlane.house) watchPlane();
-    else openSupport(clickedPlane.link);
+    else watchSponsorPlane(clickedPlane);
     return;
   }
   const bodies = buildingMeshes.flatMap(b => b.bodies);

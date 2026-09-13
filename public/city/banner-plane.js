@@ -40,6 +40,8 @@ function disposeRig(r) {
 }
 /** What the sponsor's banner says, or the house one if there is no sponsor. For the debug handle. */
 export function bannerNow() { return sponsor?.text || TEXT; }
+/** The headline sponsor of the island on screen, if any: name, blurb, logo, link. */
+export function planeSponsor() { return sponsor; }
 // Real seconds, not frame steps: a flypast takes the same time however fast the page renders.
 const FLIGHT_SPEED = 11;                    // world units per second around the city
 const FIRST_WAIT = 6;                       // the first pass comes soon after the city is up
@@ -377,8 +379,8 @@ function supportCover() {
   const covered = Math.min(box.width, width - box.left) / width;
   return covered > 0.55 ? 0 : covered;
 }
-export function bannerPlaneView(eye, look, watchTime = 0) {
-  const rig = houseRig(); // the support flypast always rides the house plane
+/** Compose the flypast for one aircraft; the house plane if none is named. */
+export function bannerPlaneView(eye, look, watchTime = 0, rig = houseRig()) {
   if (!rig || !rig.flying) return false;
   rig.banner.updateMatrixWorld();
   look.setFromMatrixPosition(rig.banner.matrixWorld);
@@ -420,8 +422,7 @@ export function bannerPlaneView(eye, look, watchTime = 0) {
 }
 
 // Kept for the shared follow-camera entry point: the circuit now runs indefinitely.
-export function holdBannerPass() {
-  const rig = houseRig();
+export function holdBannerPass(rig = houseRig()) {
   return !!rig && rig.flying;
 }
 

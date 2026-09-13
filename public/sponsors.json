@@ -31,8 +31,9 @@
   "cars": [
     {
       "name": "n0_",
-      "color": "#1a2233",
-      "ink": "#fafaf7"
+      "color": "#fafaf7",
+      "ink": "#1a2233",
+      "logo": "sponsors/nzero-icon.png"
     },
     {
       "name": "YOUR BRAND",
@@ -43,7 +44,7 @@
   "plots": [
     {
       "name": "n0_",
-      "tagline": "the AI workspace built for every team",
+      "tagline": "the AI workspace for every team",
       "color": "#fafaf7",
       "ink": "#1a2233"
     },
@@ -58,6 +59,7 @@
     "name": "n0_",
     "text": "n0_  ·  nzero.pro",
     "url": "https://nzero.pro",
-    "logo": "sponsors/nzero-icon.png"
+    "logo": "sponsors/nzero-icon.png",
+    "blurb": "The AI workspace where humans and agents work together. Secure, connected, and intuitive by design."
   }
 }

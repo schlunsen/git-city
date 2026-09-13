@@ -15,25 +15,24 @@ import { hashStr, seededRandom } from './prng.js';
 // ---------------------------------------------------------------------------
 // Lot kinds. `sprite` is the decal tile index (public/assets/lots-<n>.png);
 // `fallback` is used while the tile set is smaller than this catalogue, so
-// the code works with any SPRITE_COUNTS.lots. `organic` tiles may rotate
-// freely (they read as nature); man-made tiles snap to 90° so their painted
-// lines stay parallel to the streets.
+// the code works with any SPRITE_COUNTS.lots. All current tiles contain
+// rectangular borders or paths, so they snap to 90° and fill their plots.
 // ---------------------------------------------------------------------------
 export const LOT_KINDS = [
   { kind: 'parking',      sprite: 0,  fallback: 0, organic: false, zone: 'utility' },
-  { kind: 'pond-park',    sprite: 1,  fallback: 1, organic: true,  zone: 'green'   },
+  { kind: 'pond-park',    sprite: 1,  fallback: 1, organic: false,  zone: 'green'   },
   { kind: 'construction', sprite: 2,  fallback: 2, organic: false, zone: 'utility' },
   { kind: 'basketball',   sprite: 3,  fallback: 3, organic: false, zone: 'sports'  },
-  { kind: 'lawn',         sprite: 4,  fallback: 1, organic: true,  zone: 'green'   },
+  { kind: 'lawn',         sprite: 4,  fallback: 1, organic: false,  zone: 'green'   },
   { kind: 'paved',        sprite: 5,  fallback: 2, organic: false, zone: 'civic'   },
   { kind: 'tennis',       sprite: 6,  fallback: 3, organic: false, zone: 'sports'  },
   { kind: 'soccer',       sprite: 7,  fallback: 3, organic: false, zone: 'sports'  },
   { kind: 'playground',   sprite: 8,  fallback: 1, organic: false, zone: 'green'   },
-  { kind: 'garden',       sprite: 9,  fallback: 1, organic: true,  zone: 'green'   },
+  { kind: 'garden',       sprite: 9,  fallback: 1, organic: false,  zone: 'green'   },
   { kind: 'market',       sprite: 10, fallback: 0, organic: false, zone: 'civic'   },
   { kind: 'fountain',     sprite: 11, fallback: 1, organic: false, zone: 'civic'   },
   { kind: 'skate',        sprite: 12, fallback: 3, organic: false, zone: 'sports'  },
-  { kind: 'dog-park',     sprite: 13, fallback: 1, organic: true,  zone: 'green'   },
+  { kind: 'dog-park',     sprite: 13, fallback: 1, organic: false,  zone: 'green'   },
   { kind: 'track',        sprite: 14, fallback: 3, organic: false, zone: 'sports'  },
   { kind: 'amphitheater', sprite: 15, fallback: 1, organic: false, zone: 'civic'   },
 ];
@@ -61,9 +60,6 @@ const ZONE_POOLS = {
 };
 export const SQUARE_KINDS = ['fountain', 'market', 'garden']; // what a square is built around
 const SQUARE_MEMBER = { fountain: 'paved', market: 'paved', garden: 'lawn' }; // the other three quarters
-
-const PROP_LIMIT = 5;
-const REACH = 1.6; // props stay this far from the lot centre, clear of the street
 
 // ---------------------------------------------------------------------------
 // The planner.
@@ -159,70 +155,32 @@ export function planLots(cells, login = '', cell = 9) {
     return { gx: c.gx, gz: c.gz, x: c.x, z: c.z, seed: c.seed, kind, rot, flipX, flipZ, tint, scale, square: s ? s.id : null, corner, props: [] };
   });
 
-  // -- Props.
+  // Detailed decals already contain their own beds, equipment and paths.
+  // Only the two open surfaces have room for additional upright scenery.
+  // Slots use decal-local coordinates so mirrors, rotation and scale move
+  // the props with the artwork (especially the winding lawn path).
   for (const lot of lots) {
-    const r = seededRandom(lot.seed ^ 0x9e3779b9); // own stream: transforms stay stable if prop rules change
-    const add = (p, dx, dz, h, v = 0) => { if (lot.props.length < PROP_LIMIT) lot.props.push({ p, dx, dz, h, v }); };
-    const spot = reach => (r() * 2 - 1) * reach;
-    const tree = () => add('tree', spot(1.4), spot(1.4), 4 + r() * 2.5, Math.floor(r() * 10));
-    const bush = () => add('bush', spot(1.5), spot(1.5), 1 + r() * 0.8, Math.floor(r() * 10));
-    const bench = () => add('bench', spot(1.2), spot(1.2), 1.3);
-    const lamp = (dx, dz) => add('lamp', dx ?? spot(1.4), dz ?? spot(1.4), 3.2);
-    const s = lot.square !== null ? squares[lot.square] : null;
-    if (s) { // squares: lamps ring the intersection; the anchor carries the centrepiece
-      const isAnchor = lot.gx === s.anchor.gx && lot.gz === s.anchor.gz;
-      lamp(lot.corner.sx * 1.5, lot.corner.sz * 1.5);
-      if (s.kind === 'fountain') { // the anchor's own decal shows the fountain: no prop, or they double up
-        if (r() < 0.5) bench();
-      } else if (s.kind === 'market') {
-        if (isAnchor) { add('cart', lot.corner.sx * 1.2, lot.corner.sz * 0.6, 2.6); add('news-stand', lot.corner.sx * 0.6, lot.corner.sz * 1.2, 2.2); }
-        if (r() < 0.5) bench();
-      } else { // garden square
-        tree(); if (isAnchor) { tree(); bush(); bench(); }
+    const r = seededRandom(lot.seed ^ 0x9e3779b9);
+    const add = (p, x, z, h, v = 0) => {
+      x *= lot.scale * (lot.flipX ? -1 : 1);
+      z *= lot.scale * (lot.flipZ ? -1 : 1);
+      const cos = Math.cos(lot.rot), sin = Math.sin(lot.rot);
+      lot.props.push({ p, dx: x * cos + z * sin, dz: z * cos - x * sin, h, v });
+    };
+    if (lot.kind === 'lawn') {
+      // One modest tree on the grass, with the central walking path open.
+      if (lot.square !== null || r() < 0.8) add('tree', -1.25, 0, 2.5 + r() * 0.5, Math.floor(r() * 10));
+      if (r() < 0.45) add('bush', 1.25, 0.9, 0.65 + r() * 0.2, Math.floor(r() * 10));
+    } else if (lot.kind === 'paved') {
+      if (lot.corner) {
+        // These coordinates face the shared intersection in world space.
+        lot.props.push({ p: 'lamp', dx: lot.corner.sx * 1.5, dz: lot.corner.sz * 1.5, h: 2.8, v: 0 });
+        lot.props.push({ p: 'bench', dx: -lot.corner.sx * 1.2, dz: -lot.corner.sz * 1.2, h: 0.95, v: 0 });
+      } else {
+        add('bench', -1.2, -1.2, 0.95);
+        if (r() < 0.65) add('lamp', 1.4, 1.4, 2.8);
       }
-      continue;
     }
-    switch (lot.kind) {
-      case 'pond-park': case 'garden': case 'dog-park':
-        tree(); tree(); if (r() < 0.5) tree();
-        if (r() < 0.6) bush();
-        if (r() < 0.6) bench();
-        if (r() < 0.4) lamp();
-        break;
-      case 'lawn':
-        if (r() < 0.7) tree();
-        if (r() < 0.4) bush();
-        if (r() < 0.3) bench();
-        break;
-      case 'playground':
-        tree();
-        if (r() < 0.6) bench();
-        if (r() < 0.3) lamp();
-        break;
-      case 'paved': case 'amphitheater':
-        if (r() < 0.5) lamp();
-        if (r() < 0.5) bench();
-        break;
-      case 'market':
-        lamp(); add('cart', spot(1.2), spot(1.2), 2.6); if (r() < 0.5) add('news-stand', spot(1.2), spot(1.2), 2.2);
-        break;
-      case 'fountain': // the decal already has the fountain; just dress the plaza
-        if (r() < 0.6) lamp();
-        if (r() < 0.5) bench();
-        break;
-      case 'parking':
-        if (r() < 0.2) add('cart', spot(1.2), spot(1.2), 2.6);
-        break;
-      case 'construction':
-        break; // the decal says it all
-      default: // courts & tracks: keep the playing surface clear — a bike rack at a corner, no lamps mid-field
-        if (r() < 0.3) add('bike-rack', (r() < 0.5 ? -1.5 : 1.5), (r() < 0.5 ? -1.5 : 1.5), 1.3);
-    }
-  }
-  // Clamp prop offsets into the lot (belt-and-braces; tests assert it).
-  for (const lot of lots) for (const p of lot.props) {
-    p.dx = Math.max(-REACH, Math.min(REACH, p.dx));
-    p.dz = Math.max(-REACH, Math.min(REACH, p.dz));
   }
   return { lots, squares };
 }

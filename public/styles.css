@@ -1097,3 +1097,39 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline-color: var(
 :root[data-embed][data-ui="none"] #showcase-card,
 :root[data-embed][data-ui="none"] #legend,
 :root[data-embed][data-ui="none"] #gource-mini { display: none !important; }
+
+/* ---------------------------------------------------------------------------
+   Sponsor card — shown while you fly alongside a sponsor's plane.
+   ---------------------------------------------------------------------------
+   Bottom left, clear of the profile sheet above it and the transport below, on
+   the opposite side to the support panel so the two can never stack. It inherits
+   .card, so it is the same sheet as everything else and follows the theme. */
+#sponsor-card {
+  position: fixed; left: 20px; z-index: 40; width: 300px; max-width: calc(100vw - 40px);
+  bottom: calc(var(--transport-h, 90px) + 16px);
+  padding: 16px 18px 14px;
+  opacity: 0; transform: translateY(10px) scale(0.98); pointer-events: none;
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.2, 0.85, 0.25, 1);
+}
+#sponsor-card.show { opacity: 1; transform: none; pointer-events: auto; }
+#sponsor-card .sc-top { display: flex; align-items: center; gap: 12px; }
+#sponsor-card .sc-logo { width: 44px; height: 44px; border-radius: 11px; flex: none; border: 1px solid var(--line); }
+#sponsor-card .sc-name { display: block; font-family: var(--display); font-size: 21px; line-height: 1.15; overflow-wrap: anywhere; }
+#sponsor-card .sc-blurb { margin: 12px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink-300); }
+#sponsor-card .sc-go {
+  display: inline-block; margin-top: 14px; padding: 9px 14px; border-radius: 10px;
+  font-family: var(--mono); font-size: 12px; text-decoration: none;
+  color: var(--accent); border: 1px solid var(--accent);
+}
+#sponsor-card .sc-go:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+#sponsor-card .sc-x {
+  position: absolute; top: 8px; right: 8px; width: 30px; height: 30px;
+  background: none; border: 0; color: var(--ink-500); font-size: 17px; cursor: pointer; border-radius: 8px;
+}
+#sponsor-card .sc-x:hover { color: var(--ink-100); background: var(--glass, rgba(128,128,128,.12)); }
+/* Nobody clicks anything in an embed, so nothing opens this -- but if some other
+   route ever does, it has no business on an unattended screen. */
+:root[data-embed] #sponsor-card { display: none !important; }
+@media (max-width: 900px), (max-height: 500px) {
+  #sponsor-card { left: 10px; right: 10px; width: auto; }
+}
