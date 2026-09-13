@@ -251,26 +251,36 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
          on ways to leave; side by side they cost one row. */
       .gri-dialog[data-view="history"] .gri-footer{grid-template-columns:1fr 1fr}
     }
-    /* On a phone the guide was the whole screen: 366x672 of a 390x844 display,
-       with the tour card stacked on top of it, which measured out at 136% of
-       the viewport covered -- the interface overlapping itself and the island
-       reduced to a strip at the top. It becomes a sheet pulled up from the
-       bottom instead, so the thing being described stays on screen above the
-       description of it. */
+    /* Keep the reading surface between the measured HUD bars. Compact chrome
+       leaves the remaining space to the document, including on short phones. */
     @media(max-width:700px){
-      .gri-dialog[data-hud="true"]{
-        top:auto; left:8px; right:8px; width:auto;
-        height:min(60dvh, 560px); max-height:60dvh;
+      .gri-dialog,.gri-dialog[data-hud="true"],.gri-dialog[data-hud="true"][data-view="history"]{
+        top:calc(var(--topbar-h,58px) + 8px);left:8px;right:8px;width:auto;
         bottom:calc(var(--transport-h,90px) + 8px);
-        border-radius:20px 20px 12px 12px;
+        height:auto;max-height:none;margin:0;border-radius:16px;
       }
-      /* A handle, because it now reads as something you could pull. */
-      .gri-dialog[data-hud="true"] .gri-header::before{
-        content:"";position:absolute;left:50%;top:8px;transform:translateX(-50%);
-        width:38px;height:4px;border-radius:4px;background:var(--rule);
+      .gri-header{flex-shrink:0;padding:14px 18px 10px}
+      .gri-header h2{font-size:25px;margin:8px 32px 2px 0}
+      .gri-owner{font-size:12px}
+      .gri-eyebrow{font-size:11px!important}
+      .gri-status{font-size:9px;padding:3px 7px}
+      .gri-close{top:8px;right:8px;width:44px;height:44px}
+      .gri-tabs{flex-shrink:0;padding:4px 12px 9px;gap:4px;justify-content:space-between;border-bottom:1px solid var(--rule)}
+      .gri-tabs button{flex:1;min-height:40px;padding:8px;font-size:13px}
+      .gri-content{--gri-pad:18px;padding:8px var(--gri-pad) 18px}
+      .gri-markdown{font-size:15px;line-height:1.65}
+      .gri-footer,.gri-dialog[data-view="history"] .gri-footer{
+        flex-shrink:0;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;
       }
-      .gri-dialog[data-hud="true"] .gri-header{padding-top:20px}
-      .gri-header h2{font-size:27px}
+      .gri-footer .gri-github,.gri-footer .gri-resume{min-height:44px;padding:10px 8px;font-size:12px}
+      .gri-dialog kbd{display:none}
+      .gri-history-open{padding:8px;font-size:12px}
+      .gri-dialog[data-view="history"] .gri-screen{min-height:0}
+    }
+    @media(max-width:700px) and (max-height:600px){
+      .gri-header{padding-block:8px 4px}
+      .gri-header h2{font-size:21px;margin-top:4px}
+      .gri-header .gri-eyebrow,.gri-header .gri-status{display:none}
     }
     .gri-warp{background:repeating-linear-gradient(90deg,#fff8e8cc 0 2px,transparent 2px 9px)}
     .gri-beam{background:#fff8e8;box-shadow:0 0 34px 12px #e6d5aec2}

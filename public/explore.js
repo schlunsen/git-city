@@ -435,12 +435,7 @@ export function createExplorer(THREE, deps = {}) {
   const walker = { p: new THREE.Vector3(), v: new THREE.Vector3(), vy: 0, yaw: 0, pitch: 0, grounded: true, bob: 0, fov: 70 };
   const car = { p: new THREE.Vector3(), v: new THREE.Vector2(), yaw: 0, y: 0, pitch: 0, roll: 0, steer: 0, lean: 0, squat: 0, spin: 0, bump: 0, vf: 0, vl: 0, lastVf: 0, puffT: 0, smokeT: 0 };
   const plane = { p: new THREE.Vector3(), yaw: 0, pitch: 0, roll: 0, speed: 26, throttle: 0.45, prop: 0, puffT: 0, bump: 0 };
-  // Looking around is a nudge that drifts back to centre on its own. There is
-  // no zoom: a scroll wheel used to push the chase camera in and out and
-  // nothing ever put it back, so a stray trackpad pinch during a bomb run left
-  // the framing wherever it landed, and the only way out -- changing mode --
-  // ended the run. Each vehicle is framed the way it should be seen.
-  const chase = { pos: new THREE.Vector3(), look: new THREE.Vector3(), yaw: 0, pitch: 0, idle: 9, shake: 0 };
+  const chase = { pos: new THREE.Vector3(), look: new THREE.Vector3(), yaw: 0, pitch: 0, idle: 9, zoom: { drive: 1, fly: 1 }, shake: 0 };
   // The figure on the pavement. Built the first time somebody walks, then kept:
   // it is nine small meshes and rebuilding it on every mode change would throw
   // its walk cycle away mid-stride.
@@ -531,19 +526,14 @@ export function createExplorer(THREE, deps = {}) {
     syncUI();
   }
   function onBlur() { clearInput(); }
-  // Pinch-to-zoom is a page gesture: Safari runs it on the visual viewport, over
-  // the top of whatever is on screen, and touch-action does not reach it. On a
-  // phone flying the plane that is two thumbs close together over a canvas, so
-  // it fires by accident -- and it leaves the whole interface scaled up with no
-  // way back, because a fixed, unscrollable page gives you nothing to pinch back
-  // out of, and the bomb run cannot be left without ending the run.
-  //
-  // While a vehicle is being driven this is a game surface, not a document, so
-  // the gesture is refused. Orbit is a page again and keeps it: zooming a page
-  // is how some people read one, and that is not ours to take away.
-  const driving = () => mode !== 'orbit';
-  function onGesture(e) { if (driving()) e.preventDefault(); }          // Safari's own pinch
-  function onTouchMove(e) { if (driving() && e.touches?.length > 1) e.preventDefault(); } // everyone else's
+  // Scope accidental page pinches to touch flight; desktop wheel framing stays.
+  const touchFlight = () => mode === 'fly' && (sawTouch || !!coarse?.matches);
+  function onGesture(e) { if (touchFlight()) e.preventDefault(); }
+  function onTouchMove(e) { if (touchFlight() && e.touches?.length > 1) e.preventDefault(); }
+  function onWheel(e) {
+    if ((mode !== 'drive' && mode !== 'fly') || touchFlight()) return;
+    chase.zoom[mode] = clamp(chase.zoom[mode] * (1 + Math.sign(e.deltaY) * 0.08), 0.6, 2.4);
+  }
 
   // ---- DOM: HUD, mode menu, touch controls --------------------------------------
   injectStyle();
@@ -669,6 +659,7 @@ export function createExplorer(THREE, deps = {}) {
   addEventListener('keydown', onKeyDown);
   addEventListener('keyup', onKeyUp);
   addEventListener('blur', onBlur);
+  canvas.addEventListener('wheel', onWheel, { passive: true });
   for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, onGesture, { passive: false });
   document.addEventListener('touchmove', onTouchMove, { passive: false });
   addEventListener('pointerdown', onPointerDown, cap);
@@ -1103,10 +1094,10 @@ export function createExplorer(THREE, deps = {}) {
     driveCam(dt, false);
   }
   function driveCam(dt, snap) {
-    const c = car, fx = Math.cos(c.yaw), fz = -Math.sin(c.yaw);
+    const c = car, zoom = chase.zoom.drive, fx = Math.cos(c.yaw), fz = -Math.sin(c.yaw);
     chase.idle += dt;
     if (chase.idle > 1.5 && !drag) { chase.yaw *= Math.exp(-dt * 2); chase.pitch *= Math.exp(-dt * 2); }
-    const ang = c.yaw + Math.PI + chase.yaw, back = 7.4, up = 2.8 + chase.pitch * 6;
+    const ang = c.yaw + Math.PI + chase.yaw, back = 7.4 * zoom, up = 2.8 * zoom + chase.pitch * 6;
     _v.set(c.p.x + Math.cos(ang) * back, c.y + up, c.p.z - Math.sin(ang) * back);
     _v2.set(c.p.x + fx * 2.2, c.y + 1.1, c.p.z + fz * 2.2);
     if (snap) { chase.pos.copy(_v); chase.look.copy(_v2); }
@@ -1143,7 +1134,7 @@ export function createExplorer(THREE, deps = {}) {
     o.blob.visible = alt < 45;
   }
   function simFly(dt, input, elapsed) {
-    const p = plane;
+    const p = plane, zoom = touchFlight() ? 1 : chase.zoom.fly;
     p.throttle = clamp(p.throttle + (input.faster - input.slower) * 0.6 * dt, 0, 1);
     const target = PLANE.MIN + 3 + p.throttle * (PLANE.MAX - PLANE.MIN - 8);
     p.speed += (target - p.speed) * damp(dt, 0.8) - Math.sin(p.pitch) * 7 * dt; // dives speed up, climbs bleed speed
@@ -1209,12 +1200,12 @@ export function createExplorer(THREE, deps = {}) {
     flyCam(dt, false);
   }
   function flyCam(dt, snap) {
-    const p = plane;
+    const p = plane, zoom = touchFlight() ? 1 : chase.zoom.fly;
     chase.idle += dt;
     if (chase.idle > 1.5 && !drag) { chase.yaw *= Math.exp(-dt * 2); chase.pitch *= Math.exp(-dt * 2); }
     const yaw = p.yaw + chase.yaw, pp = p.pitch * 0.6, cp = Math.cos(pp);
     const gm = game?.active ? 1 : 0; // bomb run: pulled back and up so rooftops read
-    const back = 13 * (1 + 0.35 * gm), up = 3.8 + 4 * gm + chase.pitch * 8;
+    const back = 13 * zoom * (1 + 0.35 * gm), up = (3.8 + 4 * gm) * zoom + chase.pitch * 8;
     _v.set(p.p.x - cp * Math.cos(yaw) * back, p.p.y - Math.sin(pp) * back + up, p.p.z + cp * Math.sin(yaw) * back);
     const cpf = Math.cos(p.pitch);
     _v2.set(p.p.x + cpf * Math.cos(p.yaw) * 7, p.p.y + Math.sin(p.pitch) * 7 + 0.9, p.p.z - cpf * Math.sin(p.yaw) * 7);
@@ -1666,6 +1657,7 @@ const AUTO = {
     removeEventListener('keydown', onKeyDown);
     removeEventListener('keyup', onKeyUp);
     removeEventListener('blur', onBlur);
+    canvas.removeEventListener('wheel', onWheel);
     for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.removeEventListener(t, onGesture);
     document.removeEventListener('touchmove', onTouchMove);
     removeEventListener('pointerdown', onPointerDown, cap);

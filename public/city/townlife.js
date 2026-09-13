@@ -262,86 +262,85 @@ export function disposePerson(person) {
   disposeObject(person.group);
 }
 
-/*
- * One walkable person, built from exactly the parts the townsfolk are built
- * from.
- *
- * Walk mode used to be a pair of eyes: the camera sat at eye height and the
- * city was seen down a nose. Putting somebody on the pavement means there has
- * to be somebody to look at, and they have to belong to the place -- a figure
- * modelled differently from the two dozen already strolling round the fountain
- * would read as a visitor from another game. So this is the same geometry, the
- * same toon material and the same ink hull, assembled as ordinary meshes rather
- * than instances because there is only ever one of them and it needs its own
- * limbs to move.
- */
-const PERSON_SKINS = SKIN_TONES, PERSON_SHIRTS = SHIRTS, PERSON_PANTS = PANTS, PERSON_HAIR = HAIR;
-
-export function buildPerson({ skin, shirt, pants, hair } = {}) {
-  const rnd = seededRandom(Date.now() & 0xffff);
-  const pick = a => a[Math.floor(rnd() * a.length)];
-  const c = {
-    skin: skin ?? pick(PERSON_SKINS), shirt: shirt ?? pick(PERSON_SHIRTS),
-    pants: pants ?? pick(PERSON_PANTS), hair: hair ?? pick(PERSON_HAIR),
-  };
-  const legGeo = box(0.12, 0.4, 0.14, 0, -0.2, 0);   // pivots at the hip
-  const armGeo = box(0.09, 0.34, 0.1, 0, -0.17, 0);  // pivots at the shoulder
-  const torsoGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.44, 8).translate(0, 0.62, 0);
-  const headGeo = new THREE.IcosahedronGeometry(0.19, 1).translate(0, 1.03, 0);
-  const hairGeo = new THREE.SphereGeometry(0.205, 10, 5, 0, TAU, 0, Math.PI * 0.55).rotateX(-0.45).translate(0, 1.04, 0);
-  const eyesGeo = mergeParts([box(0.035, 0.055, 0.03, 0.065, 1.02, 0.185), box(0.035, 0.055, 0.03, -0.065, 1.02, 0.185)]);
-  const hullGeo = mergeParts([hullOf(torsoGeo, 0.07), hullOf(headGeo, 0.07)]);
-
-  const group = new THREE.Group();
-  const mesh = (geo, mat, cast = false) => {
+// A pocket unicorn: oversized head, stubby hooves and a candy-coloured mane.
+// The character faces -Z, matching the walk controller's forward direction.
+export function buildPerson() {
+  const group = new THREE.Group(); group.name = 'walk-unicorn';
+  const coat = toonMat({ color: 0xfff1e9 });
+  const pink = toonMat({ color: 0xf9a7c8 });
+  const hoof = toonMat({ color: 0x8272bd });
+  const gold = toonMat({ color: 0xffcd65 });
+  const rainbow = [0xed83b5, 0xad8ee3, 0x78cfd0, 0xffd780].map(color => toonMat({ color }));
+  const white = new THREE.MeshBasicMaterial({ color: 0xfffcf5 });
+  const ink = new THREE.MeshBasicMaterial({ color: 0x282237 });
+  const mesh = (parent, geo, mat, x, y, z) => {
     const m = new THREE.Mesh(geo, mat);
-    m.castShadow = cast; m.raycast = noRaycast;
-    group.add(m);
-    return m;
+    m.position.set(x, y, z); m.castShadow = true; m.raycast = noRaycast;
+    parent.add(m); return m;
   };
-  const body = mesh(torsoGeo, toonMat({ color: c.shirt }), true);
-  const head = mesh(headGeo, toonMat({ color: c.skin }), true);
-  const hairM = mesh(hairGeo, toonMat({ color: c.hair }));
-  const eyes = mesh(eyesGeo, new THREE.MeshBasicMaterial({ color: 0x1a1d26 }));
-  const hull = mesh(hullGeo, getOutlineMat());
-  const legMat = toonMat({ color: c.pants }), armMat = toonMat({ color: c.shirt });
-  // Limbs hang off pivots so a swing is a rotation, as it is for the crowd.
-  const pivot = (geo, mat, x, y, cast) => {
-    const g = new THREE.Group(); g.position.set(x, y, 0);
-    const m = new THREE.Mesh(geo, mat); m.castShadow = cast; m.raycast = noRaycast;
-    g.add(m); group.add(g); return g;
+  const oval = (parent, mat, x, y, z, sx, sy, sz) => {
+    const geo = new THREE.SphereGeometry(1, 12, 8); geo.scale(sx, sy, sz);
+    return mesh(parent, geo, mat, x, y, z);
   };
-  const legL = pivot(legGeo, legMat, 0.075, 0.4, true), legR = pivot(legGeo, legMat, -0.075, 0.4, true);
-  const armL = pivot(armGeo, armMat, 0.22, 0.8, false), armR = pivot(armGeo, armMat, -0.22, 0.8, false);
-  armL.rotation.z = 0.12; armR.rotation.z = -0.12;
-
-  group.visible = false;
-  scene.add(group);
-  return { group, parts: { body, head, hair: hairM, eyes, hull, legL, legR, armL, armR }, phase: 0, colors: c };
+  const body = new THREE.Group(); group.add(body);
+  oval(body, coat, 0, .61, .045, .32, .31, .47);
+  oval(body, coat, 0, .84, -.28, .23, .34, .24);
+  const head = new THREE.Group(); head.position.set(0, 1.12, -.35); body.add(head);
+  oval(head, coat, 0, 0, 0, .30, .29, .31);
+  oval(head, pink, 0, -.11, -.27, .255, .16, .23);
+  for (const side of [-1, 1]) {
+    oval(head, ink, side * .105, -.065, -.471, .026, .019, .012);
+    oval(head, white, side * .205, .045, -.205, .102, .12, .069);
+    oval(head, ink, side * .21, .035, -.265, .044, .065, .022);
+    oval(head, white, side * .21 - .012, .061, -.285, .013, .020, .009);
+    const ear = oval(head, coat, side * .20, .30, .02, .075, .17, .065);
+    ear.rotation.z = -side * .23;
+    oval(head, pink, side * .205, .32, -.037, .036, .103, .013);
+  }
+  const horn = mesh(head, new THREE.ConeGeometry(.085, .43, 10), gold, 0, .39, -.13);
+  horn.rotation.x = -.18;
+  // Thin lilac bands give the horn a candy twist without a texture asset.
+  for (let i = 0; i < 3; i++) {
+    const band = mesh(head, new THREE.TorusGeometry(.068 - i * .018, .009, 4, 10), rainbow[1], 0, .28 + i * .09, -.11 - i * .016);
+    band.rotation.x = Math.PI / 2 - .18;
+  }
+  // Scalloped locks down the back remain visible from the normal chase camera.
+  for (let i = 0; i < 6; i++) {
+    oval(head, rainbow[i % 4], Math.sin(i * .8) * .035, .24 - i * .09, .12 + i * .034, .105, .12, .12);
+  }
+  oval(head, rainbow[0], -.085, .22, -.13, .12, .085, .18).rotation.z = -.3;
+  const tail = new THREE.Group(); tail.position.set(0, .71, .43); body.add(tail);
+  for (let i = 0; i < 4; i++) {
+    const lock = oval(tail, rainbow[i], (i - 1.5) * .046, -.07 - i * .035, .13, .063, .24, .11);
+    lock.rotation.x = -.55; lock.rotation.z = (i - 1.5) * .15;
+  }
+  const leg = (x, z) => {
+    const pivot = new THREE.Group(); pivot.position.set(x, .42, z); body.add(pivot);
+    oval(pivot, coat, 0, -.15, 0, .085, .18, .09);
+    oval(pivot, hoof, 0, -.34, -.018, .11, .08, .125);
+    return pivot;
+  };
+  const legL = leg(.21, .30), legR = leg(-.21, .30);
+  const armL = leg(.21, -.28), armR = leg(-.21, -.28);
+  group.visible = false; scene.add(group);
+  return { group, parts: { body, head, tail, legL, legR, armL, armR }, phase: 0, age: 0 };
 }
 
-/**
- * Pose the character for this frame.
- * `speed` in metres a second; `airborne` freezes the cycle into a jump shape.
- */
 export function posePerson(person, { speed = 0, dt = 0, airborne = false } = {}) {
   if (!person) return 0;
-  const { legL, legR, armL, armR } = person.parts;
-  if (airborne) {
-    // Tucked: one leg forward, arms up. Held, not cycling, so a jump reads as
-    // one shape rather than a stride caught mid-air.
-    legL.rotation.x = -0.6; legR.rotation.x = 0.35;
-    armL.rotation.x = -1.1; armR.rotation.x = -1.1;
-    return 0;
-  }
-  person.phase += speed * 2.2 * dt;
-  const moving = speed > 0.15;
-  const swing = moving ? Math.sin(person.phase) : Math.sin(person.phase * 0.12) * 0.06; // idle: a slight breathing sway
-  const amp = moving ? 0.55 : 1;
-  legL.rotation.x = swing * amp; legR.rotation.x = -swing * amp;
-  armL.rotation.x = -swing * 0.5; armR.rotation.x = swing * 0.5;
-  // The step bob is what sells a walk; it is the same |cos| the crowd uses.
-  return moving ? Math.abs(Math.cos(person.phase)) * 0.045 : 0;
+  const { body, head, tail, legL, legR, armL, armR } = person.parts;
+  person.age += dt; person.phase += speed * 2.8 * dt;
+  const moving = speed > .15, swing = moving ? Math.sin(person.phase) : 0;
+  body.rotation.z = airborne ? 0 : swing * .045;
+  head.rotation.z = -body.rotation.z * .5 + Math.sin(person.age * 1.7) * .035;
+  head.rotation.x = moving ? Math.cos(person.phase * 2) * .055 : Math.sin(person.age * 2) * .025;
+  tail.rotation.z = Math.sin(person.age * 3 + swing * .5) * .22;
+  // Opposite diagonal pairs make a buoyant pony trot; tuck all four in a jump.
+  legL.rotation.x = airborne ? .65 : swing * .55;
+  legR.rotation.x = airborne ? .5 : -swing * .55;
+  armL.rotation.x = airborne ? -1 : -swing * .55;
+  armR.rotation.x = airborne ? -.85 : swing * .55;
+  return airborne ? 0 : moving ? Math.abs(Math.sin(person.phase)) * .065 : Math.sin(person.age * 2) * .006;
 }
 
 // Weather: rain (streaking points) or snow (soft points). Toggleable.

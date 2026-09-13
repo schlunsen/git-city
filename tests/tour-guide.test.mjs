@@ -209,9 +209,9 @@ test('nothing anchored above the transport bar guesses its height', async () => 
 // left alone in orbit, where zooming a page is how some people read one.
 test('the plane refuses pinch-zoom without taking it from the page', async () => {
   const ex = await read('explore.js');
-  assert.match(ex, /const driving = \(\) => mode !== 'orbit';/,
+  assert.match(ex, /const touchFlight = \(\) => mode === 'fly' && \(sawTouch \|\| !!coarse\?\.matches\);/,
     'the refusal is scoped to actually driving something');
-  assert.match(ex, /function onGesture\(e\) \{ if \(driving\(\)\) e\.preventDefault\(\); \}/,
+  assert.match(ex, /function onGesture\(e\) \{ if \(touchFlight\(\)\) e\.preventDefault\(\); \}/,
     "Safari's own pinch events are refused");
   assert.match(ex, /e\.touches\?\.length > 1\) e\.preventDefault\(\)/,
     'and the two-finger move every other browser uses');
@@ -224,10 +224,9 @@ test('the plane refuses pinch-zoom without taking it from the page', async () =>
     'and it all comes off again when explore is disposed');
 });
 
-// The chase camera has one framing per vehicle. A scroll wheel used to push it
-// in and out with nothing to put it back.
-test('the chase camera has no zoom to get stuck in', async () => {
+test('touch flight keeps fixed framing while desktop retains wheel zoom', async () => {
   const ex = await read('explore.js');
-  assert.doesNotMatch(ex, /chase\.zoom/, 'no zoom state to strand the camera in');
-  assert.doesNotMatch(ex, /addEventListener\('wheel'/, 'and nothing driving one');
+  assert.match(ex, /zoom = touchFlight\(\) \? 1 : chase\.zoom\.fly/);
+  assert.match(ex, /\|\| touchFlight\(\)\) return/);
+  assert.match(ex, /canvas\.addEventListener\('wheel', onWheel/);
 });
