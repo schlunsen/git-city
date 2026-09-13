@@ -251,8 +251,13 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     dialog.dataset.anim = name;
     animTimer = setTimeout(() => { if (dialog.dataset.anim === name) delete dialog.dataset.anim; }, ms);
   }
-  function close() {
+  // Why the guide closed matters to whoever opened it: "Continue tour" means
+  // carry on where we were, Escape means back out of it. The buttons pass
+  // 'button' (their click Event must not arrive as the reason), Esc passes
+  // 'escape', and anything programmatic leaves it undefined.
+  function close(reason) {
     if (!openNow) return;
+    const why = typeof reason === 'string' ? reason : undefined;
     const finish = inspectClose; inspectClose = null;
     readVersion++; readerRepo = null;
     openNow = false;
@@ -270,7 +275,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
     onClose();
     prompt.hidden = !target;
     if (!prompt.hidden) prompt.focus({ preventScroll: true });
-    finish?.();
+    finish?.(why);
   }
   // Fill the guide with a repo. Shared by a fresh open and by a mid-tour retune.
   function fill(r, options) {
@@ -381,11 +386,11 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
   dialog.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => setView(button.dataset.view)));
   dialog.querySelector('.gri-retry').addEventListener('click', loadReadme);
   prompt.addEventListener('click', () => open());
-  dialog.querySelector('.gri-close').addEventListener('click', close);
-  dialog.querySelector('.gri-resume').addEventListener('click', close);
+  dialog.querySelector('.gri-close').addEventListener('click', () => close('button'));
+  dialog.querySelector('.gri-resume').addEventListener('click', () => close('button'));
   return {
     get open() { return openNow; },
-    close,
+    close(reason) { close(reason); },
     inspect(repo, options) { return open(repo, options); },
     transit,
     key(e) {
@@ -394,7 +399,7 @@ export function createRepoInspector(THREE, { camera, buildings, onOpen, onClose,
       if (openNow && e.code === 'KeyH' && historyTab()) { e.preventDefault(); e.stopImmediatePropagation(); setView('history'); return true; }
       if ((e.code === 'KeyE' && (target || openNow)) || (e.code === 'Escape' && openNow)) {
         e.preventDefault(); e.stopImmediatePropagation();
-        if (!e.repeat) { if (openNow) close(); else open(); }
+        if (!e.repeat) { if (openNow) close(e.code === 'Escape' ? 'escape' : 'button'); else open(); }
         return true;
       }
       return false;

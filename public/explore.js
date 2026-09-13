@@ -1567,7 +1567,7 @@ export function createExplorer(THREE, deps = {}) {
     },
     update, postRender, dispose, resetColliders, flyToNext, travelTo, revealCity,
     inspectRepo(repo, options) { return repoInspector.inspect(repo, options); },
-    closeInspector() { repoInspector.close(); },
+    closeInspector(reason) { repoInspector.close(reason); },
     /** Tour hop: hold the field guide open (veiled) while the camera flies to the next repo. */
     transitInspector(repo) { return repoInspector.transit(repo); },
     get inspectorOpen() { return repoInspector.open; },

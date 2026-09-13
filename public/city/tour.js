@@ -218,7 +218,12 @@ function openTourReadme(repo) {
     resumeLabel: 'Continue tour ',
     note: 'The camera keeps circling while you read.',
     modal: false,
-    onClose: () => releaseHold(),
+    // "Continue tour" picks the showcase back up where it paused. Escape is the
+    // visitor backing out of the whole thing, and used to do neither: the guide
+    // closed and the tour carried on circling a rooftop, because app.js's Esc
+    // handler (which would have ended it) never runs while the guide claims the
+    // key. Escape now leaves the tour and flies back out to the city.
+    onClose: (why) => (why === 'escape' ? exitTourToCity() : releaseHold()),
   });
   return opened;
 }
@@ -365,12 +370,38 @@ export function updateCine(dt) {
 }
 export function flyToBuilding(b) {
   if (deps.explorer()?.ownsCamera) return; // walk / drive / fly own the camera
+  // Where closing the guide should put us back. Clicking a building from a tour
+  // used to record the tour's close-up as "where you were orbiting", so Escape
+  // flew you from one rooftop to another and never came back out. A tour stop is
+  // not an orbit to return to: from a tour, the way back is the whole city.
+  const fromTour = tour.active; // endTour is about to clear it
   endTour();
-  if (!orbitReturn) orbitReturn = { target: controls.target.clone(), position: camera.position.clone(), autoRotate: controls.autoRotate };
+  if (!orbitReturn) orbitReturn = fromTour
+    ? { ...cityFraming(), autoRotate: deps.flyover() }
+    : { target: controls.target.clone(), position: camera.position.clone(), autoRotate: controls.autoRotate };
   controls.autoRotate = false;
   // Arc up over the rooftops into a framing orbit, then circle slowly while its panel is open.
   const circle = orbitLeg(b, Math.atan2(camera.position.z, camera.position.x), { dur: 40, sweep: Math.PI * 2, loop: true });
   cine = { legs: [flyLeg(camera.position, controls.target, circle.pos(0, new THREE.Vector3()), circle.look(0, new THREE.Vector3()), 2.6), circle], leg: 0, t: 0, focus: b };
+}
+// The framing the city opens on, and the one every way out leads back to:
+// Reset view, Escape from a tour, and closing a building clicked during one.
+// Exported so those cannot drift apart into three slightly different cities.
+export function cityFraming() {
+  const extent = Math.max(24, ...buildingMeshes.map(b => Math.max(Math.abs(b.mesh.position.x), Math.abs(b.mesh.position.z)) + 6));
+  const distance = Math.min(350, Math.max(120, extent * 3.0) / Math.min(1, camera.aspect));
+  const target = new THREE.Vector3(0, 10, 0);
+  return { target, position: target.clone().add(new THREE.Vector3(1, 0.85, 1).normalize().multiplyScalar(distance)) };
+}
+// Back out to the whole city: end the tour and fly -- not snap, the way the
+// Reset view button does -- to the framing the city opens on.
+export function exitTourToCity(dur = 2.2) {
+  endTour();
+  const { target, position: pos } = cityFraming();
+  orbitReturn = null;
+  controls.autoRotate = false; // the flight owns the camera until it lands
+  cine = { legs: [flyLeg(camera.position, controls.target, pos, target, dur)], leg: 0, t: 0,
+    onDone: () => { controls.autoRotate = deps.flyover(); } };
 }
 export function returnToOrbit() {
   if (!orbitReturn || deps.explorer()?.ownsCamera) { orbitReturn = null; cine = null; return; }

@@ -54,7 +54,7 @@ import {
   updatePedestrians, updateWeather,
 } from './city/townlife.js';
 import {
-  tour, cine, orbitReturn, initTour, updateTour, tourJump, tourToRepo, startTour, endTour, updateCine, flyToBuilding, returnToOrbit,
+  tour, cine, orbitReturn, initTour, updateTour, tourJump, tourToRepo, startTour, endTour, updateCine, flyToBuilding, returnToOrbit, cityFraming,
   pauseTourForUser, resumeTourAfterUser, cancelFlights,
 } from './city/tour.js';
 import { actor, initActor, buildActor, buildAvatar, updateActor } from './city/actor.js';
@@ -1044,10 +1044,9 @@ function restoreCityConfig() {
 function resetCamera() {
   endTour();
   cancelFlights();
-  controls.target.set(0, 10, 0);
-  const extent = Math.max(24, ...buildingMeshes.map(b => Math.max(Math.abs(b.mesh.position.x), Math.abs(b.mesh.position.z)) + 6));
-  const distance = Math.min(350, Math.max(120, extent * 3.0) / Math.min(1, camera.aspect));
-  camera.position.copy(controls.target).add(new THREE.Vector3(1, 0.85, 1).normalize().multiplyScalar(distance));
+  const { target, position } = cityFraming();
+  controls.target.copy(target);
+  camera.position.copy(position);
   controls.update();
 }
 
