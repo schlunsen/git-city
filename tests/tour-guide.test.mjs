@@ -159,3 +159,31 @@ test('every embedded replay is told to start', async () => {
   assert.match(reveal, /type: 'play'/, 'the replay starts as it is revealed');
   assert.match(reveal, /screen\.classList\.remove\('loading'\)/, 'and the placeholder goes at the same moment');
 });
+
+// Surfaces that paint themselves a fixed colour while the type on them reads
+// the ink tokens are how half this interface ended up dark-on-dark by day. The
+// menu was the last one.
+test('the mobile menu surface follows the theme', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  const menu = css.slice(css.indexOf('  #menu {'));
+  const block = menu.slice(0, menu.indexOf('\n  }'));
+  assert.match(block, /background: var\(--panel-solid\)/, 'the dropdown reads a themed surface token');
+  assert.doesNotMatch(block, /background:\s*(#|rgba?\()/, 'and never bakes its own colour in');
+  assert.doesNotMatch(block, /box-shadow:\s*[^;]*rgba\(0, 0, 0/, 'a night shadow does not belong under a paper panel');
+});
+
+// The island's furniture leaves with the island. A menu left open over a warp,
+// or a legend still naming the languages of the city we just left, is the same
+// mistake as the profile card that used to sit there through the hop.
+test('everything describing the island leaves with it', async () => {
+  const app = await read('app.js');
+  assert.match(app, /const ISLAND_FURNITURE = \['explorer', 'legend'\]/,
+    'the card and the language legend belong to the city, not the interface');
+  const hide = app.match(/function hideProfileCard\(\) \{[\s\S]*?\n\}/)[0];
+  assert.match(hide, /setMenu\(false\)/, 'an open menu belongs to the city it was opened over');
+  assert.match(hide, /ISLAND_FURNITURE/, 'and the furniture goes with it');
+  const settle = app.match(/function settleProfileCard\(\) \{[\s\S]*?\n\}/)[0];
+  assert.match(settle, /ISLAND_FURNITURE/, 'all of it comes back together on the next island');
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /#legend\.landed \{ opacity: 1; \}/, 'the legend has a landed state to come back to');
+});

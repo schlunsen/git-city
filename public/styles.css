@@ -122,6 +122,10 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
 #explorer { position: fixed; top: 76px; left: 20px; z-index: 15; width: 250px; pointer-events: none;
   opacity: 0; transform: translateY(-8px); transition: opacity 0.55s ease, transform 0.55s ease; }
 #explorer.landed { opacity: 1; transform: none; }
+/* The language legend names this island's repos, so it comes and goes with the
+   card that names the island. */
+#legend { opacity: 0; transition: opacity 0.55s ease; }
+#legend.landed { opacity: 1; }
 #explorer > * { pointer-events: auto; }
 #explorer:not(.landed) > * { pointer-events: none; } /* not clickable while it is not really there */
 @media (prefers-reduced-motion: reduce) { #explorer { transition: opacity 0.2s linear; transform: none; } }
@@ -637,8 +641,12 @@ html { -webkit-tap-highlight-color: transparent; }
     display: none; position: fixed; z-index: 45;
     top: calc(var(--topbar-h, 58px) + 6px); right: max(10px, env(safe-area-inset-right)); left: max(10px, env(safe-area-inset-left));
     max-width: 420px; margin-left: auto; max-height: calc(100dvh - var(--topbar-h, 58px) - 20px); overflow-y: auto;
-    padding: 12px; background: rgba(17, 24, 36, 0.97); border: 1px solid var(--line); border-radius: 12px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    /* The surface follows the page. It was a navy panel with its colours baked
+       in, and the chips and buttons on it read the ink tokens -- so by day the
+       menu was the one thing left dressed for the night, with dark text on a
+       dark ground. --panel is the token the rest of the HUD's surfaces use. */
+    padding: 12px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--sheet-shadow);
   }
   body.menu-open #menu { display: block; }
   #menu #examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }

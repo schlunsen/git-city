@@ -552,16 +552,22 @@ function onPointerUp(e) {
 // departed developer is the last thing read on the way out) and back a beat
 // after the new city has landed, so the island is what arrives first.
 const PROFILE_SETTLE_MS = 900;
+// Everything that describes the island rather than the interface: who lives
+// here and what they write in. It all belongs to one city, so it all leaves
+// with that city and returns together once the next one is standing.
+const ISLAND_FURNITURE = ['explorer', 'legend'];
 let profileSettleTimer = null;
 function hideProfileCard() {
   clearTimeout(profileSettleTimer); profileSettleTimer = null;
-  $('explorer').classList.remove('landed');
+  setMenu(false); // an open menu belongs to the city it was opened over
+  for (const id of ISLAND_FURNITURE) $(id)?.classList.remove('landed');
 }
 function settleProfileCard() {
   clearTimeout(profileSettleTimer);
   const version = cityVersion; // a card belongs to the city that asked for it
   profileSettleTimer = setTimeout(() => {
-    if (version === cityVersion) $('explorer').classList.add('landed');
+    if (version !== cityVersion) return;
+    for (const id of ISLAND_FURNITURE) $(id)?.classList.add('landed');
   }, PROFILE_SETTLE_MS);
 }
 
