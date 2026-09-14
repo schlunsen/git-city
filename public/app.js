@@ -33,6 +33,7 @@ import { API, DEFAULT_USER, FIXTURES, MAX_BUILDINGS, DAY_CYCLE_SECONDS, LANG_COL
 import { $, escapeHtml, fmtNum, fmtBytes, setLoadStatus, disposeObject, readPref, writePref, hexNum, prefersReducedMotion, handheld } from './city/util.js';
 import { getOutlineMat, envPalette, envMat, hashStr } from './city/toon.js';
 import { planLots } from './city/lots.js';
+import { recordCanvas, saveBlob, createRecorderBadge, pickMimeType } from './recorder.js';
 import {
   CELL, SLAB_HALF, SLAB_R, RING_R, RING_CORNER, PLAZA_R, chooseCityShape, makeCityLayout, starsToHeight, starsToFootprint,
   setStreetWidth, STREET_DEFAULT,
@@ -101,12 +102,30 @@ let planeCam = null;         // clicking the sponsor plane: fly alongside it, re
 let planeWatchWanted = 0;    // the coffee button asked for a flypast: wall-clock deadline to catch it
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3();
 
+// While a recording is set up this is [width, height] and the renderer stops
+// following the window: a clip has to be one size, decided by whoever asked for
+// it, not by however wide the browser happened to be when it started.
+let recordSize = null;
 function onResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  const w = recordSize ? recordSize[0] : window.innerWidth;
+  const h = recordSize ? recordSize[1] : window.innerHeight;
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  if (postPass) postPass.resize(window.innerWidth, window.innerHeight);
-  if (crtPass) crtPass.resize(window.innerWidth, window.innerHeight);
+  renderer.setSize(w, h, !recordSize); // fixed size: leave the CSS to fitCanvas
+  if (postPass) postPass.resize(w, h);
+  if (crtPass) crtPass.resize(w, h);
+  if (recordSize) fitCanvas();
+}
+
+/** Letterbox the fixed-size canvas into the window, so what you watch is what you get. */
+function fitCanvas() {
+  const [w, h] = recordSize;
+  const scale = Math.min(window.innerWidth / w, window.innerHeight / h);
+  const el = renderer.domElement;
+  Object.assign(el.style, {
+    inset: 'auto', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
+    width: `${Math.round(w * scale)}px`, height: `${Math.round(h * scale)}px`,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1274,6 +1293,58 @@ function onPrimerKey(e) {
   e.stopPropagation();
 }
 
+// ---------------------------------------------------------------------------
+// Recording  --  gitilla.com/?record=15
+// ---------------------------------------------------------------------------
+// Fifteen seconds of the city as a video file, encoded by the browser off the
+// same canvas it is drawing. ?size=1280x720 fixes the framing, ?fps and
+// ?bitrate are there for anyone who wants a bigger file. Pairs with ?embed=1,
+// which is the screen saver: no chrome in the window, so nothing but the city
+// is on screen while it records (though the stream only ever carries the
+// canvas, so the page's own furniture could not get into the file anyway).
+function recordingRequest() {
+  if (!PARAMS.has('record')) return null;
+  const seconds = Math.min(Math.max(Number(PARAMS.get('record')) || 15, 1), 120); // a tab that records for an hour is a mistake
+  const size = (PARAMS.get('size') || '').match(/^(\d{2,5})x(\d{2,5})$/);
+  return {
+    seconds,
+    fps: Math.min(Math.max(Number(PARAMS.get('fps')) || 60, 10), 60),
+    bitrate: Math.min(Math.max(Number(PARAMS.get('bitrate')) || 12e6, 1e6), 80e6),
+    size: size ? [Number(size[1]), Number(size[2])] : null,
+  };
+}
+
+/** Set the renderer to the clip's size before anything is recorded at the wrong one. */
+function armRecording(req) {
+  if (!req.size) return;
+  recordSize = req.size;
+  renderer.setPixelRatio(1); // the backing store must be exactly the size asked for
+  onResize();
+}
+
+async function runRecording(req) {
+  const badge = createRecorderBadge();
+  try {
+    if (!pickMimeType()) throw new Error('this browser cannot record a canvas');
+    // What is worth recording is the tour: the camera flying the city on its
+    // own. An embed starts one by itself, so only say so when nothing is flying.
+    if (!tour.active && !explorer?.ownsCamera) startTour();
+    await new Promise((r) => setTimeout(r, 900)); // let the first leg get moving
+    const blob = await recordCanvas(renderer.domElement, {
+      seconds: req.seconds, fps: req.fps, bitrate: req.bitrate, onTick: badge.tick,
+    });
+    badge.encoding();
+    const name = saveBlob(blob, `gitilla-${currentLogin || 'city'}-${req.seconds}s`);
+    badge.saved(name);
+    // A handle for a script driving this: Playwright reads the blob straight out
+    // rather than going through the browser's downloads.
+    window.__recording = { blob, name, bytes: blob.size, type: blob.type };
+  } catch (e) {
+    badge.failed(String(e.message || e));
+    window.__recording = { error: String(e.message || e) };
+  }
+}
+
 async function loadCity(login, { onBuilt } = {}) { // onBuilt(login): explore.js portal travel, fired once the new city stands
   login = login.trim().replace(/^@/, '');
   const version = ++cityVersion;
@@ -1481,15 +1552,17 @@ function main() {
   const fromUrl = PARAMS.get('user');
   const startUser = (fromUrl || (EMBED ? randomDeveloper() : DEFAULT_USER)).replace(/^@/, '');
   document.getElementById('search-input').value = startUser;
+  const recording = recordingRequest();
+  if (recording) armRecording(recording);
   animate();
   // ?primer=1 forces the card back (testing, screenshots), ?primer=0 suppresses
   // it. An embed is a picture on someone else's page: it gets no welcome card,
   // and no five seconds of held load screen either.
   const askedPrimer = PARAMS.get('primer');
-  if (!EMBED && askedPrimer !== '0' && (askedPrimer !== null || !readPref(PRIMER_SEEN))) {
+  if (!EMBED && !recording && askedPrimer !== '0' && (askedPrimer !== null || !readPref(PRIMER_SEEN))) {
     primerGate = openPrimer({ hold: PRIMER_HOLD });
   }
-  loadCity(startUser);
+  loadCity(startUser).then(() => { if (recording) runRecording(recording); });
   // A showcase tour ends at its last stop. With nobody there to start another,
   // the city would stand still for the rest of the scene -- so watch for it.
   if (EMBED && EMBED_MODE === 'tour' && PARAMS.get('tour') !== '0') {

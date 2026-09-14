@@ -111,3 +111,13 @@ test('an embed gets no welcome card and no held load screen', async () => {
   assert.match(boot, /askedPrimer !== '0'/, '?primer=0 suppresses it');
   assert.match(boot, /askedPrimer !== null \|\| !readPref\(PRIMER_SEEN\)/, '?primer=1 forces it; otherwise once per visitor');
 });
+
+// --- recording -----------------------------------------------------------
+test('a recording request is clamped to something a browser can survive', async () => {
+  const app = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
+  const fn = app.slice(app.indexOf('function recordingRequest()'), app.indexOf('function armRecording'));
+  assert.match(fn, /Math\.min\(Math\.max\(Number\(PARAMS\.get\('record'\)\) \|\| 15, 1\), 120\)/,
+    'a tab asked to record for an hour is a mistake, not a request');
+  assert.match(fn, /\^\(\\d\{2,5\}\)x\(\\d\{2,5\}\)\$/, '?size= is parsed, not trusted');
+  assert.match(app, /if \(!EMBED && !recording &&/, 'the welcome card must never interrupt a recording');
+});

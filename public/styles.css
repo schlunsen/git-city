@@ -129,6 +129,23 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid 
   #primer, .primer-card, #primer-go::after { animation: none; }
 }
 
+/* ---------- Recording badge ---------- */
+/* Sits over the city while ?record= runs. It is DOM, and the recorder streams
+   the canvas alone, so this never appears in the file it is counting down. */
+#rec-badge {
+  position: fixed; z-index: 70; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 9px; padding: 8px 14px;
+  font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+  color: #fff; background: rgba(12, 16, 24, 0.88); border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4); pointer-events: none;
+}
+#rec-badge .rec-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff4b4b; animation: rec-pulse 1s ease-in-out infinite; }
+#rec-badge.encoding .rec-dot { background: #ffb23f; animation: none; }
+#rec-badge.done .rec-dot { background: #3fd18b; animation: none; }
+#rec-badge.failed .rec-dot { background: #ff4b4b; animation: none; }
+@keyframes rec-pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { #rec-badge .rec-dot { animation: none; } }
+
 /* ---------- Top bar ---------- */
 #topbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 20;
