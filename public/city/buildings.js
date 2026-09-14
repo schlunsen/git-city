@@ -6,14 +6,21 @@
 import * as THREE from 'three';
 import { cityGroup, world } from './scene.js';
 import { toonMat, getOutlineMat, outlineBox, hullOf, noRaycast, hashStr, seededRandom } from './toon.js';
-import { buildingPalette, paintFacade } from './facade.js';
+import { buildingPalette, paintFacade, roofTexture, tileUv, ROOF_TILE } from './facade.js';
 import { ARCHITECTURES, architectureDetails } from './architecture.js';
 import { skyscraperPlan } from './skyscrapers.js';
+import { BUILDING_THEMES } from './themes.js';
 import { hexNum, disposeObject } from './util.js';
 import { paintGraffiti } from '../graffiti.js'; // spray-painted wall text (building configs)
 
 export let buildingMeshes = [];   // { mesh, body, bodies, bodyMat, bodyMats, roofMat, hull, beacon, repo, h, ... }
 export const buildingByName = new Map(); // repo full_name -> building
+
+// The island's building theme (themes.js): app.js sets it from the biome /
+// city.json before the block is built, and every createBuilding reads it.
+let theme = { name: 'metro', ...BUILDING_THEMES.metro };
+export function setBuildingTheme(t) { theme = t || { name: 'metro', ...BUILDING_THEMES.metro }; }
+export const buildingTheme = () => theme;
 
 // Take every building down (a new city, or a rebuild for a config change).
 export function resetBuildings() {
@@ -226,11 +233,13 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   const group = new THREE.Group();
   const rnd = seededRandom(hashStr(repo.full_name || repo.name || ''));
   const detailRnd = seededRandom(hashStr((repo.full_name || repo.name || '') + ':architecture'));
-  const pal = buildingPalette(color, detailRnd());
+  const pal = buildingPalette(color, detailRnd(), theme);
   const towerPlan = h >= 28 && !form ? skyscraperPlan(h, f, hashStr((repo.full_name || repo.name || '') + ':skyline') % 5) : null;
-  const architecture = towerPlan ? ARCHITECTURES.find(a => a.name === towerPlan.family) : ARCHITECTURES[Math.floor(detailRnd() * ARCHITECTURES.length)];
+  // The theme weights the families (adobe leans heritage/loft, chalets balconies…); one draw either way.
+  const pool = theme.families ? theme.families.map((n) => ARCHITECTURES.find((a) => a.name === n)) : ARCHITECTURES;
+  const architecture = towerPlan ? ARCHITECTURES.find(a => a.name === towerPlan.family) : pool[Math.floor(detailRnd() * pool.length)];
   const style = architecture.windows;
-  const details = architectureDetails(group, architecture.name, pal, detailRnd);
+  const details = architectureDetails(group, architecture.name, pal, detailRnd, theme);
   const litProb = 0.45 + rnd() * 0.4;
 
   // Silhouette: tall towers step back in tiers; small ones may get a hip roof.
@@ -246,7 +255,7 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   else if (h >= 20 && silhouette === 2) tiers = [{ h: h * 0.38, f }, { h: h * 0.28, f: f * 0.86 }, { h: h * 0.21, f: f * 0.7 }, { h: h * 0.13, f: f * 0.54 }];
   if (architecture.name === 'garden' && h >= 12) tiers = [{ h: h * 0.38, f }, { h: h * 0.34, f: f * 0.73 }, { h: h * 0.28, f: f * 0.46 }];
   if (architecture.name === 'glass' && h >= 12) tiers = [{ h: h * 0.16, f }, { h: h * 0.84, f: f * 0.88 }];
-  let hip = tiers.length === 1 && h < 9 && rnd() > 0.45;
+  let hip = tiers.length === 1 && h < 9 && rnd() > 1 - (theme.hip ?? 0.55);
   // city.json style changes the silhouette only (height and footprint still follow
   // the stars); applied after the draws above so the rest of the building is unchanged.
   if (form === 'tower') { tiers = [{ h, f }]; hip = false; } // one shaft; the spire goes on below
@@ -256,8 +265,9 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
   if (towerPlan) { tiers = towerPlan.tiers; hip = false; }
   const neon = bcfg?.neon ? hexNum(bcfg.neon) : 0xffffff; // building config "neon": the lit windows' glow
 
-  const roofH = 0.7, over = 0.45;
-  const roofMat = toonMat({ color: pal.roof });
+  const roofH = 0.7, over = theme.capOver ?? 0.45;
+  const roofMap = roofTexture(theme.roofTex); // tiles / slate / tin / gravel, or none for metro
+  const roofMat = toonMat({ color: pal.roof, map: roofMap || null });
   const propMat = toonMat({ color: 0xdfe3ec });
   const propDark = toonMat({ color: 0x3a4152 });
   const bodies = [], bodyMats = [], hulls = [];
@@ -270,7 +280,8 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
       const slack = (Math.max(2.2, tiers[i - 1].f) - tf) / 2 * (architecture.name === 'garden' ? 0 : 0.7);
       cx += (rnd() - 0.5) * 2 * slack; cz += (rnd() - 0.5) * 2 * slack;
     }
-    const { map, emissiveMap } = paintFacade(rnd, pal, tf, t.h, { ground: i === 0, style, litProb });
+    const { map, emissiveMap } = paintFacade(rnd, pal, tf, t.h, { ground: i === 0, style, litProb,
+      wall: theme.wall, shutters: theme.shutters, awning: theme.awning, panes: theme.panes });
     const mat = toonMat({ color: 0xffffff, map, emissive: neon, emissiveMap, emissiveIntensity: 0 });
     let geometry;
     if (t.shape === 'octagon') {
@@ -291,7 +302,9 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
     const o = towerPlan ? 0.12 : i === 0 ? over : over * 0.6;
     const capH = t.cap === false ? 0 : towerPlan && i < tiers.length - 1 ? 0.18 : roofH;
     if (capH) {
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(tf + o, capH, td + o), roofMat);
+      const capGeo = new THREE.BoxGeometry(tf + o, capH, td + o);
+      if (roofMap) tileUv(capGeo, tf + o, td + o);
+      const cap = new THREE.Mesh(capGeo, roofMat);
       cap.position.set(cx, baseY + t.h + capH / 2, cz);
       cap.rotation.y = t.rotation || 0;
       cap.castShadow = true;
@@ -324,13 +337,33 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
 
   const designedRoof = !hip && !bcfg?.roof && form !== 'tower' && form !== 'block' && ['deco', 'garden', 'heritage', 'loft'].includes(architecture.name);
   if (hip) {
-    const r = (topF + over) * 0.72;
-    const pyr = new THREE.Mesh(new THREE.ConeGeometry(r, 1.9, 4), roofMat);
-    pyr.rotation.y = Math.PI / 4; pyr.position.set(cx, topY + 0.95, cz); pyr.castShadow = true;
-    const pyrHull = new THREE.Mesh(new THREE.ConeGeometry(r + 0.3, 2.2, 4), getOutlineMat());
-    pyrHull.raycast = () => {}; pyrHull.rotation.y = Math.PI / 4; pyrHull.position.set(cx, topY + 0.95, cz);
-    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), toonMat({ color: 0x8a5a48 }));
-    chimney.position.set(cx + topF * 0.25, topY + 1.1, cz - topF * 0.2);
+    // A pyramid, or with a theme gable a wider, taller ridge that overhangs the eaves.
+    const spread = theme.gable?.spread ?? 1, rise = theme.gable?.rise ?? 1;
+    const r = (topF + 0.45) * 0.72 * spread, ph = 1.9 * rise;
+    let pyr, pyrHull;
+    if (theme.gable?.ridge) {
+      // A pitched roof with a ridge: a triangular prism overhanging the eaves.
+      const span = (topF + 0.45) * spread, tri = new THREE.Shape([new THREE.Vector2(-span / 2, 0), new THREE.Vector2(span / 2, 0), new THREE.Vector2(0, ph)]);
+      const g = new THREE.ExtrudeGeometry(tri, { depth: span, bevelEnabled: false }).translate(0, 0, -span / 2);
+      if (roofMap) { // extrude UVs are in world units: scale them to the tile size
+        const uv = g.attributes.uv;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / ROOF_TILE, uv.getY(i) / ROOF_TILE);
+      }
+      if (rnd() < 0.5) g.rotateY(Math.PI / 2);
+      pyr = new THREE.Mesh(g, roofMat);
+      pyrHull = new THREE.Mesh(hullOf(g, 0.18), getOutlineMat());
+      pyr.position.set(cx, topY, cz); pyrHull.position.set(cx, topY, cz);
+    } else {
+      const coneGeo = new THREE.ConeGeometry(r, ph, 4);
+      if (roofMap) tileUv(coneGeo, r * 4, ph * 1.4);
+      pyr = new THREE.Mesh(coneGeo, roofMat);
+      pyr.rotation.y = Math.PI / 4; pyr.position.set(cx, topY + ph / 2, cz);
+      pyrHull = new THREE.Mesh(new THREE.ConeGeometry(r + 0.3, ph + 0.3, 4), getOutlineMat());
+      pyrHull.rotation.y = Math.PI / 4; pyrHull.position.set(cx, topY + ph / 2, cz);
+    }
+    pyr.castShadow = true; pyrHull.raycast = noRaycast;
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3 * rise, 0.5), toonMat({ color: 0x8a5a48 }));
+    chimney.position.set(cx + topF * 0.25, topY + 1.1 * rise, cz - topF * 0.2);
     group.add(pyr, pyrHull, chimney);
   } else if (bcfg?.roof) { // building config "roof" replaces the random decal / props
     buildRoof(group, bcfg.roof, { cx, cz, topY, topF, size: topF + (tiers.length === 1 ? over : over * 0.6), propDark });
@@ -346,7 +379,8 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
       group.add(d);
     }
     // Rooftop props: water towers on wide roofs, AC boxes, a mast on tall ones.
-    if (!decalRoof && topF >= 5 && rnd() > 0.35) {
+    const props = theme.props || {};
+    if (!decalRoof && topF >= 5 && rnd() > 0.35 && props.waterTower !== false) {
       const tower = new THREE.Group();
       const legs = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, 1.3, 4, 1, true), propDark);
       legs.position.y = 0.65;
@@ -361,7 +395,22 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
       tower.position.set(cx + (rnd() - 0.5) * (topF - 3.4), topY, cz + (rnd() - 0.5) * (topF - 3.4));
       group.add(tower);
     }
-    const acCount = !decalRoof && topF >= 3.6 ? 1 + Math.floor(rnd() * 2) : 0;
+    const acCount = !decalRoof && topF >= 3.6 && props.ac !== false ? 1 + Math.floor(rnd() * 2) : 0;
+    if (!decalRoof && props.dish && topF >= 3 && rnd() > 0.5) {
+      // A small satellite dish on a stub, where the metro roofs have AC boxes.
+      const dish = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 6, 0, Math.PI * 2, 0, Math.PI / 3), toonMat({ color: 0xe6e2d6, side: THREE.DoubleSide }));
+      dish.rotation.x = -Math.PI / 2.6;
+      dish.position.set(cx + (rnd() - 0.5) * (topF - 2), topY + 0.7, cz + (rnd() - 0.5) * (topF - 2));
+      const stub = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.7, 5), propDark);
+      stub.position.set(dish.position.x, topY + 0.35, dish.position.z);
+      group.add(dish, stub);
+    }
+    if (!decalRoof && props.chimney && topF >= 3 && rnd() > 0.4) {
+      const stack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.2, 0.55), toonMat({ color: 0x6d5a52 }));
+      stack.position.set(cx + topF * 0.3 - 0.4, topY + 0.6, cz - topF * 0.3 + 0.4);
+      stack.add(outlineBox(0.55, 1.2, 0.55, 0.16));
+      group.add(stack);
+    }
     for (let i = 0; i < acCount; i++) {
       const ac = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 1.1), propMat);
       ac.position.set(cx + (rnd() - 0.5) * (topF - 2.4), topY + 0.35, cz + (rnd() - 0.5) * (topF - 2.4));
@@ -374,7 +423,7 @@ export function createBuilding(repo, x, z, h, f, color, bcfg = null) { // bcfg: 
       const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 2.6, 4), propDark);
       ant.position.set(cx, topY + 4.6, cz);
       group.add(spire, ant);
-    } else if (h > 12 && rnd() > 0.4) {
+    } else if (h > 12 && rnd() > 0.4 && props.mast !== false) {
       const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 2.8, 5), propDark);
       mast.position.set(cx - topF / 2 + 0.9, topY + 1.4, cz + topF / 2 - 0.9);
       group.add(mast);

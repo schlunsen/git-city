@@ -127,9 +127,11 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     const ctx = context();
     if (!ctx?.login) return;
     ensureRoot();
-    if (forLogin !== ctx.login || !draft) { draft = draftFrom(ctx.published); forLogin = ctx.login; }
+    let absorbed = false;
+    if (forLogin !== ctx.login || !draft) { draft = draftFrom(ctx.published); forLogin = ctx.login; absorbed = absorbPreviewParams(draft); }
     forRepo = ctx.configRepo; forOrg = !!ctx.org;
     render(ctx);
+    if (absorbed) changed(); // the draft now carries what the URL was previewing: rebuild from it
     root.hidden = false;
     document.body.classList.add('cz-open');
     updatePill();
@@ -151,6 +153,27 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
     updatePill();
   }
   function updatePill() { if (pill) pill.hidden = !(previewing && root?.hidden); }
+  // ?biome= ?horizon= ?buildings= ?city= ?streets= are quick previews that win
+  // over city.json (world.js applyHorizon / setProfile, app.js cityLayoutFor) --
+  // and so over a live draft too, which left the panel's Biome and Buildings
+  // selects looking dead while such a URL was open. Opening the panel folds
+  // them into the draft (what you were previewing is what you start from) and
+  // drops them from the URL, so from here on the draft alone decides.
+  const PREVIEW_PARAMS = { biome: ['island', 'biome'], horizon: ['island', 'horizon'], buildings: ['island', 'buildings'], city: ['island', 'shape'], streets: ['island', 'streets'] };
+  function absorbPreviewParams(d) {
+    let url;
+    try { url = new URL(location.href); } catch { return false; }
+    let touched = false;
+    for (const [q, path] of Object.entries(PREVIEW_PARAMS)) {
+      const v = url.searchParams.get(q);
+      if (v === null) continue;
+      url.searchParams.delete(q); touched = true;
+      if (q === 'streets') { const n = Number(v); if (Number.isFinite(n)) setIn(d, path, n); }
+      else if ((OPTIONS[q === 'city' ? 'shape' : q] || []).includes(v)) setIn(d, path, v);
+    }
+    if (touched) history.replaceState(null, '', url);
+    return touched;
+  }
   function revert() {
     clearTimeout(timer);
     previewing = false;
@@ -520,6 +543,7 @@ export function createCustomizer({ context, preview, restore, onOpen }) {
           row('Name', textField(['island', 'name'], LIMITS.name, `${ctx.login}'s city`)),
           row('Biome', selectField(['island', 'biome'], OPTIONS.biome, LABELS.biome, 'Automatic (top language)')),
           row('Horizon', selectField(['island', 'horizon'], OPTIONS.horizon, LABELS.horizon, 'Automatic (suits the biome)')),
+          row('Buildings', selectField(['island', 'buildings'], OPTIONS.buildings, LABELS.buildings, 'Automatic (suits the biome)')),
           row('City shape', selectField(['island', 'shape'], OPTIONS.shape, LABELS.shape, 'Automatic (from your login)')),
           row('Street width', numberField(['island', 'streets'], { min: STREET_RANGE[0], max: STREET_RANGE[1], fallback: STREET_DEFAULT, label: 'Street width',
             format: (n) => (n === STREET_DEFAULT ? `${n} (default)` : String(n)) })),
@@ -564,7 +588,7 @@ function injectStyle() {
   const css = `
 #cz { position: fixed; z-index: 46; top: calc(var(--topbar-h, 58px) + 12px); left: 20px; bottom: calc(var(--transport-h, 90px) + 12px);
   width: 390px; max-width: calc(100vw - 40px); display: flex; flex-direction: column;
-  background: rgba(17, 24, 36, 0.96); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sheet-shadow);
   backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); font-family: var(--mono); font-size: 12px; color: var(--ink-300); }
 #cz[hidden], #cz-pill[hidden], #cz [hidden] { display: none !important; }
 #cz .cz-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px 12px; border-bottom: 1px solid var(--line); }
@@ -572,7 +596,7 @@ function injectStyle() {
 #cz .cz-close { background: none; border: 0; color: var(--ink-500); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 2px; }
 #cz .cz-close:hover { color: var(--ink-100); }
 #cz .cz-body { overflow-y: auto; padding: 12px 16px 16px; overscroll-behavior: contain; touch-action: pan-y; }
-#cz .cz-status { border-left: 3px solid var(--accent); background: rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px; line-height: 1.55; margin-bottom: 6px; word-break: break-word; }
+#cz .cz-status { border-left: 3px solid var(--accent); background: var(--tint); border-radius: 6px; padding: 8px 10px; line-height: 1.55; margin-bottom: 6px; word-break: break-word; }
 #cz .cz-status b { color: var(--ink-100); }
 #cz .cz-status[data-tone="bad"] { border-left-color: #ff7a8a; }
 #cz .cz-status[data-tone="warn"] { border-left-color: var(--orange); }
@@ -600,7 +624,7 @@ function injectStyle() {
 #cz input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
 #cz output { min-width: 2.5em; text-align: right; color: var(--ink-100); }
 #cz .cz-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; align-items: center; }
-#cz .cz-chip { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--ink-300); border-radius: 999px;
+#cz .cz-chip { background: var(--tint); border: 1px solid var(--line); color: var(--ink-300); border-radius: 999px;
   padding: 5px 10px; font: inherit; font-size: 11px; cursor: pointer; }
 #cz .cz-chip:hover { border-color: var(--accent-dim); color: var(--ink-100); }
 #cz .cz-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
@@ -608,11 +632,11 @@ function injectStyle() {
 #cz .cz-lm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 6px; font-size: 11px; color: var(--ink-300); }
 #cz .cz-lm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-bottom: 6px; }
 #cz .cz-lm { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 6px 6px 8px; text-align: left; min-width: 0;
-  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); border-radius: 10px; color: var(--ink-300); font: inherit; cursor: pointer;
+  background: var(--tint); border: 1px solid var(--line); border-radius: 10px; color: var(--ink-300); font: inherit; cursor: pointer;
   transition: border-color 0.15s, background 0.15s, transform 0.15s; }
 #cz .cz-lm:hover:not(:disabled) { border-color: var(--accent-dim); color: var(--ink-100); transform: translateY(-1px); }
 #cz .cz-lm:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#cz .cz-lm[aria-pressed="true"] { border-color: var(--accent); background: rgba(100, 222, 219, 0.12); color: var(--ink-100); }
+#cz .cz-lm[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--ink-100); }
 #cz .cz-lm:disabled { opacity: 0.38; cursor: default; }
 #cz .cz-lm-pic { position: relative; display: block; aspect-ratio: 4 / 3; border-radius: 7px; overflow: hidden;
   background: radial-gradient(ellipse at 50% 28%, #cfe4f4, #9fc6e0 70%); }
@@ -636,7 +660,7 @@ function injectStyle() {
 #cz .cz-mini { background: none; border: 1px solid transparent; color: var(--ink-500); border-radius: 5px; padding: 4px 7px; font: inherit; font-size: 11px; cursor: pointer; }
 #cz .cz-mini:hover { color: var(--ink-100); border-color: var(--line); }
 #cz .cz-feat[aria-pressed="true"] { color: var(--orange); border-color: rgba(255, 160, 58, 0.45); }
-#cz .cz-hide[aria-pressed="true"] { color: var(--ink-100); border-color: var(--line); background: rgba(255, 255, 255, 0.06); }
+#cz .cz-hide[aria-pressed="true"] { color: var(--ink-100); border-color: var(--line); background: var(--tint-strong); }
 #cz .cz-mini:disabled { opacity: 0.35; cursor: default; }
 #cz .cz-repo-edit { padding: 0 10px 8px; }
 #cz canvas.cz-graffiti { display: block; width: 100%; height: auto; margin: 6px 0 2px; border-radius: 6px; border: 1px solid var(--line);
@@ -647,29 +671,29 @@ function injectStyle() {
 #cz .cz-preview { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding: 10px 0 4px; color: var(--ink-100); }
 #cz .cz-preview label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 #cz .cz-sub { margin: 10px 0 6px; }
-#cz .cz-json { max-height: 220px; overflow: auto; margin: 0; padding: 10px 12px; background: #0b111a; border: 1px solid var(--line); border-radius: 8px;
+#cz .cz-json { max-height: 220px; overflow: auto; margin: 0; padding: 10px 12px; background: var(--sheet-input); border: 1px solid var(--line); border-radius: 8px;
   color: var(--ink-300); font: inherit; font-size: 11px; line-height: 1.5; white-space: pre; user-select: text; }
 #cz .cz-warn { color: var(--orange); margin: 6px 0 0 16px; font-size: 11px; line-height: 1.5; word-break: break-word; }
 #cz .cz-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 #cz .cz-btn { flex: 1 1 auto; text-align: center; text-decoration: none; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--panel2); color: var(--ink-100); font: inherit; font-weight: 600; cursor: pointer; }
-#cz .cz-btn:hover { filter: brightness(1.1); }
+#cz .cz-btn:hover { border-color: var(--accent-dim); }
 #cz .cz-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 #cz .cz-publish .cz-note { margin: 8px 0 0; }
 #cz-pill { position: fixed; z-index: 44; top: calc(var(--topbar-h, 58px) + 10px); left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 14px; border-radius: 999px; white-space: nowrap;
-  background: rgba(17, 24, 36, 0.95); border: 1px solid rgba(140, 120, 255, 0.55); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  background: var(--panel); border: 1px solid rgba(140, 120, 255, 0.55); box-shadow: var(--sheet-shadow);
   font-family: var(--mono); font-size: 12px; color: var(--ink-100); }
 #cz-pill button { background: var(--panel2); border: 1px solid var(--line); color: var(--ink-100); border-radius: 999px; padding: 5px 11px; font: inherit; cursor: pointer; }
 #cz-pill button:hover { border-color: var(--purple); }
 #cz-toast { position: fixed; z-index: 47; left: 50%; bottom: calc(var(--transport-h, 90px) + 18px); transform: translate(-50%, 8px);
-  max-width: min(560px, calc(100vw - 24px)); padding: 10px 16px; border-radius: 10px; background: rgba(17, 24, 36, 0.96);
-  border: 1px solid var(--line); border-left: 3px solid var(--accent); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.4);
+  max-width: min(560px, calc(100vw - 24px)); padding: 10px 16px; border-radius: 10px; background: var(--panel);
+  border: 1px solid var(--line); border-left: 3px solid var(--accent); box-shadow: var(--sheet-shadow);
   font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--ink-100); word-break: break-word;
   opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; }
 #cz-toast.show { opacity: 1; transform: translate(-50%, 0); }
-#guide-link { display: inline-block; margin: -8px 0 12px; font-family: var(--mono); font-size: 11px; color: var(--accent);
-  text-decoration: none; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
+#guide-link { display: inline-block; margin: -8px 0 12px; font-family: var(--mono); font-size: 11px; color: var(--accent); text-decoration: none; }
+:root[data-theme="dark"] #guide-link { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7); }
 #guide-link:hover { text-decoration: underline; }
 /* The toolbar grew (Customize): shed the developer pills a little earlier so it never clips. */
 @media (min-width: 901px) and (max-width: 1480px) { #examples { display: none; } }

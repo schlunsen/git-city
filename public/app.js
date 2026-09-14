@@ -44,7 +44,8 @@ import {
 } from './city/scene.js';
 import { cityLayout, setCityLayout, buildEnvironment } from './city/block.js';
 import { plazaFx, updatePlaza } from './city/plaza.js';
-import { buildingMeshes, buildingByName, resetBuildings, createBuilding, tickBuildingFocus, focusGlowScale, refocusAfterRebuild } from './city/buildings.js';
+import { buildingMeshes, buildingByName, resetBuildings, createBuilding, setBuildingTheme, tickBuildingFocus, focusGlowScale, refocusAfterRebuild } from './city/buildings.js';
+import { pickBuildingTheme } from './city/themes.js';
 import {
   districtSigns, clearPerUserEnhancements, buildRingFromEvents, buildDistrictSigns, buildDistrictBaseplates, buildCommitShuttles,
   buildForkBeams, updateShuttles, updateBeams,
@@ -1155,6 +1156,7 @@ function applyProfile(user, repos, version = cityVersion) {
   const cfg = cfgNow();
   setCityLayout(cityLayoutFor(user, repos));
   world.setProfile({ user, repos, config: worldConfig() }, cityLayout.city);
+  setBuildingTheme(pickBuildingTheme(world.traits, cfg)); // the block's look suits the island (themes.js)
   // Neighbour portal gates at sea (neighbors.js): the developer's picks first, topped up automatically;
   // fire-and-forget, dropped if another city loaded meanwhile.
   fetchNeighbors(user.login, { repos, fallback: Object.keys(FIXTURES), pinned: cfg?.neighbours || [], org: isOrg(user) })

@@ -7,6 +7,7 @@ import {
   normalizeBuildingConfig, mergeBuildingConfig, fetchBuildingConfig, serializeBuildingConfig, BUILDING_KEYS, BUILDING_MAX_BYTES,
 } from '../public/city-config.js';
 import { BIOMES, LANDMARK_SITES, SITE_KINDS, HORIZON_NAMES, BIOME_HORIZONS } from '../public/world.js';
+import { THEME_NAMES, BIOME_THEMES, pickBuildingTheme } from '../public/city/themes.js';
 import { ATTRACTIONS } from '../public/attractions.js';
 import { CITY_SHAPE_NAMES } from '../public/city/layout.js';
 
@@ -300,6 +301,7 @@ test('the vocabulary matches the code it names (world.js, city/layout.js, attrac
   assert.deepEqual([...OPTIONS.landmark].sort(), ATTRACTIONS.map((a) => a.key).sort());
   assert.deepEqual([...OPTIONS.shape], CITY_SHAPE_NAMES);
   assert.deepEqual([...OPTIONS.horizon].sort(), [...HORIZON_NAMES].sort());
+  assert.deepEqual([...OPTIONS.buildings].sort(), [...THEME_NAMES].sort());
 });
 
 test('every landmark has island sites that can hold it (world.js LANDMARK_SITES vs attractions.js)', () => {
@@ -323,6 +325,7 @@ test('the JSON Schema agrees with the validator', () => {
   assert.deepEqual(Object.keys(P).sort(), Object.keys(EXAMPLE).concat('$schema').sort());
   assert.deepEqual(P.island.properties.biome.enum, [...OPTIONS.biome]);
   assert.deepEqual(P.island.properties.shape.enum, [...OPTIONS.shape]);
+  assert.deepEqual(P.island.properties.buildings.enum, [...OPTIONS.buildings]);
   assert.deepEqual(P.landmarks.items.enum, [...OPTIONS.landmark]);
   assert.deepEqual(P.look.properties.time.enum, [...OPTIONS.time]);
   assert.deepEqual(P.look.properties.weather.enum, [...OPTIONS.weather]);
@@ -515,6 +518,34 @@ test('island.horizon picks the far skyline, and only from the known set', () => 
     assert.equal(r.config.island.horizon, undefined, String(bad));
     assert.equal(r.warnings.length, 1, String(bad));
   }
+});
+
+test('island.buildings picks the building theme, and only from the known set', () => {
+  const { config, warnings } = norm({ island: { buildings: 'adobe' } });
+  assert.equal(config.island.buildings, 'adobe');
+  assert.deepEqual(warnings, []);
+  assert.equal(norm({ island: { biome: 'savanna' } }).config.island.buildings, undefined);
+  for (const bad of ['gothic', 'AUTO', 'Adobe', '', 42, null, ['metro']]) {
+    const r = norm({ island: { buildings: bad } });
+    assert.equal(r.config.island.buildings, undefined, String(bad));
+    assert.equal(r.warnings.length, 1, String(bad));
+  }
+});
+
+test('every biome draws its building theme from a pool of real themes, and the picks are stable', () => {
+  assert.deepEqual(Object.keys(BIOME_THEMES).sort(), Object.keys(BIOMES).sort());
+  for (const [biome, pool] of Object.entries(BIOME_THEMES)) {
+    assert.ok(pool.length, biome);
+    for (const t of pool) assert.ok(THEME_NAMES.includes(t), `${biome}: ${t}`);
+  }
+  const T = { biome: 'savanna', seed: 12345 };
+  const auto = pickBuildingTheme(T, null, '');
+  assert.ok(BIOME_THEMES.savanna.includes(auto.name));
+  assert.equal(pickBuildingTheme(T, null, '').name, auto.name); // seeded: the same island, the same town
+  // The developer's choice beats the pool; the preview parameter beats both.
+  assert.equal(pickBuildingTheme(T, { island: { buildings: 'chalet' } }, '').name, 'chalet');
+  assert.equal(pickBuildingTheme(T, { island: { buildings: 'chalet' } }, '?buildings=brick').name, 'brick');
+  assert.equal(pickBuildingTheme(T, { island: { buildings: 'chalet' } }, '?buildings=gothic').name, 'chalet');
 });
 
 test('every biome draws its horizon from a pool of real horizons', () => {

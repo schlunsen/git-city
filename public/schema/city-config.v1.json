@@ -45,6 +45,16 @@
           ],
           "description": "Footprint of the paved city block."
         },
+        "buildings": {
+          "enum": [
+            "metro",
+            "adobe",
+            "chalet",
+            "colonial",
+            "brick"
+          ],
+          "description": "How the city block is built: glass-and-brick metro, sun-baked adobe, timber chalets, whitewashed colonial with tin roofs, or red-brick lofts. Left out, the island picks one that suits its biome."
+        },
         "streets": {
           "type": "integer",
           "minimum": 3,

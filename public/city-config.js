@@ -40,6 +40,7 @@ export const OPTIONS = Object.freeze({
   shape: Object.freeze(['square', 'wide', 'tall', 'round', 'plus', 'octagon', 'blob']),
   horizon: Object.freeze(['hills', 'peaks', 'mesas', 'isles', 'pines', 'skyline',
     'volcano', 'dunes', 'glacier', 'farmland', 'canyon']),
+  buildings: Object.freeze(['metro', 'adobe', 'chalet', 'colonial', 'brick']),
   landmark: Object.freeze(['rollerCoaster', 'carousel', 'circusTent', 'dropTower', 'windTurbines', 'windmill',
     'farm', 'campsite', 'radioTower', 'observatory', 'balloonPad',
     'lighthouse', 'recordShop', 'robotMonument']),
@@ -55,6 +56,7 @@ export const LABELS = Object.freeze({
   shape: { square: 'Square', wide: 'Wide', tall: 'Tall', round: 'Round', plus: 'Plus', octagon: 'Octagon', blob: 'Blob' },
   horizon: { hills: 'Rolling hills', peaks: 'Snowy peaks', mesas: 'Desert mesas', isles: 'Tropical isles', pines: 'Pine ridges', skyline: 'Distant city',
     volcano: 'Volcanoes', dunes: 'Sand dunes', glacier: 'Icebergs', farmland: 'Farmland', canyon: 'Canyon' },
+  buildings: { metro: 'Metro (glass and brick)', adobe: 'Adobe (sun-baked)', chalet: 'Chalet (timber)', colonial: 'Colonial (whitewash and tin)', brick: 'Brick (red-brick lofts)' },
   landmark: {
     rollerCoaster: 'Roller coaster', carousel: 'Carousel', circusTent: 'Circus tent', dropTower: 'Drop tower',
     windTurbines: 'Wind turbines', windmill: 'Windmill', farm: 'Farm', campsite: 'Campsite', radioTower: 'Radio tower',
@@ -284,16 +286,18 @@ export function normalizeCityConfig(raw, ctx = {}) {
   // island
   const island = object(at(raw, 'island'), 'island');
   if (island) {
-    unknown(island, ['name', 'biome', 'shape', 'horizon', 'streets'], 'island');
+    unknown(island, ['name', 'biome', 'shape', 'horizon', 'buildings', 'streets'], 'island');
     const name = text(at(island, 'name'), 'island.name', LIMITS.name);
     const biome = pick(at(island, 'biome'), 'island.biome', OPTIONS.biome);
     const shape = pick(at(island, 'shape'), 'island.shape', OPTIONS.shape);
     const horizon = pick(at(island, 'horizon'), 'island.horizon', OPTIONS.horizon);
+    const buildings = pick(at(island, 'buildings'), 'island.buildings', OPTIONS.buildings);
     const streets = number(at(island, 'streets'), 'island.streets', LIMITS.streets);
     if (name) config.island.name = name;
     if (biome) config.island.biome = biome;
     if (shape) config.island.shape = shape;
     if (horizon) config.island.horizon = horizon;
+    if (buildings) config.island.buildings = buildings;
     if (streets !== undefined) config.island.streets = streets;
   }
   const welcome = text(at(raw, 'welcome'), 'welcome', LIMITS.text);

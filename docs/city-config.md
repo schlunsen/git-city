@@ -51,6 +51,7 @@ typo never breaks your city; it just doesn't do anything.
 | `island.biome` | name | `meadow`, `alpine`, `tropical`, `savanna`, `lakeland` | Ground palette, relief, trees, beaches. Default: from your top language. |
 | `island.shape` | name | `square`, `wide`, `tall`, `round`, `plus`, `octagon`, `blob` | Footprint of the paved city block. Default: from your login. |
 | `island.horizon` | one of `hills`, `peaks`, `mesas`, `isles`, `pines`, `skyline`, `volcano`, `dunes`, `glacier`, `farmland`, `canyon` | What stands on the far horizon. Left out, the island draws one that suits its biome — alpine leans to snowy peaks and glaciers, savanna to mesas, dunes and canyons, tropical to islands and volcanoes — so two cities in the same biome rarely look out on the same thing. |
+| `island.buildings` | one of `metro`, `adobe`, `chalet`, `colonial`, `brick` | How the city block itself is built: the original glass-and-brick metro, sun-baked adobe with shutters and canvas awnings, timber chalets with wide gables, whitewashed colonial with tin roofs, or red-brick lofts. Left out, the island picks one that suits its biome (savanna leans adobe, alpine chalets, tropical colonial). Height, footprint and the language colour still come from each repository; `repos.<name>.style` still sets a single building's silhouette. |
 | `island.streets` | number | `3`–`6` (default `4`) | Width of the inner streets, in world units. The buildings keep their size whatever you choose — the cell grows with the street, so wider streets spread the city out over more of the island rather than thinning the towers. |
 | `welcome` | text | ≤ 120 characters | Your message on the welcome boards where the roads leave town (wrapped to 4 lines). |
 | `look.accent` | colour | `#rrggbb` | Glow colour of the plaza monument and its inlays. |
@@ -92,9 +93,11 @@ More details:
   the toolbar buttons. Their toggles last for the visit and don't change their
   saved TV / FX preference for other cities. A city without these fields
   keeps the visitor's own choices.
-- **Preview parameters win**: `?biome=`, `?city=` and `?streets=` in the URL
-  override `island.biome` / `island.shape` / `island.streets`, so you can try
-  looks without editing.
+- **Preview parameters win**: `?biome=`, `?horizon=`, `?city=`, `?buildings=`
+  and `?streets=` in the URL override `island.biome` / `island.horizon` /
+  `island.shape` / `island.buildings` / `island.streets`, so you can try looks
+  without editing. Opening **Customize** folds them into your draft and drops
+  them from the URL, so the panel's own selects take over from there.
 - **Landmarks are best effort.** Each needs a free site of the right kind
   (the roller coaster needs the big fairground, wind turbines a hillside, the
   campsite a coast or wild spot). If the island has no room, it's skipped.
